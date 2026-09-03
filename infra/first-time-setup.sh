@@ -110,14 +110,24 @@ step "Starting the API"
 docker compose up -d api
 
 step "Checking the API answers locally"
+# --content-on-error matters: /v1/health answers 503 when Postgres or Redis is
+# unreachable, and the body says which. Without it a sick API and a dead one
+# both print "<no answer>" and the log tells you nothing.
 ok=""
 for _ in $(seq 1 12); do
-  body=$(wget -qO- --timeout=5 http://127.0.0.1:3001/v1/health 2>/dev/null || true)
+  body=$(wget -qO- --content-on-error --timeout=5 http://127.0.0.1:3001/v1/health 2>/dev/null || true)
   echo "  health: ${body:-<no answer>}"
   case "$body" in *'"ok":true'*) ok=yes; break ;; esac
   sleep 5
 done
-[ -n "$ok" ] || die "The API did not report healthy. Look at: docker compose logs api"
+if [ -z "$ok" ]; then
+  echo
+  echo "--- docker compose ps ---"
+  docker compose ps || true
+  echo "--- docker compose logs api (last 120 lines) ---"
+  docker compose logs --tail=120 api || true
+  die "The API did not report healthy."
+fi
 
 step "Installing the nginx site"
 cp "$ROOT/src/infra/nginx/asr-api" /etc/nginx/sites-available/asr-api
