@@ -84,7 +84,7 @@ fun DashboardScreen(
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = viewModel(),
 ) {
-    val minutes by viewModel.minutesByPackage.collectAsStateWithLifecycle()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // Re-read on every return to the screen rather than once: these can be
@@ -127,7 +127,12 @@ fun DashboardScreen(
         Text("Stay in control.", style = AsrType.display(28), color = AsrColors.TextPrimary)
 
         Spacer(Modifier.height(22.dp))
-        ChallengeCard(progress = progress, protected = permissions.requiredGranted)
+        // Protected means all three of these, not one: the permissions are
+        // there, the loop is running, and the system is not dropping the
+        // block screen. Anything less and this app is not doing its job,
+        // which is a thing to say out loud rather than paper over.
+        val working = permissions.requiredGranted && state.loopLive && !state.blockDropped
+        ChallengeCard(progress = progress, protected = working)
 
         Spacer(Modifier.height(26.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -149,12 +154,12 @@ fun DashboardScreen(
             UsageRow(
                 app = app,
                 icon = icons[app.packageName],
-                usedMinutes = minutes[app.packageName] ?: 0,
+                usedMinutes = state.minutesByPackage[app.packageName] ?: 0,
             )
             Spacer(Modifier.height(10.dp))
         }
 
-        if (!permissions.requiredGranted) {
+        if (!working) {
             Spacer(Modifier.height(10.dp))
             Box(
                 modifier = Modifier
@@ -164,9 +169,28 @@ fun DashboardScreen(
                     .padding(16.dp),
             ) {
                 Text(
-                    "Nothing is being blocked. Usage access or app blocking has been " +
-                        "turned off in Settings, and your limits cannot be enforced " +
-                        "until both are back on.",
+                    when {
+                        !permissions.usageAccess ->
+                            "Nothing is being blocked. Usage access is off in Settings, " +
+                                "so this app cannot see how long anything has been used."
+
+                        !permissions.overlay ->
+                            "Nothing is being blocked. \"Display over other apps\" is off " +
+                                "in Settings. Android needs it to let this app put the " +
+                                "block screen in front of you, and without it the block " +
+                                "is dropped without a word."
+
+                        state.blockDropped ->
+                            "A block screen was refused by Android just now. That happens " +
+                                "when \"display over other apps\" is off or has been " +
+                                "revoked. Turn it back on in Settings and try again."
+
+                        else ->
+                            "Protection is not running. Android may have stopped the " +
+                                "background service; opening this screen starts it again, " +
+                                "and turning off battery optimisation for Asr keeps it " +
+                                "running."
+                    },
                     style = AsrType.Legal,
                     color = AsrColors.TextSecondary,
                 )

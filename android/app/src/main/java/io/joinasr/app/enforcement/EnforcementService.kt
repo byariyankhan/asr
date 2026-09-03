@@ -16,7 +16,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import io.joinasr.app.MainActivity
 import io.joinasr.app.R
-import io.joinasr.app.apps.InstalledApps
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.usage.Day
 import io.joinasr.app.usage.UsageReader
@@ -30,30 +29,29 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.Date
 
 /**
  * The loop. Reads how long each app has been used, compares it with the
- * pact, and puts the block screen up or takes it down.
+ * pact, and puts the block screen in front of anything that has run out.
  *
  * A foreground service because that is the only kind Android will keep
  * running, and because a person whose apps can be blocked should be able to
  * see at a glance that something is watching. The notification is not a
  * formality here; it is the honest disclosure that the app is running.
  *
- * It holds no state of its own beyond the pact it last read. Everything that
- * decides anything is in [Enforcement], and everything that measures
- * anything is in [UsageReader], both of which are tested. What is left here
- * is the parts only a device can do: staying alive, drawing a window, and
- * knowing when a permission has gone away.
+ * It holds no state of its own beyond the pact it last read and which app it
+ * is currently blocking. Everything that decides anything is in
+ * [Enforcement], everything that measures anything is in [UsageReader], and
+ * both are tested. What is left here is what only a device can do: staying
+ * alive, launching the block screen, and noticing a permission has gone.
  */
 class EnforcementService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var reader: UsageReader
-    private lateinit var overlay: BlockOverlay
     private lateinit var store: PactStore
+    private lateinit var status: ProtectionStatusStore
 
     @Volatile
     private var pact: Pact? = null
@@ -61,13 +59,22 @@ class EnforcementService : Service() {
     @Volatile
     private var hadUsageAccess = false
 
+    /**
+     * The app the block screen is currently up for, so it is launched once
+     * per block rather than once per poll. Cleared the moment anything else
+     * comes to the front — including the block screen itself, which makes
+     * this app the foreground app and so is naturally "allowed".
+     */
+    @Volatile
+    private var blocking: String? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         reader = usageReader(this)
-        overlay = BlockOverlay(this)
         store = PactStore(this)
+        status = ProtectionStatusStore(this)
 
         createChannel()
         startInForeground(apps = 0)
@@ -78,7 +85,6 @@ class EnforcementService : Service() {
                 // Nothing to enforce. Not an error, and not something to sit
                 // in the notification shade over: the challenge is finished
                 // or was never started.
-                withContext(Dispatchers.Main) { overlay.hide() }
                 stopSelf()
             } else {
                 startInForeground(apps = current.apps.size)
@@ -96,48 +102,73 @@ class EnforcementService : Service() {
     }
 
     override fun onDestroy() {
-        overlay.hide()
         scope.cancel()
         super.onDestroy()
     }
 
     private suspend fun loop() {
         while (scope.isActive) {
-            val current = pact
-            val hasAccess = Permissions.hasUsageAccess(this)
+            // Nothing in here may throw. This loop is the entire product: if
+            // it dies, every limit silently stops being enforced and the app
+            // looks fine while doing nothing, which is what happened the
+            // first time this shipped.
+            val delayMillis = runCatching { tick() }.getOrElse { Enforcement.IDLE_MILLIS }
+            delay(delayMillis)
+        }
+    }
 
-            // Usage access can be revoked in Settings at any moment, and
-            // without it the system reports an empty event stream rather
-            // than an error -- so everything measured after that point would
-            // read as zero and every limit would silently stop working.
-            // Detecting the return of the permission and starting the day's
-            // count again is the only honest thing to do with it.
-            if (hasAccess && !hadUsageAccess) reader.reset()
-            hadUsageAccess = hasAccess
+    /** One pass. Returns how long to wait before the next one. */
+    private suspend fun tick(): Long {
+        val current = pact
+        val hasAccess = Permissions.hasUsageAccess(this)
 
-            if (current == null || !hasAccess) {
-                withContext(Dispatchers.Main) { overlay.hide() }
-                delay(Enforcement.IDLE_MILLIS)
-                continue
-            }
+        // Usage access can be revoked in Settings at any moment, and without
+        // it the system reports an empty event stream rather than an error --
+        // so everything measured after that point would read as zero and
+        // every limit would silently stop working. Noticing the permission
+        // come back and starting the day's count again is the only honest
+        // thing to do with it.
+        if (hasAccess && !hadUsageAccess) reader.reset()
+        hadUsageAccess = hasAccess
 
-            val snapshot = reader.poll()
-            when (val decision = Enforcement.decide(current, snapshot)) {
-                Decision.Allow -> withContext(Dispatchers.Main) { overlay.hide() }
+        status.record(System.currentTimeMillis(), enforcing = current != null && hasAccess)
 
-                is Decision.Block -> {
-                    val icon = InstalledApps.icon(this, decision.app.packageName)
-                    val blocked = BlockedState(
-                        app = decision.app,
-                        usedMinutes = decision.usedMinutes,
-                        icon = icon,
-                        availableAgain = nextResetText(),
-                    )
-                    withContext(Dispatchers.Main) { overlay.show(blocked) }
+        if (current == null || !hasAccess) {
+            blocking = null
+            return Enforcement.IDLE_MILLIS
+        }
+
+        val snapshot = reader.poll()
+        when (val decision = Enforcement.decide(current, snapshot)) {
+            Decision.Allow -> blocking = null
+
+            is Decision.Block -> {
+                if (blocking != decision.app.packageName) {
+                    blocking = decision.app.packageName
+                    showBlockScreen(decision)
                 }
             }
+        }
+        return Enforcement.pollDelayMillis(current, snapshot)
+    }
 
-            delay(Enforcement.pollDelayMillis(current, snapshot))
+    /**
+     * Puts the block screen in front of the person.
+     *
+     * This is a background activity launch, which Android forbids from
+     * Android 10 unless the app holds SYSTEM_ALERT_WINDOW — the "display
+     * over other apps" permission the setup flow asks for. Without that
+     * grant the system drops the launch without a word, so the failure is
+     * recorded rather than swallowed: the dashboard reads it and says
+     * protection is not working, instead of the person finding out by
+     * scrolling uninterrupted past their limit.
+     */
+    private suspend fun showBlockScreen(decision: Decision.Block) {
+        val intent = BlockActivity.intent(this, decision.app, decision.usedMinutes, nextResetText())
+        val launched = runCatching { startActivity(intent) }.isSuccess
+        if (!launched) {
+            blocking = null
+            status.recordBlockFailed(System.currentTimeMillis())
         }
     }
 
@@ -171,14 +202,16 @@ class EnforcementService : Service() {
 
     private fun startInForeground(apps: Int) {
         val notification = buildNotification(apps)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
         }
     }
 
@@ -210,8 +243,8 @@ class EnforcementService : Service() {
         /**
          * Starts the loop, if there is anything for it to do.
          *
-         * Safe to call as often as anything likes: starting a service that
-         * is already running only delivers another onStartCommand, and the
+         * Safe to call as often as anything likes: starting a service that is
+         * already running only delivers another onStartCommand, and the
          * service stops itself when there is no pact.
          */
         fun start(context: Context) {

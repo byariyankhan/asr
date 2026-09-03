@@ -1,17 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Asr mark: a crowned brain, from Figma node 192:8.
+
+  Drawn as a vector rather than exported as PNGs. An adaptive icon would need
+  the foreground at five densities; a vector needs none, stays sharp on a
+  tablet or a launcher that scales it up, and costs about two kilobytes
+  instead of two hundred.
+
+  Everything sits in a group scaled to 0.92 about the centre. An adaptive icon
+  is masked by the launcher, into a circle or a squircle or a teardrop
+  depending on the phone, and only the middle 72 of these 108 units are
+  guaranteed to survive it. The mark fills that circle almost to its edge; the
+  spare 8% is what keeps the crown's point and the brain's shoulders off the
+  mask.
+
+  The dark parts are painted in the icon background colour rather than punched
+  out, because a vector drawable has no subtract operation and the layer
+  underneath is always exactly that colour.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Placeholder mark: a clock hand at the asr hour. Replaced from Figma. -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#E8B44A"
-        android:strokeWidth="4"
-        android:pathData="M54,30 A24,24 0 1,1 53.9,30" />
-    <path
-        android:strokeColor="#E8B44A"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M54,42 L54,54 L63,60" />
+
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.92"
+        android:scaleY="0.92">
+
+        <!-- Crown: three points on a rounded bar, with the jewel line. -->
+        <path
+            android:fillColor="#12B886"
+            android:pathData="M41.7,29.6 L48.0,21.6 L51.0,26.8 L54.0,17.7 L57.5,26.8 L61.1,21.6 L66.3,29.6 L66.3,35.6 L41.7,35.6 Z" />
+        <path
+            android:fillColor="#0A0A0A"
+            android:pathData="M51.4,31.8 L56.6,31.8 L56.6,32.6 L51.4,32.6 Z" />
+
+        <!-- The brain: one wide body with a dome over each lobe. Two
+             side-by-side ellipses would leave wedge-shaped gaps above and
+             below where they touch, and the mark's inner edges are
+             straight: what separates the lobes is the dark channel drawn
+             over the top, not the silhouette. -->
+        <path
+            android:fillColor="#12B886"
+            android:pathData="M23.5,58.5 a30.4,17.5 0 1,0 60.8,0 a30.4,17.5 0 1,0 -60.8,0 Z" />
+        <path
+            android:fillColor="#12B886"
+            android:pathData="M26.8,49.5 a11.8,11.8 0 1,0 23.6,0 a11.8,11.8 0 1,0 -23.6,0 Z" />
+        <path
+            android:fillColor="#12B886"
+            android:pathData="M57.4,49.5 a11.8,11.8 0 1,0 23.6,0 a11.8,11.8 0 1,0 -23.6,0 Z" />
+
+        <!-- The channel between the lobes, in two segments as the mark has. -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#0A0A0A"
+            android:strokeWidth="2.2"
+            android:strokeLineCap="round"
+            android:pathData="M53.9,39.0 L53.9,58.6" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#0A0A0A"
+            android:strokeWidth="2.2"
+            android:strokeLineCap="round"
+            android:pathData="M53.9,61.6 L53.9,73.4" />
+
+        <!-- The eyes, and the highlight in each. -->
+        <path
+            android:fillColor="#0A0A0A"
+            android:pathData="M33.9,54.0 a7.6,3.7 0 1,0 15.2,0 a7.6,3.7 0 1,0 -15.2,0 Z" />
+        <path
+            android:fillColor="#0A0A0A"
+            android:pathData="M58.99999999999999,53.4 a7.6,3.7 0 1,0 15.2,0 a7.6,3.7 0 1,0 -15.2,0 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M42.65,52.5 a1.15,1.15 0 1,0 2.3,0 a1.15,1.15 0 1,0 -2.3,0 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M67.85,52.0 a1.15,1.15 0 1,0 2.3,0 a1.15,1.15 0 1,0 -2.3,0 Z" />
+
+        <!-- The four folds. -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#0A0A0A"
+            android:strokeWidth="2.0"
+            android:strokeLineCap="round"
+            android:pathData="M37.2,42.3 L33.3,53.1" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#0A0A0A"
+            android:strokeWidth="2.0"
+            android:strokeLineCap="round"
+            android:pathData="M70.9,42.3 L74.8,53.1" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#0A0A0A"
+            android:strokeWidth="2.0"
+            android:strokeLineCap="round"
+            android:pathData="M40.2,62.6 L44.3,70.4" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#0A0A0A"
+            android:strokeWidth="2.0"
+            android:strokeLineCap="round"
+            android:pathData="M67.9,62.6 L63.8,70.4" />
+    </group>
 </vector>

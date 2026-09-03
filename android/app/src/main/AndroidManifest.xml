@@ -74,6 +74,21 @@
             </intent-filter>
         </activity>
 
+        <!-- The block screen. Its own task and out of recents, so dismissing
+             it cannot leave a stray Asr entry behind and returning to the
+             blocked app does not resurrect the old one: the service launches
+             a fresh one within the second. singleTask so a second block
+             while one is up arrives at the existing instance rather than
+             stacking another copy. -->
+        <activity
+            android:name=".enforcement.BlockActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="io.joinasr.app.block"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Asr" />
+
         <service
             android:name=".enforcement.EnforcementService"
             android:exported="false"
