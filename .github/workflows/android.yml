@@ -51,17 +51,33 @@ jobs:
           set -o pipefail
           ./gradlew --no-daemon test assembleDebug 2>&1 | tee /tmp/gradle.log
 
-      # Runs only when the build failed, and last, so the errors are the
-      # final thing in the log.
+      # Runs only when the build failed. Everything it finds is written to
+      # the job summary as well as the log: GitHub appends its own post-job
+      # steps after this one, so "last step" is not "end of the log", and a
+      # summary is the only place that is genuinely easy to find.
+      #
+      # It greps three different things because a build fails in three
+      # different phases and only one of them prints `e:` lines. A bad
+      # version catalog, a missing plugin or an unresolvable dependency all
+      # fail during configuration, where the message lives in Gradle's
+      # "What went wrong" block and there is not one compiler error to find.
       - name: What broke
         if: failure()
         run: |
+          summary() { tee -a "$GITHUB_STEP_SUMMARY"; }
+          echo "## What broke" | summary
+          echo '```' | summary
           echo "=== compiler errors ==="
-          grep -E "^e: |^error: " /tmp/gradle.log | head -40 || true
+          grep -E "^e: |^error: " /tmp/gradle.log | head -40 | summary || true
           echo "=== failing tests ==="
-          grep -E "^[A-Za-z0-9_.]+ > .* FAILED$" /tmp/gradle.log | head -20 || true
-          echo "=== if both are empty, the tail of the build ==="
-          if ! grep -qE "^e: |FAILED$" /tmp/gradle.log; then tail -40 /tmp/gradle.log; fi
+          grep -E "^[A-Za-z0-9_.]+ > .* FAILED$" /tmp/gradle.log | head -20 | summary || true
+          echo "=== configuration / what went wrong ==="
+          sed -n '/^\* What went wrong:/,/^\* Try:/p' /tmp/gradle.log | head -40 | summary || true
+          if ! grep -qE "^e: |FAILED$|^\* What went wrong:" /tmp/gradle.log; then
+            echo "=== nothing matched; tail of the build ==="
+            tail -40 /tmp/gradle.log | summary
+          fi
+          echo '```' | summary
 
       - uses: actions/upload-artifact@v4
         if: success()
