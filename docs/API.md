@@ -214,7 +214,7 @@ If `email` is given the delivery worker also sends the link by email.
 
 ### `GET /witnesses/invites/{code}`
 
-Public (no auth, per-IP limit). Returns `{ "inviter_name", "relationship" }`
+Public (no auth, per-IP limit). Returns `{ "inviter_name", "inviter_image", "relationship" }`
 so the accept screen can say "Ariyan wants you as a witness". `404` once the
 invite is answered. Never returns anything else.
 
@@ -303,6 +303,61 @@ Any subset of `name`, `timezone`, `notify_email`, `notify_push`,
 (`male` | `female` | `other` | `prefer_not_to_say`). The three profile
 fields accept `null` to clear them. `200` with the same shape as `GET /me`.
 The "About You" screen after sign-up is one `PATCH`.
+
+### `POST /me/avatar`
+
+Raw JPEG bytes as the whole body, not multipart: there is one field, and
+multipart would mean parsing a format with its own boundary handling to
+carry a single blob. `content-type` is ignored; the bytes are checked.
+
+The photo is optional. Figma 03 marks it required; it is not, because
+forcing a photo before someone has used the app costs sign-ups and nothing
+in the product needs a face to work.
+
+Limits: 1MB, 1024px on the longest side, JPEG only. The client downscales to
+512px and re-encodes before uploading, so anything larger did not come from
+our client. `400 unsupported_image` for anything that is not a JPEG,
+`413 image_too_large` past either limit, `503 storage_not_configured` when
+the R2 credentials are absent.
+
+Every APP1-APP15 and comment segment is removed before the object is
+stored. That is where EXIF lives, and EXIF on a phone photo routinely
+carries the GPS coordinates of where it was taken; a photo is shown to the
+witnesses a person invited, and handing them the location of someone's
+bedroom along with their face is not a trade anybody agreed to. Stripping
+EXIF also removes the orientation tag, so the client must upload upright
+bytes — the server does not decode and cannot rotate.
+
+`200` with `{ "image": "/v1/media/avatars/<user-id>/<random>.jpg" }`.
+Replacing a photo mints a new key and deletes the old object, so a URL
+somebody kept stops working.
+
+### `DELETE /me/avatar`
+
+`200` with `{ "image": null }`. The object is deleted.
+
+### `GET /media/{key}`
+
+The stored photo, to anybody who has the URL. **A profile picture is
+public.** The case that settles it is the witness invite: whoever opens
+`joinasr.io/w/<code>` has no account yet and has to be shown who is asking,
+and that preview already gives the inviter's name without a session.
+
+Two checks remain, and they are what make a photo removable: the key must be
+that owner's *current* photo, so replacing it kills the old URL rather than
+leaving a face somebody took down still being served; and the owner must not
+be deleted, so an account going away goes dark at once instead of at the next
+purge. `404` for either, and for a key that is not shaped like one.
+
+Rate limited per IP, because an unauthenticated image route is otherwise a
+free image host paid for out of the VPS's bandwidth. Answers with
+`Cache-Control: public, max-age=604800, immutable` (a key never changes
+contents) and `X-Content-Type-Options: nosniff`.
+
+The bucket stays private and the API streams the object. That is not a
+privacy measure -- the photo is public -- it is so that no URL is ever
+stored, only a key. Putting a CDN or a media domain in front of this later
+changes one function and no data.
 
 ### `GET /me/progress`
 

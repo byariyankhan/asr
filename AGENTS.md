@@ -45,6 +45,32 @@ unrelated production site. A careless change there has already taken one
 certificate into the wrong nginx file. Nothing in those directories is
 worth a guess. If your task seems to need a change there, stop and say so.
 
+## Ask before critical work
+
+The founder decides these, not the agent. Ask first, in one message, and
+wait -- do not start and report afterwards. This exists because the avatar
+work was built end to end off a one-line "yes" to storing photos, and the
+consequential decisions inside it (private bucket, hand-rolled signing,
+JPEG only, and an edit to the account-deletion path) were never put to
+anybody.
+
+Critical means any of:
+
+- **Production data or the server.** A migration, anything in the
+  deletion or purge path, nginx, the deploy, the VPS.
+- **A new third-party service, credential, or recurring cost.**
+- **What leaves the phone, or who can see it.** Any change to what is
+  stored, retained, or made visible to another person.
+- **Anything hard to undo.** Deletes, key rotation, a published package
+  name, a schema change that drops a column.
+
+Not critical, get on with it: screens built from the Figma file, tests,
+documentation, refactoring inside a directory you own, fixing a build.
+
+Where a task turns out to need a critical decision halfway through, stop
+at that point and ask. Finishing the parts that do not depend on the
+answer first is fine and preferred.
+
 ## What good looks like
 
 - Small commits that each do one thing, with a message that says **why**,

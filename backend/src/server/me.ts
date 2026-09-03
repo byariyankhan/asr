@@ -1,3 +1,4 @@
+import { imagePath } from "./avatar";
 import { db } from "./db/client";
 import { subscriptionStateFor } from "./subscriptions";
 import { notFound } from "@/lib/http";
@@ -7,6 +8,7 @@ const meColumns = [
   "id",
   "name",
   "email",
+  "image",
   "emailVerified",
   "timezone",
   "notify_email",
@@ -39,6 +41,7 @@ export async function getMe(userId: string) {
     id: user.id,
     name: user.name,
     email: user.email,
+    image: imagePath(user.image),
     email_verified: user.emailVerified,
     timezone: user.timezone,
     notify_email: user.notify_email,

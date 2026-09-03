@@ -1,4 +1,5 @@
 import { sql, type Transaction } from "kysely";
+import { discardAvatarsFor } from "./avatar";
 import { db } from "./db/client";
 import type { Database } from "./db/schema";
 import { closePact } from "./events";
@@ -320,10 +321,25 @@ export async function handleDeadDevice(deviceId: string, now: Date): Promise<boo
 }
 
 export async function purgeDeletedAccounts(now: Date): Promise<number> {
-  const result = await db
-    .deleteFrom("user")
-    .where("deleted_at", "<", new Date(now.getTime() - DELETION_GRACE_MS))
-    .executeTakeFirst();
+  const cutoff = new Date(now.getTime() - DELETION_GRACE_MS);
+
+  // Collected before the rows go, because once the user is deleted there is
+  // nothing left that knows which objects were theirs. A photo surviving its
+  // owner is not an acceptable outcome of "delete my account".
+  const doomed = await db
+    .selectFrom("user")
+    .select("image")
+    .where("deleted_at", "<", cutoff)
+    .where("image", "is not", null)
+    .execute();
+
+  const result = await db.deleteFrom("user").where("deleted_at", "<", cutoff).executeTakeFirst();
+
+  // After the rows, and never allowed to fail the purge: the database is the
+  // record of the promise, and a bucket that is temporarily unreachable must
+  // not keep an account alive.
+  await discardAvatarsFor(doomed.map((row) => row.image).filter((k): k is string => k !== null));
+
   return Number(result.numDeletedRows);
 }
 

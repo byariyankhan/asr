@@ -49,7 +49,15 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
   });
 
   it("lets anyone peek at who is asking, and nothing else", async () => {
-    expect(await peekInvite(inviteCode)).toEqual({ inviter_name: "Alice", relationship: "sibling" });
+    // The name, the photo and the relationship. Nothing about the pact, the
+    // apps, or the email the invite went to -- whoever holds this code is a
+    // stranger until they accept. toEqual rather than toMatchObject on
+    // purpose: this is the boundary where a field added carelessly leaks.
+    expect(await peekInvite(inviteCode)).toEqual({
+      inviter_name: "Alice",
+      inviter_image: null,
+      relationship: "sibling",
+    });
     await expect(peekInvite("NOPE")).rejects.toMatchObject({ status: 404 });
   });
 
