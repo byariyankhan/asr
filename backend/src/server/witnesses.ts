@@ -1,3 +1,4 @@
+import { imagePath } from "./avatar";
 import { db, isUniqueViolation } from "./db/client";
 import { inviteEmail, sendEmail } from "./email";
 import { queueNotification } from "./notifications";
@@ -72,11 +73,24 @@ export async function peekInvite(code: string) {
   const row = await db
     .selectFrom("witness")
     .innerJoin("user as u", "u.id", "witness.user_id")
-    .select(["witness.relationship", "witness.status", "u.name as inviter_name"])
+    .select([
+      "witness.relationship",
+      "witness.status",
+      "u.name as inviter_name",
+      "u.image as inviter_image",
+    ])
     .where("witness.invite_code", "=", code)
+    .where("u.deleted_at", "is", null)
     .executeTakeFirst();
   if (!row || row.status !== "invited") throw notFound("Invite");
-  return { inviter_name: row.inviter_name, relationship: row.relationship };
+  // The photo travels with the name. Somebody deciding whether to vouch for
+  // a person should see who is asking, and at this point they have no
+  // account, which is the whole reason /v1/media needs no session.
+  return {
+    inviter_name: row.inviter_name,
+    inviter_image: imagePath(row.inviter_image),
+    relationship: row.relationship,
+  };
 }
 
 export async function acceptInvite(witnessUserId: string, code: string) {

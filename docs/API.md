@@ -214,7 +214,7 @@ If `email` is given the delivery worker also sends the link by email.
 
 ### `GET /witnesses/invites/{code}`
 
-Public (no auth, per-IP limit). Returns `{ "inviter_name", "relationship" }`
+Public (no auth, per-IP limit). Returns `{ "inviter_name", "inviter_image", "relationship" }`
 so the accept screen can say "Ariyan wants you as a witness". `404` once the
 invite is answered. Never returns anything else.
 
@@ -338,25 +338,26 @@ somebody kept stops working.
 
 ### `GET /media/{key}`
 
-The stored object, for a caller entitled to see it. Three checks, in order:
-the key must name a real owner (the owner's id is *in* the key, so this
-needs no lookup), the caller must be the owner or be linked to them by an
-accepted witness relationship **in either direction**, and the key must be
-that owner's current photo.
+The stored photo, to anybody who has the URL. **A profile picture is
+public.** The case that settles it is the witness invite: whoever opens
+`joinasr.io/w/<code>` has no account yet and has to be shown who is asking,
+and that preview already gives the inviter's name without a session.
 
-The direction rule matters: My Witnesses (Figma 15) shows a person the faces
-of the witnesses they chose, and a one-directional rule would leave it
-blank. It is deliberately *not* gated on `views_progress` — that governs
-seeing somebody's habits day by day, and a witness who turned it off has not
-asked to stop seeing the face of the person who invited them.
+Two checks remain, and they are what make a photo removable: the key must be
+that owner's *current* photo, so replacing it kills the old URL rather than
+leaving a face somebody took down still being served; and the owner must not
+be deleted, so an account going away goes dark at once instead of at the next
+purge. `404` for either, and for a key that is not shaped like one.
 
-`403` for anyone else, `404` for a stale key, a deleted account, or a key
-that is not shaped like one. Answers with
-`Cache-Control: private, max-age=604800, immutable` (the key never changes
+Rate limited per IP, because an unauthenticated image route is otherwise a
+free image host paid for out of the VPS's bandwidth. Answers with
+`Cache-Control: public, max-age=604800, immutable` (a key never changes
 contents) and `X-Content-Type-Options: nosniff`.
 
-The bucket itself is private, with no public access and no custom domain:
-there is no URL for a face that works without a session.
+The bucket stays private and the API streams the object. That is not a
+privacy measure -- the photo is public -- it is so that no URL is ever
+stored, only a key. Putting a CDN or a media domain in front of this later
+changes one function and no data.
 
 ### `GET /me/progress`
 

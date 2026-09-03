@@ -1,4 +1,4 @@
-import { HttpError, forbidden, notFound } from "@/lib/http";
+import { HttpError, notFound } from "@/lib/http";
 import { ImageRejected, isJpeg, readJpegInfo, stripJpegMetadata } from "@/lib/jpeg";
 import { newId } from "@/lib/uuid";
 import { db } from "./db/client";
@@ -6,14 +6,14 @@ import { deleteObject, getObject, putObject, r2Config, type R2Config } from "./r
 
 
 /**
- * Profile photos. Optional, stored in a private R2 bucket, and served only
- * through /v1/media to a caller who is either the owner or one of the
- * witnesses they invited.
+ * Profile photos. Optional, stored in R2 and served through /v1/media to
+ * anybody who has the URL.
  *
- * The bucket has no public access and no custom domain, so there is no URL
- * that works without a session. That is the point: an avatar is a person's
- * face, and the app's whole promise is that what leaves the phone is only
- * what the promise needs.
+ * The bucket itself stays private and the object is streamed by the API
+ * rather than exposed directly. That is not a privacy measure -- the photo
+ * is public -- it is so that nothing stored anywhere is a URL. Only the key
+ * is stored, so putting a CDN or a media domain in front of this later
+ * changes one function and no data.
  */
 
 /** 1MB. The client sends a 512px JPEG, which lands around 40-60KB; this is
@@ -52,38 +52,6 @@ export function ownerOf(key: string): string | null {
  *  another domain changes nothing stored. */
 export function imagePath(key: string | null): string | null {
   return key ? `/v1/media/${key}` : null;
-}
-
-/**
- * Whether one person may see another's photo.
- *
- * Deliberately not `canViewUser`, which is the rule for seeing somebody's
- * *progress*: that is gated on `views_progress`, and a witness who turned
- * progress off has not asked to stop seeing the face of the person who
- * invited them. A face is far less than a day-by-day record of their habits.
- *
- * The link counts in both directions. If someone invited you as a witness
- * and you accepted, the two of you know each other by name already, and the
- * My Witnesses screen exists precisely to show those faces back to the
- * person who chose them -- a one-directional rule would leave that screen
- * full of blanks.
- */
-export async function canSeeAvatarOf(callerId: string, ownerId: string): Promise<boolean> {
-  if (callerId === ownerId) return true;
-  const row = await db
-    .selectFrom("witness")
-    .select("id")
-    .where("status", "=", "accepted")
-    .where((eb) =>
-      eb.or([
-        // The caller is a witness of the owner.
-        eb.and([eb("user_id", "=", ownerId), eb("witness_user_id", "=", callerId)]),
-        // Or the owner is a witness of the caller.
-        eb.and([eb("user_id", "=", callerId), eb("witness_user_id", "=", ownerId)]),
-      ]),
-    )
-    .executeTakeFirst();
-  return row !== undefined;
 }
 
 export async function setAvatar(userId: string, bytes: Buffer) {
@@ -147,18 +115,18 @@ export async function clearAvatar(userId: string) {
 }
 
 /**
- * Reads an object for a caller who is allowed to see it.
+ * Reads an object by key. No caller: a profile photo is public, because the
+ * invite preview has to show a face to somebody who has no account yet.
  *
- * Three separate checks, and the order matters. The key has to name a real
- * owner, the caller has to be allowed to see that owner, and the key has to
- * be that owner's *current* photo — without the last one, a witness who was
- * removed, or anyone who noted a URL down, keeps a working link to a face
- * that was replaced.
+ * The two checks that remain are the ones that make a photo removable. The
+ * key must be the owner's current one, so replacing a photo kills the old
+ * URL rather than leaving a face somebody took down still being served; and
+ * the owner must not be deleted, so an account going away goes dark at once
+ * instead of at the next purge.
  */
-export async function readAvatar(callerId: string, key: string) {
+export async function readAvatar(key: string) {
   const owner = ownerOf(key);
   if (!owner) throw notFound("Image");
-  if (!(await canSeeAvatarOf(callerId, owner))) throw forbidden();
 
   const row = await db
     .selectFrom("user")

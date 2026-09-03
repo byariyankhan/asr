@@ -1,105 +1,62 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { generateInviteCode } from "@/lib/invite-code";
 import { newId } from "@/lib/uuid";
 import { HttpError } from "@/lib/http";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
 /**
- * Who may look at somebody's face.
+ * A profile photo is public, so there is no "who may see this" to test. What
+ * matters instead is that a photo can be taken away: replacing it, or
+ * deleting the account, has to stop the URL resolving straight away.
  *
- * R2 credentials are deliberately not needed here. Every case below is
- * decided before a byte is fetched, and the 503 that a permitted read ends
- * in is itself the assertion that the decision came out "yes" -- which is
- * stronger than mocking the storage and checking a mock was called.
+ * R2 credentials are deliberately not needed. Every case below is decided
+ * before a byte is fetched, and the 503 a resolvable key ends in is itself
+ * the assertion that it got that far.
  */
-describe.skipIf(!DATABASE_URL)("avatar visibility", async () => {
+describe.skipIf(!DATABASE_URL)("avatar keys", async () => {
   const { db } = await import("@/server/db/client");
   const { imagePath, ownerOf, readAvatar } = await import("@/server/avatar");
+  const { peekInvite } = await import("@/server/witnesses");
 
   const owner = newId();
-  const witness = newId();
-  const stranger = newId();
-  const removedWitness = newId();
-  /** Someone the owner is a witness *for*: the reverse direction. */
-  const watchedByOwner = newId();
-  /** An accepted witness who turned progress viewing off. */
-  const noProgressWitness = newId();
+  const inviteCode = generateInviteCode();
   const key = `avatars/${owner}/${newId()}.jpg`;
 
-  async function user(id: string, name: string, image: string | null = null) {
+  beforeAll(async () => {
     const now = new Date();
     await db
       .insertInto("user")
       .values({
-        id,
-        name,
-        email: `${id}@test.local`,
+        id: owner,
+        name: "Owner",
+        email: `${owner}@test.local`,
         emailVerified: false,
-        image,
+        image: key,
         createdAt: now,
         updatedAt: now,
       })
       .execute();
-  }
-
-  beforeAll(async () => {
-    await user(owner, "Owner", key);
-    await user(witness, "Witness");
-    await user(stranger, "Stranger");
-    await user(removedWitness, "Removed");
-    await user(watchedByOwner, "Watched By Owner");
-    await user(noProgressWitness, "No Progress");
-
     await db
       .insertInto("witness")
-      .values([
-        {
-          id: newId(),
-          user_id: owner,
-          witness_user_id: witness,
-          invite_code: newId(),
-          status: "accepted",
-          views_progress: true,
-        },
-        {
-          id: newId(),
-          user_id: owner,
-          witness_user_id: removedWitness,
-          invite_code: newId(),
-          status: "removed",
-          views_progress: true,
-        },
-        {
-          id: newId(),
-          user_id: watchedByOwner,
-          witness_user_id: owner,
-          invite_code: newId(),
-          status: "accepted",
-          views_progress: true,
-        },
-        {
-          id: newId(),
-          user_id: owner,
-          witness_user_id: noProgressWitness,
-          invite_code: newId(),
-          status: "accepted",
-          views_progress: false,
-        },
-      ])
+      .values({
+        id: newId(),
+        user_id: owner,
+        invite_code: inviteCode,
+        invite_email: "friend@test.local",
+        status: "invited",
+      })
       .execute();
   });
 
   afterAll(async () => {
-    await db
-      .deleteFrom("user")
-      .where("id", "in", [owner, witness, stranger, removedWitness, watchedByOwner, noProgressWitness])
-      .execute();
+    await db.deleteFrom("user").where("id", "=", owner).execute();
     await db.destroy();
   });
 
-  const status = async (callerId: string, target: string): Promise<number> => {
+  const status = async (target: string): Promise<number> => {
     try {
-      await readAvatar(callerId, target);
+      await readAvatar(target);
       return 200;
     } catch (error) {
       if (error instanceof HttpError) return error.status;
@@ -107,75 +64,50 @@ describe.skipIf(!DATABASE_URL)("avatar visibility", async () => {
     }
   };
 
-  it("lets the owner through", async () => {
-    // 503 = storage not configured, reached only after the checks passed.
-    expect(await status(owner, key)).toBe(503);
+  it("resolves the owner's current photo for anybody", async () => {
+    // 503 = storage not configured, reached only once the key checks passed.
+    expect(await status(key)).toBe(503);
   });
 
-  it("lets an accepted witness through", async () => {
-    expect(await status(witness, key)).toBe(503);
-  });
-
-  it("lets a witness through who turned progress viewing off", async () => {
-    // views_progress governs seeing somebody's habits day by day. Turning it
-    // off is not a request to stop seeing the face of the person who invited
-    // you, and gating the avatar on it was the bug this test exists for.
-    expect(await status(noProgressWitness, key)).toBe(503);
-  });
-
-  it("lets the owner see the photo of someone they are a witness for", async () => {
-    // The reverse direction. My Witnesses shows these faces back to the
-    // person who chose them; a one-directional rule left it blank.
-    const theirKey = `avatars/${watchedByOwner}/${newId()}.jpg`;
-    await db.updateTable("user").set({ image: theirKey }).where("id", "=", watchedByOwner).execute();
-    expect(await status(owner, theirKey)).toBe(503);
-  });
-
-  it("refuses somebody with no connection to the owner", async () => {
-    expect(await status(stranger, key)).toBe(403);
-  });
-
-  it("refuses a witness who was removed", async () => {
-    // The row survives with status 'removed' precisely so this stays false.
-    expect(await status(removedWitness, key)).toBe(403);
-  });
-
-  it("refuses a key that is no longer the owner's current photo", async () => {
+  it("stops resolving a key that is no longer the current photo", async () => {
     const stale = `avatars/${owner}/${newId()}.jpg`;
-    // A URL somebody kept, or a cache entry, must stop resolving the moment
-    // the photo is replaced.
-    expect(await status(owner, stale)).toBe(404);
+    // A URL somebody kept, or a cache entry, must die when a photo is
+    // replaced -- otherwise a face that was taken down is still served.
+    expect(await status(stale)).toBe(404);
   });
 
-  it("refuses a key that names no owner", async () => {
-    expect(await status(owner, "avatars/../../etc/passwd")).toBe(404);
-    expect(await status(owner, "avatars/not-a-uuid/x.jpg")).toBe(404);
-    expect(await status(owner, "")).toBe(404);
-  });
-
-  it("refuses a key belonging to a user who deleted their account", async () => {
-    await db
-      .updateTable("user")
-      .set({ deleted_at: new Date() })
-      .where("id", "=", owner)
-      .execute();
+  it("goes dark the moment the account is deleted", async () => {
+    await db.updateTable("user").set({ deleted_at: new Date() }).where("id", "=", owner).execute();
     try {
-      expect(await status(owner, key)).toBe(404);
-      expect(await status(witness, key)).toBe(404);
+      expect(await status(key)).toBe(404);
     } finally {
       await db.updateTable("user").set({ deleted_at: null }).where("id", "=", owner).execute();
     }
   });
 
-  it("reads the owner back out of a key, and refuses shapes that are not keys", () => {
+  it("refuses a key that is not shaped like one", async () => {
+    expect(await status("avatars/../../etc/passwd")).toBe(404);
+    expect(await status("avatars/not-a-uuid/x.jpg")).toBe(404);
+    expect(await status("")).toBe(404);
+  });
+
+  it("reads the owner back out of a key", () => {
     expect(ownerOf(key)).toBe(owner);
     expect(ownerOf("avatars/x/y.jpg")).toBeNull();
     expect(ownerOf(`avatars/${owner}/${newId()}.png`)).toBeNull();
     expect(ownerOf(`../${owner}/x.jpg`)).toBeNull();
   });
 
-  it("hands the client a relative path, so the domain is never stored", () => {
+  it("hands out a relative path, so no domain is ever stored", () => {
     expect(imagePath(key)).toBe(`/v1/media/${key}`);
     expect(imagePath(null)).toBeNull();
+  });
+
+  it("shows the inviter's photo on the public invite preview", async () => {
+    // The reason the photo is public at all: whoever opens the invite link
+    // has no account yet and still needs to see who is asking.
+    const preview = await peekInvite(inviteCode);
+    expect(preview.inviter_name).toBe("Owner");
+    expect(preview.inviter_image).toBe(`/v1/media/${key}`);
   });
 });
