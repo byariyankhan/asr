@@ -54,6 +54,7 @@ FIREBASE_PRIVATE_KEY=           # keep the \n escapes; the app unescapes them
 INTERNAL_SECRET=                # x-internal-secret header for POST /v1/internal/watchdog
 PLAY_PACKAGE_NAME=com.joinasr.app
 PLAY_SERVICE_ACCOUNT_JSON_B64=  # base64 of the service-account JSON for the Play Developer API
+PLAY_PUBSUB_SECRET=             # the ?token= value on the Pub/Sub push endpoint for Play RTDN
 ```
 
 `docker compose config -q` must pass before anything else; it fails on any

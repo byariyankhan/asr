@@ -180,7 +180,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       user_id          text not null references "user"(id) on delete cascade,
       product_id       text not null,
       purchase_token   text not null unique,
-      status           text not null check (status in ('active', 'grace', 'on_hold', 'paused', 'cancelled', 'expired')),
+      status           text not null check (status in ('pending', 'active', 'grace', 'on_hold', 'paused', 'cancelled', 'expired')),
       expires_at       timestamptz,
       last_verified_at timestamptz not null default now(),
       raw              jsonb not null,

@@ -280,11 +280,10 @@ notification.
   "id": "…", "name": "Ariyan", "email": "…", "email_verified": true,
   "timezone": "Asia/Dhaka", "notify_email": true, "notify_push": true,
   "date_of_birth": "2000-02-29", "country": "BD", "gender": "male",
-  "created_at": "…", "device_count": 1
+  "created_at": "…", "device_count": 1,
+  "subscription": { "plan": "plus", "status": "active", "product_id": "asr_plus_monthly", "expires_at": "…" }
 }
 ```
-
-Subscription status joins this response once Play Billing lands.
 
 ### `PATCH /me`
 
@@ -361,16 +360,54 @@ again inside those 7 days cancels the deletion. `200` with
 
 ## Subscription
 
+Subscriptions are sold through Google Play Billing, which is mandatory for
+digital goods inside an Android app. The server never trusts what the client
+says a purchase is worth: it takes the token's identity and asks Play.
+
 ### `POST /subscription/verify`
 
 ```json
 { "product_id": "asr_plus_monthly", "purchase_token": "…" }
 ```
 
-Server verifies with the Google Play Developer API, upserts `subscription`,
-returns `{ "status": "active", "expires_at": "…" }`. Play Real-time Developer
-Notifications hit `POST /webhooks/play` (Pub/Sub push, verified by the
-Pub/Sub JWT) to keep the row current without the app polling.
+`product_id` is accepted but not read — Play is the authority on what the
+token bought. The server calls the Play Developer API
+(`purchases/subscriptionsv2`), stores the result, and returns the same shape
+`GET /me` carries:
+
+```json
+{ "plan": "plus", "status": "active", "product_id": "asr_plus_monthly", "expires_at": "…" }
+```
+
+`plan` is `plus` while the purchase entitles the user and `free` otherwise.
+Entitlement is status **and** expiry: Play's `CANCELED` means auto-renew is
+off, not that access stopped, so a cancelled subscription still entitles
+until `expires_at` passes. `paused`, `on_hold` and `pending` do not entitle.
+
+When Play reports a `linkedPurchaseToken` (an upgrade or downgrade issues a
+new token pointing at the old one), the old row is marked `expired` in the
+same transaction.
+
+Errors: `409 purchase_claimed` if another account already registered that
+token, `404 unknown_purchase` if Play does not recognise it, `502
+billing_upstream` if Play could not be reached, `503 billing_unavailable`
+if this server has no Play credentials configured.
+
+### `POST /webhooks/play`
+
+Google Play Real-time Developer Notifications, delivered by a Pub/Sub push
+subscription. Pub/Sub authenticates itself with the shared secret in the
+push endpoint's query string (`?token=…`, compared against
+`PLAY_PUBSUB_SECRET` in constant time), which is why the endpoint must only
+ever be registered over HTTPS. An unauthenticated call gets `404`.
+
+A notification says a token changed, never what it changed to, so the
+handler simply re-verifies that token against Play. That is more
+trustworthy than mapping the twenty notification types, and it self-heals a
+missed event. A token we have never seen, a test notification, or an
+unparseable payload all answer `200` — Pub/Sub retries any non-2xx, and
+none of those would ever succeed. A verification failure answers `500`, so
+it is retried.
 
 ## Internal
 

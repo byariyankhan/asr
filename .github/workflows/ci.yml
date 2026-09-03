@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# A gate that passes on a different Node or pnpm than production builds with
+# is a gate that can lie, so this uses the same toolchain as the Dockerfile's
+# base stage: node:22 + corepack, run from backend/.
+#
+# It deliberately does not run `next build`. The VPS builds before it swaps
+# the running container, so a build failure there costs a failed deploy and
+# nothing else — the old container keeps serving.
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: asr
+          POSTGRES_PASSWORD: asr
+          POSTGRES_DB: asr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U asr"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: postgresql://asr:asr@127.0.0.1:5432/asr
+      BETTER_AUTH_SECRET: ci-secret-ci-secret-ci-secret-1234
+      BETTER_AUTH_URL: http://localhost:3001
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (same as the Dockerfile's base stage)
+        run: corepack enable
+
+      # The deploy workflow runs its remote script as one single-quoted ssh
+      # argument. A single quote inside it closes the argument early and the
+      # remainder silently stops being a script, with the step still green.
+      # That has happened (in the sibling repo this guard came from), hence a
+      # check rather than a comment.
+      - name: Check ssh argument quoting
+        working-directory: .
+        run: |
+          python3 -c "import yaml" 2>/dev/null || pip install --quiet pyyaml
+          python3 scripts/check-ssh-quoting.py .github/workflows/*.yml
+
+      # --frozen-lockfile is the check, not just the install: it fails when
+      # the lockfile and package.json have drifted, which is exactly the
+      # state that breaks the Docker build.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm type-check
+
+      - name: Lint
+        run: pnpm lint
+
+      # Up, down, up. A migration that cannot be rolled back is one that
+      # cannot be recovered from at 3am, and `down` is never exercised by a
+      # deploy — only here.
+      - name: Migrate (up, down, up)
+        run: |
+          pnpm db:migrate
+          pnpm db:migrate:down
+          pnpm db:migrate
+
+      # With DATABASE_URL set the integration tests run for real; without it
+      # they skip themselves, which is how they behave on a developer's
+      # machine with no database up.
+      - name: Test
+        run: pnpm test

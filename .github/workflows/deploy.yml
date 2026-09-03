@@ -1,0 +1,154 @@
+name: Deploy to production
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+
+# Only deploys a commit CI has already passed. workflow_run fires for
+# failures too, hence the conclusion check.
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No ssh-keyscan: a deploy has no business asking the network for a key
+      # that does not change. The key is pinned in infra/vps-host-key.pub —
+      # the same VPS Bookween deploys to, read from the host itself.
+      #
+      # If the VPS ever presents a different key this FAILS, and is neither
+      # retried nor auto-accepted: a changed host key is either a rebuilt
+      # server or someone in the middle, and both deserve a human.
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # The pinned file holds key material only; the address comes from
+          # the secret, and the two are joined here.
+          : > ~/.ssh/known_hosts
+          while read -r type key rest; do
+            case "$type" in ""|\#*) continue ;; esac
+            printf "%s %s %s\n" "$VPS_HOST" "$type" "$key" >> ~/.ssh/known_hosts
+          done < infra/vps-host-key.pub
+          chmod 600 ~/.ssh/known_hosts
+          echo "pinned $(grep -c . ~/.ssh/known_hosts) host key(s) for the VPS"
+
+          printf "Host *\n  StrictHostKeyChecking yes\n  UserKnownHostsFile ~/.ssh/known_hosts\n" > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+          if ! ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 root@"$VPS_HOST" true 2>/tmp/ssh_err; then
+            cat /tmp/ssh_err >&2
+            if grep -qiE "HOST IDENTIFICATION HAS CHANGED|Host key verification failed" /tmp/ssh_err; then
+              echo
+              echo "The VPS is presenting a host key that is NOT the pinned one."
+              echo "Refusing to continue, and refusing to accept the new key."
+              echo "Verify it out of band before touching infra/vps-host-key.pub."
+              exit 1
+            fi
+            echo "could not reach the VPS to pre-verify; the step that follows retries on its own"
+          else
+            echo "host key matches the pinned one"
+          fi
+
+      # The VPS pulls its own copy of this repo rather than the runner pushing
+      # files over; this job just tells it to catch up and rebuild. Every step
+      # in the remote script is safe to run again from scratch, so the retry
+      # loop cannot leave things half-done.
+      #
+      # api and migrate are built one at a time on purpose: they share a
+      # Dockerfile (api goes through `builder` to reach `runner`, migrate IS
+      # `builder`), so building them concurrently runs two full Next.js builds
+      # side by side on a small VPS. Sequentially the second is a cache hit on
+      # layers the first just produced.
+      #
+      # The pg_dump between build and migrate is the pre-migration safety net:
+      # every deploy runs migrations, so every deploy first snapshots the
+      # database it is about to migrate. Under `set -e` a failed dump aborts
+      # the deploy BEFORE migrate touches anything — a deploy that cannot take
+      # its safety backup should not be migrating.
+      #
+      # Image retention runs last, in a `set +e` subshell ending in `|| true`,
+      # and only after the new container is up: housekeeping must never fail a
+      # deploy or take the API down. The live image is tagged
+      # asr-api:deploy-<sha>, the newest 3 kept, everything older removed
+      # along with dangling images and build cache over a 5GB cap.
+      #
+      # Fast rollback to a kept release:
+      #   docker tag asr-api:deploy-<sha> <the compose image tag>
+      #   docker compose up -d api --force-recreate
+      # A rollback does NOT undo migrations — restore a pre-deploy dump from
+      # /opt/asr/backups if the schema changed.
+      - name: Deploy over SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          max_attempts=4
+          attempt=1
+          delay=20
+          until ssh -i ~/.ssh/deploy_key -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 root@"$VPS_HOST" '
+            set -e
+            cd /opt/asr/src
+            git fetch origin master
+            git reset --hard origin/master
+            cd /opt/asr
+            docker compose build api
+            docker compose build migrate
+            mkdir -p /opt/asr/backups
+            docker compose exec -T postgres pg_dump -U asr -d asr -Fc </dev/null > /opt/asr/backups/pre-deploy-$(date -u +%Y%m%d-%H%M%S).dump
+            ls -t /opt/asr/backups/pre-deploy-*.dump | tail -n +6 | xargs -r rm
+            docker compose run --rm migrate
+            docker compose up -d api --force-recreate
+            (
+              set +e
+              sha=$(git -C /opt/asr/src rev-parse --short HEAD)
+              cid=$(docker compose ps -q api)
+              imgid=$(docker inspect -f "{{.Image}}" "$cid")
+              docker tag "$imgid" "asr-api:deploy-$sha"
+              echo "tagged this release as asr-api:deploy-$sha"
+              docker images --format "{{.CreatedAt}}|{{.Repository}}:{{.Tag}}" \
+                | grep "|asr-api:deploy-" | sort -r | tail -n +4 | cut -d"|" -f2 \
+                | xargs -r -n1 docker rmi
+              docker image prune -f
+              docker builder prune -f --keep-storage 5GB || docker builder prune -f --max-used-space 5GB || docker builder prune -af
+            ) || true
+          '; do
+            status=$?
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "deploy failed after $attempt attempts (exit $status)"
+              exit "$status"
+            fi
+            echo "attempt $attempt failed (exit $status); retrying in ${delay}s"
+            sleep "$delay"
+            attempt=$((attempt + 1))
+            delay=$((delay * 2))
+          done
+
+      # The container is up; make sure it actually answers. /v1/health checks
+      # Postgres and Redis, so a green here means the whole stack is serving.
+      - name: Verify health
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            body=$(ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" "wget -qO- --timeout=5 http://127.0.0.1:3001/v1/health" 2>/dev/null || true)
+            echo "health: ${body:-<no answer>}"
+            if printf %s "$body" | grep -q "\"ok\":true"; then
+              echo "healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "the API did not report healthy after the deploy"
+          exit 1

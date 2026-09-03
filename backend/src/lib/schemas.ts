@@ -216,3 +216,9 @@ export const notificationsRead = z.union([
 ]);
 
 export const accountDelete = z.object({ password: z.string().min(1).max(256) });
+
+export const subscriptionVerify = z.object({
+  // product_id is not read: Play is the authority on what the token bought.
+  product_id: z.string().min(1).max(128).optional(),
+  purchase_token: z.string().min(10).max(4096),
+});

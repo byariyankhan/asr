@@ -197,12 +197,14 @@ export interface NotificationTable {
   created_at: GeneratedTimestamp;
 }
 
+export type SubscriptionStatus = "pending" | "active" | "grace" | "on_hold" | "paused" | "cancelled" | "expired";
+
 export interface SubscriptionTable {
   id: string;
   user_id: string;
   product_id: string;
   purchase_token: string;
-  status: "active" | "grace" | "on_hold" | "paused" | "cancelled" | "expired";
+  status: SubscriptionStatus;
   expires_at: Timestamp | null;
   last_verified_at: GeneratedTimestamp;
   raw: JSONColumnType<Record<string, unknown>>;

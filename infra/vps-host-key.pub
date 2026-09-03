@@ -1,0 +1,19 @@
+# The production VPS's SSH host keys, pinned so the workflows never have to
+# ask the network for them. ssh-keyscan killed six runs in a single day; a
+# deploy should not depend on a lookup for a key that does not change.
+#
+# Read from /etc/ssh/ssh_host_*_key.pub on the host itself over an
+# authenticated session on 2026-08-27, and confirmed identical to what a scan
+# of the host returns in the same run:
+#   ED25519  SHA256:uxUOCmwVW8N0D7nB7isnGbtr7PH6UlDJZNufXT+ngRs
+#   RSA      SHA256:nmayV0beRFE2MRabIk7rgA03+MCBrIdAGCEVn/6vUIw
+#
+# Only the key material is here. The host address stays in the VPS_HOST
+# secret, and the two are joined at runtime.
+#
+# If the VPS ever presents a different key, the workflows FAIL — deliberately.
+# Nothing here is updated automatically. Rebuilt the server, or moved it?
+# Verify the new key out of band (vps-ops mode host-key-report, or the
+# provider console), then change this file in a commit.
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDCDTjw6ogPmjaM7YPZO9HUTFuPKcdsddv4iEdCWfG30
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC0/C+m6VcUwm55vdYX+EP/nZLAQgGDRFMwh3ffYxQZXBQP0GdMUlM7ZBR+RZWs9rvtHUcofy4nWvlAjShhfGdGI56m/P8tU4Lw27eaz8yl1jhD3KC1BsoUn/fF8puKQe5b48+Xqd6BBFLIVKLwUJ+DTSs8CMm4Vt51o66fz5K48rAZVog+q/yWAB3lEt2RwQ4euUgxzWIvbHW4R0bJSWPECsfLMvCB6MuRpMLOTk1DWZ5hbcvSmZDcU5rSS04fDXhGiivXVOTuB4S9nQkOzb5MaAKAK3Td/0ih9k3HfMRhC+QJIYc1Zmkv4WjKHH/qyh+MiIFBDnbMi+95kckXdM9PGpK0KE7SEMmaZIXiRl8XoXtMat0xlaQFtvi1xVDOM638qNbSVM3oP1C3dawJeeDbJSt+z8cKQD08t5n+JGqOFHN9FpGt1jEn+sXPRLV6dU+WRrAV+0BmAIPhKj95bo3ivK/20p6y/ID4t0QFcibRIp+Jvw9lL7La/HUnuTDsMtM=

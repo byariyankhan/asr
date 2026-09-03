@@ -1,4 +1,5 @@
 import { db } from "./db/client";
+import { subscriptionStateFor } from "./subscriptions";
 import { notFound } from "@/lib/http";
 import type { MeUpdate } from "@/lib/schemas";
 
@@ -26,11 +27,14 @@ export async function getMe(userId: string) {
     .where("deleted_at", "is", null)
     .executeTakeFirst();
   if (!user) throw notFound("User");
-  const { count } = await db
-    .selectFrom("device")
-    .select((eb) => eb.fn.countAll<string>().as("count"))
-    .where("user_id", "=", userId)
-    .executeTakeFirstOrThrow();
+  const [{ count }, subscription] = await Promise.all([
+    db
+      .selectFrom("device")
+      .select((eb) => eb.fn.countAll<string>().as("count"))
+      .where("user_id", "=", userId)
+      .executeTakeFirstOrThrow(),
+    subscriptionStateFor(userId),
+  ]);
   return {
     id: user.id,
     name: user.name,
@@ -44,6 +48,7 @@ export async function getMe(userId: string) {
     gender: user.gender,
     created_at: user.createdAt,
     device_count: Number(count),
+    subscription,
   };
 }
 
