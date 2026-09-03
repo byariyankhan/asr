@@ -16,8 +16,15 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
 
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+
     steps:
+      # The commit CI passed, not whatever master points at now: those differ
+      # the moment two pushes land close together.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       # No ssh-keyscan: a deploy has no business asking the network for a key
       # that does not change. The key is pinned in infra/vps-host-key.pub —
@@ -62,11 +69,31 @@ jobs:
             echo "host key matches the pinned one"
           fi
 
-      # The VPS pulls its own copy of this repo rather than the runner pushing
-      # files over; this job just tells it to catch up and rebuild. Every step
-      # in the remote script is safe to run again from scratch, so the retry
-      # loop cannot leave things half-done.
-      #
+      # The repository is private, so the VPS is never given GitHub
+      # credentials: the runner already has the checkout and ships it. The new
+      # tree is unpacked beside the old one and swapped in, so a half-finished
+      # transfer never becomes the live source, and src.old is one `mv` away
+      # if a build needs to be undone in a hurry.
+      - name: Ship the source to /opt/asr/src
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          tar czf /tmp/asr-src.tgz --exclude=.git --exclude=node_modules --exclude=.next .
+          scp -i ~/.ssh/deploy_key /tmp/asr-src.tgz root@"$VPS_HOST":/tmp/asr-src.tgz
+          ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" bash -s <<'REMOTE'
+          set -e
+          test -f /opt/asr/.env || { echo "No /opt/asr/.env — run the bootstrap workflow first."; exit 1; }
+          rm -rf /opt/asr/src.new
+          mkdir -p /opt/asr/src.new
+          tar xzf /tmp/asr-src.tgz -C /opt/asr/src.new
+          rm -f /tmp/asr-src.tgz
+          rm -rf /opt/asr/src.old
+          [ -d /opt/asr/src ] && mv /opt/asr/src /opt/asr/src.old
+          mv /opt/asr/src.new /opt/asr/src
+          cp /opt/asr/src/infra/docker-compose.yml /opt/asr/docker-compose.yml
+          install -m 700 /opt/asr/src/infra/backup.sh /opt/asr/backup.sh
+          REMOTE
+
       # api and migrate are built one at a time on purpose: they share a
       # Dockerfile (api goes through `builder` to reach `runner`, migrate IS
       # `builder`), so building them concurrently runs two full Next.js builds
@@ -79,53 +106,55 @@ jobs:
       # the deploy BEFORE migrate touches anything — a deploy that cannot take
       # its safety backup should not be migrating.
       #
-      # Image retention runs last, in a `set +e` subshell ending in `|| true`,
-      # and only after the new container is up: housekeeping must never fail a
+      # Image retention runs last, in a `set +e` block ending in `|| true`, and
+      # only after the new container is up: housekeeping must never fail a
       # deploy or take the API down. The live image is tagged
-      # asr-api:deploy-<sha>, the newest 3 kept, everything older removed
-      # along with dangling images and build cache over a 5GB cap.
+      # asr-api:deploy-<sha>, the newest 3 kept, everything older removed along
+      # with dangling images and build cache over a 5GB cap.
       #
       # Fast rollback to a kept release:
       #   docker tag asr-api:deploy-<sha> <the compose image tag>
       #   docker compose up -d api --force-recreate
       # A rollback does NOT undo migrations — restore a pre-deploy dump from
       # /opt/asr/backups if the schema changed.
-      - name: Deploy over SSH
+      #
+      # Retried as a whole: every step in it is safe to run again from
+      # scratch, so a dropped connection cannot leave things half-done.
+      - name: Build, migrate, restart
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
-          max_attempts=4
           attempt=1
           delay=20
-          until ssh -i ~/.ssh/deploy_key -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 root@"$VPS_HOST" '
-            set -e
-            cd /opt/asr/src
-            git fetch origin master
-            git reset --hard origin/master
-            cd /opt/asr
-            docker compose build api
-            docker compose build migrate
-            mkdir -p /opt/asr/backups
-            docker compose exec -T postgres pg_dump -U asr -d asr -Fc </dev/null > /opt/asr/backups/pre-deploy-$(date -u +%Y%m%d-%H%M%S).dump
-            ls -t /opt/asr/backups/pre-deploy-*.dump | tail -n +6 | xargs -r rm
-            docker compose run --rm migrate
-            docker compose up -d api --force-recreate
-            (
-              set +e
-              sha=$(git -C /opt/asr/src rev-parse --short HEAD)
-              cid=$(docker compose ps -q api)
-              imgid=$(docker inspect -f "{{.Image}}" "$cid")
-              docker tag "$imgid" "asr-api:deploy-$sha"
-              echo "tagged this release as asr-api:deploy-$sha"
-              docker images --format "{{.CreatedAt}}|{{.Repository}}:{{.Tag}}" \
-                | grep "|asr-api:deploy-" | sort -r | tail -n +4 | cut -d"|" -f2 \
-                | xargs -r -n1 docker rmi
-              docker image prune -f
-              docker builder prune -f --keep-storage 5GB || docker builder prune -f --max-used-space 5GB || docker builder prune -af
-            ) || true
-          '; do
+          while true; do
+            if ssh -i ~/.ssh/deploy_key -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+                 root@"$VPS_HOST" "SHA=$SHA bash -s" <<'REMOTE'; then
+          set -e
+          cd /opt/asr
+          docker compose build api
+          docker compose build migrate
+          mkdir -p /opt/asr/backups
+          docker compose exec -T postgres pg_dump -U asr -d asr -Fc </dev/null > "/opt/asr/backups/pre-deploy-$(date -u +%Y%m%d-%H%M%S).dump"
+          ls -t /opt/asr/backups/pre-deploy-*.dump | tail -n +6 | xargs -r rm
+          docker compose run --rm migrate
+          docker compose up -d api --force-recreate
+          {
+            set +e
+            cid=$(docker compose ps -q api)
+            imgid=$(docker inspect -f "{{.Image}}" "$cid")
+            docker tag "$imgid" "asr-api:deploy-${SHA:0:7}"
+            echo "tagged this release as asr-api:deploy-${SHA:0:7}"
+            docker images --format "{{.CreatedAt}}|{{.Repository}}:{{.Tag}}" \
+              | grep "|asr-api:deploy-" | sort -r | tail -n +4 | cut -d"|" -f2 \
+              | xargs -r -n1 docker rmi
+            docker image prune -f
+            docker builder prune -f --keep-storage 5GB || docker builder prune -f --max-used-space 5GB || docker builder prune -af
+          } || true
+          REMOTE
+              break
+            fi
             status=$?
-            if [ "$attempt" -ge "$max_attempts" ]; then
+            if [ "$attempt" -ge 4 ]; then
               echo "deploy failed after $attempt attempts (exit $status)"
               exit "$status"
             fi
@@ -135,14 +164,13 @@ jobs:
             delay=$((delay * 2))
           done
 
-      # The container is up; make sure it actually answers. /v1/health checks
-      # Postgres and Redis, so a green here means the whole stack is serving.
+      # From the public internet, not from inside the box: this is the thing
+      # the Android app actually talks to. /v1/health checks Postgres and
+      # Redis, so a green here means the whole stack is serving.
       - name: Verify health
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
           for i in 1 2 3 4 5 6; do
-            body=$(ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" "wget -qO- --timeout=5 http://127.0.0.1:3001/v1/health" 2>/dev/null || true)
+            body=$(curl -fsS --max-time 10 https://api.joinasr.io/v1/health 2>/dev/null || true)
             echo "health: ${body:-<no answer>}"
             if printf %s "$body" | grep -q "\"ok\":true"; then
               echo "healthy"

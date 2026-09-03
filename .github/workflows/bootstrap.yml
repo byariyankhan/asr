@@ -1,0 +1,110 @@
+name: Bootstrap the VPS
+
+# One-time (and safe to repeat) setup of /opt/asr on the production VPS.
+# Run it by hand from the Actions tab; nothing triggers it automatically.
+#
+# Secrets it needs:
+#   VPS_SSH_KEY                   private key whose public half is in the VPS's authorized_keys
+#   VPS_HOST                      187.52.122.99
+#   FIREBASE_SERVICE_ACCOUNT_JSON the whole Admin SDK JSON, pasted as-is
+#   CERTBOT_EMAIL                 (optional) issues the TLS certificate unattended
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          test -n "$VPS_SSH_KEY" || { echo "VPS_SSH_KEY is not set"; exit 1; }
+          test -n "$VPS_HOST" || { echo "VPS_HOST is not set"; exit 1; }
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          : > ~/.ssh/known_hosts
+          while read -r type key rest; do
+            case "$type" in ""|\#*) continue ;; esac
+            printf "%s %s %s\n" "$VPS_HOST" "$type" "$key" >> ~/.ssh/known_hosts
+          done < infra/vps-host-key.pub
+          chmod 600 ~/.ssh/known_hosts
+          printf "Host *\n  StrictHostKeyChecking yes\n  UserKnownHostsFile ~/.ssh/known_hosts\n" > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 root@"$VPS_HOST" true
+          echo "host key matches the pinned one"
+
+      # The repository is private, so the VPS is never given GitHub
+      # credentials: the runner already has the checkout and ships it. The new
+      # tree is unpacked beside the old one and swapped in, so a half-finished
+      # transfer never becomes the live source.
+      - name: Ship the source to /opt/asr/src
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          tar czf /tmp/asr-src.tgz --exclude=.git --exclude=node_modules --exclude=.next .
+          scp -i ~/.ssh/deploy_key /tmp/asr-src.tgz root@"$VPS_HOST":/tmp/asr-src.tgz
+          ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" bash -s <<'REMOTE'
+          set -e
+          rm -rf /opt/asr/src.new
+          mkdir -p /opt/asr/src.new
+          tar xzf /tmp/asr-src.tgz -C /opt/asr/src.new
+          rm -f /tmp/asr-src.tgz
+          rm -rf /opt/asr/src.old
+          [ -d /opt/asr/src ] && mv /opt/asr/src /opt/asr/src.old
+          mv /opt/asr/src.new /opt/asr/src
+          echo "source in place: $(find /opt/asr/src -type f | wc -l) files"
+          REMOTE
+
+      # Written with `cat > file` from stdin so the key never appears in a
+      # command line, where `ps` would show it.
+      - name: Hand over the Firebase key
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo "FIREBASE_SERVICE_ACCOUNT_JSON is not set"; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" | ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" \
+            "umask 077 && cat > /root/asr-firebase-key.json && python3 -c \"import json;json.load(open('/root/asr-firebase-key.json'))\" && echo 'key received and parses as JSON'"
+
+      - name: Run the setup script
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          CERTBOT_EMAIL: ${{ secrets.CERTBOT_EMAIL }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            root@"$VPS_HOST" "CERTBOT_EMAIL='${CERTBOT_EMAIL}' bash /opt/asr/src/infra/first-time-setup.sh /root/asr-firebase-key.json"
+
+      # The key is in .env now; the loose copy has no reason to survive.
+      - name: Remove the key file from the VPS
+        if: always()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" \
+            "shred -u /root/asr-firebase-key.json 2>/dev/null || rm -f /root/asr-firebase-key.json; echo removed" || true
+
+      # From the public internet this time, not from inside the box: this is
+      # what the Android app will actually talk to.
+      - name: Verify https://api.joinasr.io/v1/health
+        run: |
+          for i in 1 2 3 4 5 6; do
+            body=$(curl -fsS --max-time 10 https://api.joinasr.io/v1/health 2>/dev/null || true)
+            echo "attempt $i: ${body:-<no answer>}"
+            if printf %s "$body" | grep -q "\"ok\":true"; then
+              echo "api.joinasr.io is live over TLS"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "No healthy answer over HTTPS. If everything else passed, TLS is the"
+          echo "missing piece: ssh in and run  certbot --nginx -d api.joinasr.io"
+          exit 1

@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# First-time setup of the Asr stack on the VPS. Run once, as root:
+# First-time setup of the Asr stack on the VPS.
 #
-#   curl -fsSL https://raw.githubusercontent.com/byariyankhan/asr/master/infra/first-time-setup.sh -o setup.sh
-#   bash setup.sh /root/firebase-key.json
+# Expects the repository source to already be at /opt/asr/src and a Firebase
+# Admin SDK service-account JSON at the path given as $1. Both are put there
+# by .github/workflows/bootstrap.yml, which is how this is normally run — the
+# repository is private, so the VPS never holds GitHub credentials and never
+# clones anything.
 #
-# The argument is the Firebase Admin SDK service-account JSON, downloaded
-# from Firebase Console -> Project settings -> Service accounts. It is read
-# once, folded into /opt/asr/.env, and the script tells you to delete it.
+#   bash /opt/asr/src/infra/first-time-setup.sh /root/firebase-key.json
 #
 # Safe to re-run: it never overwrites an existing .env, and every other step
-# is idempotent. It does NOT touch anything under /opt/bookween.
+# is idempotent. It does not touch anything under /opt/bookween.
 set -euo pipefail
 
 KEY_JSON="${1:-}"
 ROOT=/opt/asr
-REPO=https://github.com/byariyankhan/asr
 
 step() { printf "\n\033[1m==> %s\033[0m\n" "$1"; }
 die() { printf "\n\033[31m%s\033[0m\n" "$1" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "Run this as root."
-[ -n "$KEY_JSON" ] || die "Usage: bash setup.sh /path/to/firebase-key.json"
-[ -f "$KEY_JSON" ] || die "No such file: $KEY_JSON"
+[ -d "$ROOT/src/infra" ] || die "No source at $ROOT/src. Run the bootstrap workflow instead."
+[ -n "$KEY_JSON" ] && [ -f "$KEY_JSON" ] || die "Usage: bash first-time-setup.sh /path/to/firebase-key.json"
 command -v docker >/dev/null || die "Docker is not installed."
 command -v nginx >/dev/null || die "nginx is not installed."
 
@@ -35,19 +35,14 @@ done
 step "Checking that nothing collides with Bookween"
 for port in 5433 6380 3001; do
   if ss -lntp 2>/dev/null | grep -q ":$port "; then
-    die "Port $port is already in use. Asr needs 5433, 6380 and 3001 free."
+    echo "  port $port is in use — if that is Asr from an earlier run, fine; otherwise stop and look"
+  else
+    echo "  port $port free"
   fi
 done
-echo "  5433, 6380 and 3001 are free"
 
-step "Fetching the repository into $ROOT/src"
+step "Installing the compose file and backup script"
 mkdir -p "$ROOT/backups"
-if [ -d "$ROOT/src/.git" ]; then
-  git -C "$ROOT/src" fetch origin master
-  git -C "$ROOT/src" reset --hard origin/master
-else
-  git clone "$REPO" "$ROOT/src"
-fi
 cp "$ROOT/src/infra/docker-compose.yml" "$ROOT/docker-compose.yml"
 install -m 700 "$ROOT/src/infra/backup.sh" "$ROOT/backup.sh"
 
@@ -68,7 +63,7 @@ else
     echo
     echo "# Firebase Admin SDK (push notifications), from the service-account JSON."
     echo "# The private key is one line with literal \\n; compose keeps single-quoted"
-    echo "# values verbatim, and the app turns them back into real newlines."
+    echo "# values verbatim, and server/fcm.ts turns them back into real newlines."
     python3 - "$KEY_JSON" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -103,8 +98,8 @@ docker compose build migrate
 
 step "Starting Postgres and Redis"
 docker compose up -d postgres redis
-for i in $(seq 1 30); do
-  docker compose ps --format json 2>/dev/null | grep -q '"Health":"healthy"' && break
+for _ in $(seq 1 30); do
+  if docker compose ps postgres --format json 2>/dev/null | grep -q healthy; then break; fi
   sleep 2
 done
 
@@ -113,12 +108,10 @@ docker compose run --rm migrate
 
 step "Starting the API"
 docker compose up -d api
-sleep 5
-docker compose ps
 
 step "Checking the API answers locally"
 ok=""
-for i in $(seq 1 12); do
+for _ in $(seq 1 12); do
   body=$(wget -qO- --timeout=5 http://127.0.0.1:3001/v1/health 2>/dev/null || true)
   echo "  health: ${body:-<no answer>}"
   case "$body" in *'"ok":true'*) ok=yes; break ;; esac
@@ -131,7 +124,7 @@ cp "$ROOT/src/infra/nginx/asr-api" /etc/nginx/sites-available/asr-api
 ln -sf /etc/nginx/sites-available/asr-api /etc/nginx/sites-enabled/asr-api
 nginx -t
 systemctl reload nginx
-echo "  api.joinasr.io is proxied to 127.0.0.1:3001 over plain HTTP for now"
+echo "  api.joinasr.io proxies to 127.0.0.1:3001 (plain HTTP until certbot runs)"
 
 step "Scheduling the nightly backup"
 if crontab -l 2>/dev/null | grep -q "/opt/asr/backup.sh"; then
@@ -141,28 +134,24 @@ else
   echo "  02:30 nightly (Bookween's runs at 02:00)"
 fi
 
-cat <<DONE
+step "Obtaining a certificate"
+if [ -d /etc/letsencrypt/live/api.joinasr.io ]; then
+  echo "  certificate already present"
+elif command -v certbot >/dev/null && [ -n "${CERTBOT_EMAIL:-}" ]; then
+  certbot --nginx -d api.joinasr.io --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
+  echo "  issued and nginx reloaded"
+else
+  echo "  skipped: run 'certbot --nginx -d api.joinasr.io' yourself"
+fi
 
-============================================================
-Asr is running on this machine.
-
-Two things left, in this order:
-
-  1. TLS. Run:
-       certbot --nginx -d api.joinasr.io
-     then check:  curl -sS https://api.joinasr.io/v1/health
-
-  2. Delete the service-account key you passed in:
-       shred -u "$KEY_JSON"     (or just: rm "$KEY_JSON")
-     Its contents are now in /opt/asr/.env, which is mode 600.
-
-Later, when you have them, add to /opt/asr/.env and run
-\`docker compose up -d api --force-recreate\`:
-  RESEND_API_KEY          so email actually sends
-  PLAY_*                  so subscriptions can be verified
-
-Useful:
-  docker compose -f $ROOT/docker-compose.yml logs -f api
-  docker compose -f $ROOT/docker-compose.yml ps
-============================================================
-DONE
+echo
+echo "============================================================"
+echo "Asr is running on this machine."
+echo
+echo "  local:  $(wget -qO- --timeout=5 http://127.0.0.1:3001/v1/health 2>/dev/null)"
+echo
+echo "Still empty in /opt/asr/.env, add when you have them and then run"
+echo "  docker compose -f $ROOT/docker-compose.yml up -d api --force-recreate"
+echo "  RESEND_API_KEY   so email actually sends"
+echo "  PLAY_*           so subscriptions can be verified"
+echo "============================================================"
