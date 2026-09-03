@@ -5,15 +5,21 @@
 Read this first, because everything after it is a plan.
 
 In the repository right now: a Gradle project (`minSdk 26`, `targetSdk 35`),
-the design system taken from Figma (`docs/DESIGN.md`), and three screens —
-Welcome, Sign Up, Log In — that navigate between each other and nothing
-more. No network, no database, no service, no permissions declared.
+the design system taken from Figma (`docs/DESIGN.md`), and the screens up to
+the end of setup: Welcome, Sign Up, Log In, About You, Usage Access,
+Protection, and the app-blocking disclosure.
 
-None of Hilt, Room, WorkManager, Retrofit or Play Billing is a dependency
-yet. They are named below because that is what this document is: the design
-of the app to be built, written before it was built. Anything phrased as
-though it already works describes an intention, not code, until it appears
-in the section above.
+Sign-up and log-in reach the live API and store a session token; About You
+sends the profile and uploads a photo. The setup screens read the real
+permission state and open the real Settings screens. What does not exist yet
+is the thing they are permissions *for*: no foreground service, no usage
+polling, no block screen, no database on the phone.
+
+None of Hilt, Room, WorkManager or Play Billing is a dependency yet. They are
+named below because that is what this document is: the design of the app to
+be built, written before it was built. Anything phrased as though it already
+works describes an intention, not code, until it appears in the section
+above.
 
 `docs/FIGMA_SCREENS.md` has the node id of every screen and the order they
 are being built in.
@@ -56,6 +62,16 @@ whose accessibility usage is not for accessibility. We ship the service
 disabled and undeclared in V1. If real users find the polling approach too
 easy to evade, we revisit with a proper policy declaration. Do not enable it
 casually.
+
+**The Figma file disagrees, and this document wins.** Frame 10 is titled
+"ANDROID ACCESSIBILITY" and its body explains an accessibility-based
+mechanism. It was built as `BlockingDisclosureScreen` with the same shape and
+the same disclosure, rewritten for the overlay: what it says is read, not
+read, and shared is now true of what the app does. The reasoning is the
+paragraph above -- an app removed from Play helps nobody, and the cost is
+that the block screen appears about a second after the app opens rather than
+instantly. The designer should be told, because the frame's title and body
+are now wrong and somebody will build from them again.
 
 ### Known limits (documented in-app, not hidden)
 

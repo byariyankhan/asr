@@ -16,8 +16,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.joinasr.app.permissions.PermissionState
-import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.ui.screens.AboutYouScreen
+import io.joinasr.app.ui.screens.BlockingDisclosureScreen
 import io.joinasr.app.ui.screens.LogInScreen
 import io.joinasr.app.ui.screens.SignUpScreen
 import io.joinasr.app.ui.screens.ProtectionScreen
@@ -42,6 +42,7 @@ private sealed interface Destination {
 private sealed interface SetupStep {
     data object UsageAccess : SetupStep
     data object Protection : SetupStep
+    data object BlockingDisclosure : SetupStep
 }
 
 @Composable
@@ -108,17 +109,19 @@ fun AsrApp(viewModel: SessionViewModel = viewModel()) {
 
                     SetupStep.Protection -> ProtectionScreen(
                         onBack = { setupStep = SetupStep.UsageAccess },
-                        // Overlay is what draws the block screen over another
-                        // app. Figma 10 explains an Accessibility-based
-                        // mechanism instead; which of the two this app ships
-                        // is still open, so this goes to the permission the
-                        // current design in docs/ANDROID.md actually needs.
-                        onReviewBlocking = {
-                            runCatching {
-                                context.startActivity(Permissions.overlayIntent(context))
-                            }
-                        },
+                        // Figma 10, which explains what the overlay reads
+                        // before Settings opens rather than after.
+                        onReviewBlocking = { setupStep = SetupStep.BlockingDisclosure },
                         onContinue = { setupDone = true },
+                    )
+
+                    SetupStep.BlockingDisclosure -> BlockingDisclosureScreen(
+                        onBack = { setupStep = SetupStep.Protection },
+                        onGranted = { setupStep = SetupStep.Protection },
+                        // "Not now" returns to the list rather than moving on:
+                        // the grant is required, and the screen that says so
+                        // is the one to come back to.
+                        onSkip = { setupStep = SetupStep.Protection },
                     )
                 }
             } else {
