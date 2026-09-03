@@ -1,0 +1,64 @@
+name: Android
+
+# The development sandbox cannot build this app at all: it has no Android SDK
+# and dl.google.com — which is also where maven.google.com redirects — is
+# unreachable from it, so neither the SDK nor a single AndroidX artifact can
+# be fetched there. This job is therefore the compiler of record. Every change
+# to android/ is proven here or not at all, and each run leaves an installable
+# debug APK behind.
+on:
+  push:
+    branches: [master]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The wrapper jar is a binary in the repository. This proves it is one
+      # Gradle actually published rather than something with a payload in it.
+      - uses: gradle/actions/wrapper-validation@v4
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # What the pinned versions in gradle/libs.versions.toml are being
+      # measured against. They were chosen in an environment that cannot see
+      # this list, so it is printed on every run and bumped from evidence.
+      - name: Newest published Android Gradle Plugin
+        run: |
+          curl -sSL --max-time 60 https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/maven-metadata.xml \
+            | grep -o "<version>[0-9][^<]*</version>" | tail -5
+          echo "pinned here: $(grep '^agp' gradle/libs.versions.toml)"
+
+      - name: Android SDK on this runner
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
+          ls "$ANDROID_HOME/build-tools" || true
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon test
+
+      - name: Build the debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asr-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
