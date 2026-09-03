@@ -14,9 +14,20 @@ header. Every `/v1/*` call sends it:
 Authorization: Bearer <session token>
 ```
 
-Tokens are stored in Android `EncryptedSharedPreferences`. Sessions expire
-after 30 days of inactivity and are refreshed automatically by Better Auth
-on use.
+The token is stored in DataStore in the app's private directory, with
+`allowBackup="false"` on the application. This paragraph used to say
+`EncryptedSharedPreferences`; that means `androidx.security:security-crypto`,
+whose only release carrying the fixes is an alpha Google has stopped
+developing, and an unmaintained alpha holding credentials is not obviously
+safer than the OS sandbox. What the encryption would add is protection
+against extraction from a rooted device, which is the wrong thing to spend
+that dependency on for a revocable 30-day token. Revisit if the threat model
+changes.
+
+Sessions expire after 30 days of inactivity and are refreshed automatically
+by Better Auth on use. A stored token is treated as a claim rather than a
+fact: the app calls `GET /v1/me` on every start before showing a signed-in
+screen, and a 401 clears it.
 
 Routes marked **witness** may be called by an accepted witness of the user in
 the path; everything else is owner-only.

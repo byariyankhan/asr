@@ -32,4 +32,13 @@ object AsrColors {
 
     /** Legal and disclaimer lines only. */
     val TextTertiary = Color(0xFF6B706E)
+
+    /**
+     * NOT from Figma. The file has no error state yet, and a form that
+     * refuses a password has to say so in something other than the same grey
+     * as its own labels. Chosen to sit at a similar lightness to Accent so it
+     * does not shout, and marked here so it is replaced rather than copied
+     * the moment the designer draws one.
+     */
+    val Error = Color(0xFFE5484D)
 }

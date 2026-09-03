@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The app talks to api.joinasr.io and nothing else. cleartext is not
+         permitted (the default from API 28 up), so a misconfigured base URL
+         fails loudly instead of sending a password over plain HTTP. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- The enforcement permissions (PACKAGE_USAGE_STATS, SYSTEM_ALERT_WINDOW,
          POST_NOTIFICATIONS, the special-use foreground service) are declared
          when the service that needs them lands, not before: an APK that asks

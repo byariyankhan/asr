@@ -110,6 +110,8 @@ fun SignUpScreen(
     onSubmit: (email: String, password: String) -> Unit,
     onLogIn: () -> Unit,
     modifier: Modifier = Modifier,
+    submitting: Boolean = false,
+    errorMessage: String? = null,
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -156,13 +158,14 @@ fun SignUpScreen(
             )
             Spacer(Modifier.height(24.dp))
             AsrPrimaryButton(
-                text = "Create account",
+                text = if (submitting) "Creating account…" else "Create account",
                 onClick = { onSubmit(email.trim(), password) },
                 // The server is the authority on what a valid password is;
                 // this only refuses a submission that cannot possibly succeed,
                 // so the button is never dead for a reason nobody explained.
-                enabled = email.isNotBlank() && password.isNotEmpty(),
+                enabled = !submitting && email.isNotBlank() && password.isNotEmpty(),
             )
+            AsrFormError(errorMessage)
             Spacer(Modifier.height(10.dp))
             AsrInlineLink(
                 prefix = "Already have an account?",
@@ -181,6 +184,8 @@ fun LogInScreen(
     onForgotPassword: () -> Unit,
     onCreateAccount: () -> Unit,
     modifier: Modifier = Modifier,
+    submitting: Boolean = false,
+    errorMessage: String? = null,
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -223,10 +228,11 @@ fun LogInScreen(
             )
             Spacer(Modifier.height(10.dp))
             AsrPrimaryButton(
-                text = "Log in",
+                text = if (submitting) "Logging in…" else "Log in",
                 onClick = { onSubmit(email.trim(), password) },
-                enabled = email.isNotBlank() && password.isNotEmpty(),
+                enabled = !submitting && email.isNotBlank() && password.isNotEmpty(),
             )
+            AsrFormError(errorMessage)
             Spacer(Modifier.height(10.dp))
             AsrInlineLink(
                 prefix = "New here?",
@@ -236,6 +242,24 @@ fun LogInScreen(
             )
         }
     }
+}
+
+/**
+ * What the server said, under the button that caused it. Occupies no space
+ * when there is nothing to say, so the panel does not jump the first time a
+ * password is wrong — the field it refers to is right above it.
+ */
+@Composable
+private fun AsrFormError(message: String?) {
+    if (message == null) return
+    Spacer(Modifier.height(12.dp))
+    Text(
+        text = message,
+        style = AsrType.Label,
+        color = AsrColors.Error,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Preview(widthDp = 393, heightDp = 852, showBackground = true)
