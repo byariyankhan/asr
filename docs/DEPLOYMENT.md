@@ -62,7 +62,8 @@ The script it runs is idempotent and refuses to overwrite an existing
    "the script finished" and "the API works" are the same statement.
 6. **Installs the nginx site**, and issues the certificate if
    `CERTBOT_EMAIL` is set.
-7. **Schedules the nightly backup** at 02:30 (Bookween's is at 02:00).
+7. **Schedules the nightly backup** at 02:30 by writing `/etc/cron.d/asr-backup`
+   (Bookween's is at 02:00, scheduled the same way).
 
 ### `FIREBASE_PRIVATE_KEY`, if you ever write `.env` by hand
 

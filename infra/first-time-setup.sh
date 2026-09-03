@@ -137,11 +137,21 @@ systemctl reload nginx
 echo "  api.joinasr.io proxies to 127.0.0.1:3001 (plain HTTP until certbot runs)"
 
 step "Scheduling the nightly backup"
-if crontab -l 2>/dev/null | grep -q "/opt/asr/backup.sh"; then
-  echo "  already scheduled"
+# A file in /etc/cron.d, not root's crontab. Writing a file is idempotent on
+# its own, needs no parsing of existing state, and does not depend on the
+# `crontab` binary at all -- which is what killed this script on its first
+# run through here: root had no crontab, `crontab -l` exited 1, and inside
+# `( ... )` that trips set -e, so the subshell died before the echo and
+# pipefail carried the failure out. The 2>/dev/null on that same line meant
+# the log said nothing about any of it. Bookween schedules its backup the
+# same way, at 02:00; this one runs at 02:30 so they never overlap.
+printf '30 2 * * * root /opt/asr/backup.sh >> /opt/asr/backups/backup.log 2>&1\n' > /etc/cron.d/asr-backup
+chmod 644 /etc/cron.d/asr-backup
+echo "  /etc/cron.d/asr-backup: $(cat /etc/cron.d/asr-backup)"
+if systemctl is-active --quiet cron 2>/dev/null; then
+  echo "  cron is running"
 else
-  (crontab -l 2>/dev/null; echo "30 2 * * * /opt/asr/backup.sh >> /opt/asr/backups/backup.log 2>&1") | crontab -
-  echo "  02:30 nightly (Bookween's runs at 02:00)"
+  echo "  WARNING: the cron daemon is not active, so this will not fire"
 fi
 
 step "Obtaining a certificate"
