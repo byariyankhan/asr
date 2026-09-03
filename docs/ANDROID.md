@@ -5,9 +5,10 @@
 Read this first, because everything after it is a plan.
 
 In the repository right now: a Gradle project (`minSdk 26`, `targetSdk 35`),
-the design system taken from Figma (`docs/DESIGN.md`), and the screens up to
-the end of setup: Welcome, Sign Up, Log In, About You, Usage Access, Choose
-Apps, Set Daily Limits, Protection, and the app-blocking disclosure.
+the design system taken from Figma (`docs/DESIGN.md`), and a working loop
+from sign-up to enforcement — Welcome, Sign Up, Log In, About You, Challenge
+Duration, Usage Access, Choose Apps, Set Daily Limits, Protection, the
+app-blocking disclosure, the block screen, and the dashboard.
 
 Sign-up and log-in reach the live API and store a session token; About You
 sends the profile and uploads a photo. The setup screens read the real
@@ -26,10 +27,17 @@ by walking Android's usage events rather than trusting
 `totalTimeInForeground`, `Enforcement` makes the decision, and both are
 covered by tests.
 
-What does not exist yet: the dashboard (Figma 13), the witness half of the
-product, earning extra time (Figma 21–24), the "protection lost" screen
-(27), and any usage history or outbox on the phone. Nothing is sent to a
-server about usage at all.
+The dashboard (Figma 13) shows the day count, the live minutes per app and
+whether protection is actually on — the "PROTECTED" pill reads the real
+permission state rather than always saying yes. Setup ends when the pact is
+committed, not on a flag, so the pact existing *is* what "set up" means.
+
+What does not exist yet: the witness half of the product (Figma 08, 15–18),
+earning extra time (21–24), the review screen (11), the started screen (12),
+the notification inbox (19), the "protection lost" screen (27), the profile
+and progress tabs, and any usage history or outbox on the phone. The bottom
+navigation bar is not drawn because three of its four tabs have nowhere to
+go. Nothing is sent to a server about usage at all.
 
 Storage is DataStore, not Room. The pact is one small immutable value read
 at service start and written once; Room earns its place with the usage

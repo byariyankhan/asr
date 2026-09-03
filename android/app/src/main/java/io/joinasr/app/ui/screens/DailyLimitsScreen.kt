@@ -3,7 +3,6 @@ package io.joinasr.app.ui.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,9 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -45,6 +41,7 @@ import io.joinasr.app.formatMinutes
 import io.joinasr.app.limits.DailyLimit
 import io.joinasr.app.ui.components.AsrBackChevron
 import io.joinasr.app.ui.components.AsrPrimaryButton
+import io.joinasr.app.ui.components.AsrStepper
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
@@ -210,42 +207,14 @@ private fun LimitCard(
         }
 
         Spacer(Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            StepButton(
-                symbol = "−",
-                description = "Less time for ${entry.label}",
-                enabled = DailyLimit.canDecrease(minutes),
-                onClick = { onChange(DailyLimit.decreased(minutes)) },
-            )
-            Spacer(Modifier.width(8.dp))
-            Box(
-                modifier = Modifier
-                    .width(56.dp)
-                    .height(32.dp)
-                    .background(AsrColors.AccentMuted, RoundedCornerShape(16.dp))
-                    .border(1.dp, AsrColors.Accent, RoundedCornerShape(16.dp))
-                    // The number is read out as what it is. Without this a
-                    // screen reader announces "30m" next to two unnamed
-                    // buttons and the row means nothing.
-                    .semantics { contentDescription = "${entry.label} daily limit" },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    formatMinutes(minutes),
-                    style = AsrType.Button.copy(fontSize = 13.sp),
-                    color = AsrColors.Accent,
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            StepButton(
-                symbol = "+",
-                description = "More time for ${entry.label}",
-                enabled = DailyLimit.canIncrease(minutes),
-                onClick = { onChange(DailyLimit.increased(minutes)) },
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            AsrStepper(
+                value = formatMinutes(minutes),
+                label = "${entry.label} daily limit",
+                canDecrease = DailyLimit.canDecrease(minutes),
+                canIncrease = DailyLimit.canIncrease(minutes),
+                onDecrease = { onChange(DailyLimit.decreased(minutes)) },
+                onIncrease = { onChange(DailyLimit.increased(minutes)) },
             )
         }
     }
@@ -274,46 +243,6 @@ private fun LimitIcon(entry: AppEntry, icon: ImageBitmap?) {
                 entry.label.take(1).uppercase(),
                 style = AsrType.Button,
                 color = AsrColors.Accent,
-            )
-        }
-    }
-}
-
-/**
- * The minus and plus. 34x32 as drawn, which is under the 48dp minimum touch
- * target, so the tap area is grown with padding outside the visible pill
- * rather than by making the pill bigger than the design.
- */
-@Composable
-private fun StepButton(
-    symbol: String,
-    description: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(16.dp)
-    Box(
-        modifier = Modifier
-            .size(width = 48.dp, height = 48.dp)
-            .clip(shape)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .width(34.dp)
-                .height(32.dp)
-                .background(AsrColors.Background, shape)
-                .border(1.dp, AsrColors.FieldBorder, shape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                symbol,
-                style = AsrType.Label.copy(fontSize = 17.sp),
-                // Greyed at the ends of the ladder, so pressing it and
-                // nothing happening is visible before the press.
-                color = if (enabled) AsrColors.TextPrimary else AsrColors.TextTertiary,
             )
         }
     }

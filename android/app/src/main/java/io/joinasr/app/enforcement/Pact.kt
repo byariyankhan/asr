@@ -1,5 +1,6 @@
 package io.joinasr.app.enforcement
 
+import io.joinasr.app.challenge.ChallengeDuration
 import io.joinasr.app.limits.DailyLimit
 import kotlinx.serialization.Serializable
 
@@ -28,6 +29,13 @@ data class PactApp(
 data class Pact(
     val apps: List<PactApp>,
     val startedAtMillis: Long,
+    /**
+     * How many days it runs for. Defaulted only so a pact written before
+     * this field existed still loads rather than being thrown away; every
+     * pact the app writes now carries what the person actually chose on
+     * Figma 04.
+     */
+    val durationDays: Int = ChallengeDuration.DEFAULT_DAYS,
     val version: Int = CURRENT_VERSION,
 ) {
     val limitsByPackage: Map<String, Int>
@@ -42,11 +50,14 @@ data class Pact(
      * in the app can produce.
      */
     val isEnforceable: Boolean
-        get() = apps.isNotEmpty() && apps.all {
-            it.packageName.isNotBlank() &&
-                it.limitMinutes >= DailyLimit.MINIMUM_MINUTES &&
-                it.limitMinutes <= DailyLimit.MAXIMUM_MINUTES
-        }
+        get() = apps.isNotEmpty() &&
+            durationDays >= ChallengeDuration.MINIMUM_DAYS &&
+            durationDays <= ChallengeDuration.MAXIMUM_DAYS &&
+            apps.all {
+                it.packageName.isNotBlank() &&
+                    it.limitMinutes >= DailyLimit.MINIMUM_MINUTES &&
+                    it.limitMinutes <= DailyLimit.MAXIMUM_MINUTES
+            }
 
     companion object {
         const val CURRENT_VERSION = 1
@@ -55,6 +66,7 @@ data class Pact(
         fun from(
             apps: List<io.joinasr.app.apps.AppEntry>,
             limits: Map<String, Int>,
+            durationDays: Int,
             startedAtMillis: Long,
         ) = Pact(
             apps = apps.map {
@@ -65,6 +77,7 @@ data class Pact(
                 )
             },
             startedAtMillis = startedAtMillis,
+            durationDays = ChallengeDuration.clamp(durationDays),
         )
     }
 }

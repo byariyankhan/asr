@@ -1,6 +1,7 @@
 package io.joinasr.app.enforcement
 
 import io.joinasr.app.apps.AppEntry
+import io.joinasr.app.challenge.ChallengeDuration
 import io.joinasr.app.limits.DailyLimit
 import io.joinasr.app.usage.UsageSnapshot
 import kotlinx.serialization.decodeFromString
@@ -12,6 +13,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EnforcementTest {
+
+    private val defaultDaysForOldPacts = ChallengeDuration.DEFAULT_DAYS
 
     private val instagram = "com.instagram.android"
     private val youtube = "com.google.android.youtube"
@@ -163,6 +166,28 @@ class EnforcementTest {
     }
 
     @Test
+    fun `a duration no screen in this app can produce is not enforceable`() {
+        val app = listOf(PactApp(instagram, "Instagram", 20))
+        assertFalse(Pact(app, 0, durationDays = 0).isEnforceable)
+        assertFalse(Pact(app, 0, durationDays = 1000).isEnforceable)
+        assertTrue(Pact(app, 0, durationDays = 14).isEnforceable)
+    }
+
+    @Test
+    fun `a pact stored before durations existed still loads and still runs`() {
+        // Every field but this one was written by an earlier build. Refusing
+        // it would end a live challenge on upgrade.
+        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+        val old = """
+            {"apps":[{"packageName":"$instagram","label":"Instagram","limitMinutes":20}],
+            "startedAtMillis":1,"version":1}
+        """.trimIndent()
+        val restored = json.decodeFromString<Pact>(old)
+        assertEquals(defaultDaysForOldPacts, restored.durationDays)
+        assertTrue(restored.isEnforceable)
+    }
+
+    @Test
     fun `a limit no screen in this app can produce is not enforceable`() {
         // Nothing legitimate writes these. If one appears, the pact is
         // corrupt and enforcing it would block somebody on a number they
@@ -178,18 +203,20 @@ class EnforcementTest {
         val built = Pact.from(
             apps = listOf(AppEntry(instagram, "Instagram"), AppEntry(youtube, "YouTube")),
             limits = mapOf(instagram to 15, youtube to 45),
+            durationDays = 21,
             startedAtMillis = 7,
         )
         assertEquals(mapOf(instagram to 15, youtube to 45), built.limitsByPackage)
         assertEquals("YouTube", built.appFor(youtube)?.label)
         assertNull(built.appFor(messages))
         assertEquals(7L, built.startedAtMillis)
+        assertEquals(21, built.durationDays)
     }
 
     @Test
     fun `an app that somehow arrives without a limit gets the default, not zero`() {
         // Zero would block it the instant it opened.
-        val built = Pact.from(listOf(AppEntry(instagram, "Instagram")), emptyMap(), 0)
+        val built = Pact.from(listOf(AppEntry(instagram, "Instagram")), emptyMap(), 14, 0)
         assertEquals(DailyLimit.DEFAULT_MINUTES, built.apps.single().limitMinutes)
         assertTrue(built.isEnforceable)
     }
