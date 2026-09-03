@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.joinasr.app.ui.screens.AboutYouScreen
 import io.joinasr.app.ui.screens.LogInScreen
 import io.joinasr.app.ui.screens.SignUpScreen
 import io.joinasr.app.ui.screens.SignedInScreen
@@ -57,13 +58,32 @@ fun AsrApp(viewModel: SessionViewModel = viewModel()) {
         // spinner that flashes for 200ms is worse than nothing.
         Session.Unknown -> Box(Modifier.fillMaxSize().background(AsrColors.Background))
 
-        is Session.SignedIn -> SignedInScreen(
-            me = current.me,
-            onSignOut = {
-                destination = Destination.Welcome
-                viewModel.signOut()
-            },
-        )
+        is Session.SignedIn ->
+            if (!current.me.profileComplete) {
+                // Figma 03. Shown from what the server holds, not from a
+                // local "already asked" flag, so reinstalling or signing in
+                // on a second phone does not ask twice -- and skipping it is
+                // not possible, because the next screens need an age.
+                AboutYouScreen(
+                    onBack = {
+                        destination = Destination.Welcome
+                        viewModel.signOut()
+                    },
+                    onSubmit = viewModel::saveProfile,
+                    onPhotoPicked = viewModel::uploadPhoto,
+                    initialName = current.me.name,
+                    submitting = submitting,
+                    errorMessage = error,
+                )
+            } else {
+                SignedInScreen(
+                    me = current.me,
+                    onSignOut = {
+                        destination = Destination.Welcome
+                        viewModel.signOut()
+                    },
+                )
+            }
 
         Session.SignedOut -> when (destination) {
             Destination.Welcome -> WelcomeScreen(

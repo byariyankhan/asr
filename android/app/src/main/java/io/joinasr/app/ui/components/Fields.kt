@@ -40,8 +40,10 @@ fun AsrTextField(
     isPassword: Boolean = false,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(label, style = AsrType.Label, color = AsrColors.TextSecondary)
-        Spacer(Modifier.height(6.dp))
+        if (label.isNotEmpty()) {
+            Text(label, style = AsrType.Label, color = AsrColors.TextSecondary)
+            Spacer(Modifier.height(6.dp))
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()

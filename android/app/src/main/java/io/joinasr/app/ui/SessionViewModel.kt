@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import io.joinasr.app.data.Api
 import io.joinasr.app.data.ApiResult
 import io.joinasr.app.data.Me
+import io.joinasr.app.data.ProfileUpdate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,6 +69,54 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
             tokens.clear()
             _error.value = null
             _session.value = Session.SignedOut
+        }
+    }
+
+    /**
+     * The About You screen, as one PATCH. The photo is uploaded separately
+     * and immediately on picking, so a slow upload never holds up the form.
+     */
+    fun saveProfile(name: String, dobIso: String, country: String, gender: String) {
+        withToken { token ->
+            Api.me.update(
+                token,
+                ProfileUpdate(name = name, dateOfBirth = dobIso, country = country, gender = gender),
+            )
+        }
+    }
+
+    fun uploadPhoto(jpeg: ByteArray) {
+        // Deliberately not setting `submitting`: the form stays usable while
+        // this happens, and a failed photo must not read as a failed form.
+        if (session.value !is Session.SignedIn) return
+        viewModelScope.launch {
+            val token = tokens.current() ?: return@launch
+            when (val result = Api.me.uploadAvatar(token, jpeg)) {
+                is ApiResult.Ok -> _session.value = Session.SignedIn(result.value)
+                is ApiResult.Failure -> _error.value = result.message
+                is ApiResult.Offline -> _error.value = result.message
+            }
+        }
+    }
+
+    /** Runs a call that needs the stored token and replaces the session with
+     *  whatever profile comes back, so the app trusts the server's copy. */
+    private fun withToken(call: suspend (String) -> ApiResult<Me>) {
+        if (_submitting.value) return
+        viewModelScope.launch {
+            val token = tokens.current()
+            if (token.isNullOrBlank()) {
+                _session.value = Session.SignedOut
+                return@launch
+            }
+            _submitting.value = true
+            _error.value = null
+            when (val result = call(token)) {
+                is ApiResult.Ok -> _session.value = Session.SignedIn(result.value)
+                is ApiResult.Failure -> _error.value = result.message
+                is ApiResult.Offline -> _error.value = result.message
+            }
+            _submitting.value = false
         }
     }
 
