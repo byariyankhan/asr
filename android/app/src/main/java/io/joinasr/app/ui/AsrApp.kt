@@ -25,12 +25,14 @@ import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.challenge.ChallengeDuration
 import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.enforcement.PactState
+import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.enforcement.PactViewModel
 import io.joinasr.app.ui.components.AsrBottomNav
 import io.joinasr.app.ui.components.AsrTab
 import io.joinasr.app.ui.screens.AboutYouScreen
 import io.joinasr.app.ui.screens.AddWitnessesScreen
 import io.joinasr.app.ui.screens.BlockingDisclosureScreen
+import io.joinasr.app.ui.screens.ChallengeStartedScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ChooseAppsScreen
 import io.joinasr.app.ui.screens.DailyLimitsScreen
@@ -42,6 +44,7 @@ import io.joinasr.app.ui.screens.PersonalDetailsScreen
 import io.joinasr.app.ui.screens.ProfileDestination
 import io.joinasr.app.ui.screens.ProfileScreen
 import io.joinasr.app.ui.screens.ProgressScreen
+import io.joinasr.app.ui.screens.ReviewScreen
 import io.joinasr.app.ui.screens.ProtectionScreen
 import io.joinasr.app.ui.screens.SignUpScreen
 import io.joinasr.app.ui.screens.UsageAccessScreen
@@ -83,6 +86,7 @@ private sealed interface SetupStep {
     data object Witnesses : SetupStep
     data object Protection : SetupStep
     data object BlockingDisclosure : SetupStep
+    data object Review : SetupStep
 }
 
 /**
@@ -117,6 +121,10 @@ fun AsrApp(
     // need a navigation library.
     var profileRoute by remember { mutableStateOf<ProfileDestination?>(null) }
     var addingWitness by remember { mutableStateOf(false) }
+    // True between committing a pact and pressing "Go to dashboard" on
+    // Figma 12. Not stored: it is a moment, not a state of the challenge,
+    // and a person who closes the app during it has still started.
+    var justStarted by remember { mutableStateOf(false) }
 
     // Held here and nowhere else, for the length of the setup flow only. A
     // half-made challenge is not something the app should remember: it is
@@ -231,13 +239,25 @@ fun AsrApp(
                         // Figma 10, which explains what the overlay reads
                         // before Settings opens rather than after.
                         onReviewBlocking = { setupStep = SetupStep.BlockingDisclosure },
+                        onContinue = { setupStep = SetupStep.Review },
+                    )
+
+                    // Figma 11. Everything chosen, in one place, before
+                    // anything is written: a commitment nobody was shown in
+                    // full is not one they agreed to.
+                    SetupStep.Review -> ReviewScreen(
+                        days = chosenDays,
+                        apps = chosenApps,
+                        limits = chosenLimits,
+                        witnesses = witnesses,
+                        protectionReady = PermissionState.read(context).requiredGranted,
+                        onBack = { setupStep = SetupStep.Protection },
                         // The one place a challenge is committed. From here it
                         // survives the app being killed, which is the whole
-                        // difference between a form and a pact -- and the
-                        // screen showing it becomes the dashboard, because the
-                        // pact existing is what setup being over means.
-                        onContinue = {
+                        // difference between a form and a pact.
+                        onStart = {
                             pactViewModel.commit(chosenApps, chosenLimits, chosenDays)
+                            justStarted = true
                         },
                     )
 
@@ -250,6 +270,14 @@ fun AsrApp(
                         onSkip = { setupStep = SetupStep.Protection },
                     )
                 }
+            } else if (justStarted) {
+                // Figma 12.
+                ChallengeStartedScreen(
+                    days = (pactState as PactState.Active).pact.durationDays,
+                    witnesses = witnesses.size,
+                    protectionReady = PermissionState.read(context).requiredGranted,
+                    onContinue = { justStarted = false },
+                )
             } else {
                 val activePact = (pactState as PactState.Active).pact
                 val signOut = {
