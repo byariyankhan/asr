@@ -40,6 +40,11 @@ fun AsrTextField(
     modifier: Modifier = Modifier,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     isPassword: Boolean = false,
+    // For a field whose value and its display differ -- the date, which
+    // stores eight digits and shows DD / MM / YYYY. Doing it this way rather
+    // than reformatting the value is what keeps the caret where the person
+    // put it; see DateMask.
+    visualTransformation: VisualTransformation? = null,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         if (label.isNotEmpty()) {
@@ -62,8 +67,11 @@ fun AsrTextField(
                 textStyle = AsrType.Field.copy(color = AsrColors.TextPrimary),
                 cursorBrush = SolidColor(AsrColors.Accent),
                 keyboardOptions = keyboardOptions,
-                visualTransformation =
-                    if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+                visualTransformation = when {
+                    isPassword -> PasswordVisualTransformation()
+                    visualTransformation != null -> visualTransformation
+                    else -> VisualTransformation.None
+                },
                 modifier = Modifier.fillMaxWidth(),
                 decorationBox = { inner ->
                     // Both are emitted into one Box so the placeholder sits

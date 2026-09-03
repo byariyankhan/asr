@@ -52,6 +52,9 @@ fun UsageAccessScreen(
 ) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(Permissions.hasUsageAccess(context)) }
+    // Set once Settings has been opened, so the note below appears only for
+    // somebody who has actually been there and come back without the grant.
+    var triedSettings by remember { mutableStateOf(false) }
 
     // Nothing tells the app when a Settings toggle flips, so the state is
     // re-read every time this screen comes back to the front. Without it the
@@ -110,7 +113,11 @@ fun UsageAccessScreen(
 
         Spacer(Modifier.height(20.dp))
         AsrCard(background = AsrColors.Field) {
-            Text("We do not read app content.", style = AsrType.Field, color = AsrColors.TextPrimary)
+            Text(
+                "We do not read app content.",
+                style = AsrType.Field,
+                color = AsrColors.TextPrimary,
+            )
             Spacer(Modifier.height(8.dp))
             Text(
                 "No messages, passwords, photos, searches or typed text. Usage data is " +
@@ -123,6 +130,33 @@ fun UsageAccessScreen(
         Spacer(Modifier.height(20.dp))
         AsrPill(if (granted) "ENABLED" else "NOT ENABLED", highlighted = granted)
 
+        // Android blocks this setting outright for an app installed from an
+        // APK rather than from a store, and says only "App was denied access"
+        // with no route forward. There is a route, it is three taps away, and
+        // nothing on the phone tells you where -- so this does, but only
+        // after somebody has been to Settings and come back without it, so
+        // that everybody else is not read an instruction they do not need.
+        if (triedSettings && !granted) {
+            Spacer(Modifier.height(16.dp))
+            AsrCard(background = AsrColors.Field) {
+                Text(
+                    "If Settings said \"App was denied access\"",
+                    style = AsrType.Field,
+                    color = AsrColors.TextPrimary,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Android restricts this setting for apps installed from a file " +
+                        "instead of from a store. To allow it: Settings, Apps, Asr, " +
+                        "then the three-dot menu at the top right, then \"Allow " +
+                        "restricted settings\". After that, come back here and try " +
+                        "again.",
+                    style = AsrType.Legal,
+                    color = AsrColors.TextSecondary,
+                )
+            }
+        }
+
         Spacer(Modifier.height(20.dp))
         AsrPrimaryButton(
             text = if (granted) "Continue" else "Open Usage Access",
@@ -132,6 +166,7 @@ fun UsageAccessScreen(
                 } else {
                     try {
                         context.startActivity(Permissions.usageAccessIntent())
+                        triedSettings = true
                     } catch (e: ActivityNotFoundException) {
                         // Some manufacturers ship without this Settings screen.
                         // Saying so beats a crash and beats a button that does

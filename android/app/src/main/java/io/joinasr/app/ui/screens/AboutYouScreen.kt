@@ -45,10 +45,11 @@ import io.joinasr.app.profile.Choice
 import io.joinasr.app.profile.Countries
 import io.joinasr.app.profile.DateOfBirth
 import io.joinasr.app.profile.Genders
-import io.joinasr.app.profile.ImageForUpload
+import io.joinasr.app.profile.PhotoPrep
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.components.AsrSelectField
 import io.joinasr.app.ui.components.AsrTextField
+import io.joinasr.app.ui.components.DateMask
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
@@ -94,12 +95,12 @@ fun AboutYouScreen(
     LaunchedEffect(pending) {
         val uri = pending ?: return@LaunchedEffect
         photoError = null
-        when (val result = ImageForUpload.prepare(context, uri)) {
-            is ImageForUpload.Result.Ok -> {
+        when (val result = PhotoPrep.prepare(context, uri)) {
+            is PhotoPrep.Result.Ok -> {
                 preview = result.jpeg
                 onPhotoPicked(result.jpeg)
             }
-            is ImageForUpload.Result.Failed -> photoError = result.message
+            is PhotoPrep.Result.Failed -> photoError = result.message
         }
         pending = null
     }
@@ -203,14 +204,16 @@ fun AboutYouScreen(
         AsrTextField(
             label = "Date of birth",
             value = dob,
-            // Reformatted on every keystroke, so the separators appear as the
-            // digits arrive and a paste of any shape lands correctly.
-            onValueChange = { dob = DateOfBirth.format(it) },
+            // The value is the digits; the separators are drawn over them by
+            // DateMask. Reformatting the value here instead is what made this
+            // field impossible to type into.
+            onValueChange = { dob = DateOfBirth.digitsOf(it) },
             placeholder = "DD / MM / YYYY",
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Next,
             ),
+            visualTransformation = DateMask,
         )
         (dobResult as? DateOfBirth.Result.Invalid)?.let {
             Spacer(Modifier.height(6.dp))

@@ -12,38 +12,32 @@ class DateOfBirthTest {
     private val today = LocalDate.of(2026, 9, 3)
 
     @Test
-    fun `formats as the separators fall due`() {
-        assertEquals("", DateOfBirth.format(""))
-        assertEquals("0", DateOfBirth.format("0"))
-        assertEquals("29", DateOfBirth.format("29"))
-        assertEquals("29 / 0", DateOfBirth.format("290"))
-        assertEquals("29 / 02", DateOfBirth.format("2902"))
-        assertEquals("29 / 02 / 2000", DateOfBirth.format("29022000"))
+    fun `the value is the digits and nothing else`() {
+        assertEquals("", DateOfBirth.digitsOf(""))
+        assertEquals("29", DateOfBirth.digitsOf("29"))
+        assertEquals("29022000", DateOfBirth.digitsOf("29022000"))
     }
 
     @Test
-    fun `ignores anything that is not a digit, wherever it comes from`() {
-        // Paste, a keyboard that inserts its own spaces, or a re-format of
-        // text this function already formatted.
-        assertEquals("29 / 02 / 2000", DateOfBirth.format("29 / 02 / 2000"))
-        assertEquals("29 / 02 / 2000", DateOfBirth.format("29-02-2000"))
-        // Letters are dropped, so a string like "29feb2000" leaves six
-        // digits, not eight, and formats as the six it has. Worth asserting
-        // exactly that: it is what the field shows while somebody is midway
-        // through, and getting it wrong is how a caret jumps.
-        assertEquals("29 / 20 / 00", DateOfBirth.format("abc29feb2000xyz"))
+    fun `it ignores anything that is not a digit, wherever it comes from`() {
+        // Paste, a keyboard that inserts its own spaces, or text that has
+        // already been through the display mask and come back.
+        assertEquals("29022000", DateOfBirth.digitsOf("29 / 02 / 2000"))
+        assertEquals("29022000", DateOfBirth.digitsOf("29-02-2000"))
+        // Letters are dropped, so "29feb2000" leaves six digits, not eight.
+        assertEquals("292000", DateOfBirth.digitsOf("abc29feb2000xyz"))
     }
 
     @Test
-    fun `stops at eight digits rather than growing forever`() {
-        assertEquals("29 / 02 / 2000", DateOfBirth.format("290220001234"))
+    fun `it stops at eight digits rather than growing forever`() {
+        assertEquals("29022000", DateOfBirth.digitsOf("290220001234"))
     }
 
     @Test
     fun `says nothing until all eight digits are in`() {
-        assertEquals(Result.Incomplete, DateOfBirth.validate("29 / 02 / 20", today))
-        assertFalse(DateOfBirth.isComplete("29 / 02 / 200"))
-        assertTrue(DateOfBirth.isComplete("29 / 02 / 2000"))
+        assertEquals(Result.Incomplete, DateOfBirth.validate("290220", today))
+        assertFalse(DateOfBirth.isComplete("2902200"))
+        assertTrue(DateOfBirth.isComplete("29022000"))
     }
 
     @Test

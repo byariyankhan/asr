@@ -22,19 +22,18 @@ object DateOfBirth {
     const val MIN_AGE = 13
     const val MAX_AGE = 120
 
+    /** How many digits a complete date has: DDMMYYYY. */
+    const val DIGITS = 8
+
     /**
-     * Formats whatever has been typed so far, keeping only digits and
-     * inserting the separators. Called on every keystroke, so it has to be
-     * total: any string in, something sensible out.
+     * What the field actually stores: the digits, and no more than eight of
+     * them. The separators are drawn over the top at display time and are
+     * never part of the value -- putting them in the value is what made this
+     * field impossible to type into, because the text handed back to Compose
+     * was longer than the text it had just been given and the caret stayed
+     * where it was, in the middle.
      */
-    fun format(input: String): String {
-        val digits = input.filter { it.isDigit() }.take(8)
-        return when {
-            digits.length <= 2 -> digits
-            digits.length <= 4 -> "${digits.take(2)} / ${digits.drop(2)}"
-            else -> "${digits.take(2)} / ${digits.substring(2, 4)} / ${digits.drop(4)}"
-        }
-    }
+    fun digitsOf(input: String): String = input.filter { it.isDigit() }.take(DIGITS)
 
     /** True once eight digits are in, whether or not they are a real date. */
     fun isComplete(input: String): Boolean = input.count { it.isDigit() } == 8
