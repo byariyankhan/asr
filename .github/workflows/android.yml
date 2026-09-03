@@ -41,13 +41,30 @@ jobs:
           ls "$ANDROID_HOME/platforms" || true
           ls "$ANDROID_HOME/build-tools" || true
 
-      - name: Unit tests
-        run: ./gradlew --no-daemon test
+      # Both in one step, teed to a file. Kotlin prints its errors as `e:`
+      # lines in the middle of several hundred lines of Gradle output, and
+      # the environment this project is written in reads CI logs from the
+      # tail; without this, finding out what actually broke costs several
+      # round trips of guesswork.
+      - name: Unit tests and debug APK
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon test assembleDebug 2>&1 | tee /tmp/gradle.log
 
-      - name: Build the debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      # Runs only when the build failed, and last, so the errors are the
+      # final thing in the log.
+      - name: What broke
+        if: failure()
+        run: |
+          echo "=== compiler errors ==="
+          grep -E "^e: |^error: " /tmp/gradle.log | head -40 || true
+          echo "=== failing tests ==="
+          grep -E "^[A-Za-z0-9_.]+ > .* FAILED$" /tmp/gradle.log | head -20 || true
+          echo "=== if both are empty, the tail of the build ==="
+          if ! grep -qE "^e: |FAILED$" /tmp/gradle.log; then tail -40 /tmp/gradle.log; fi
 
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: asr-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
