@@ -19,6 +19,33 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- From Android 11 an app sees almost nothing of what else is installed
+         unless it says what it is looking for. The blunt answer,
+         QUERY_ALL_PACKAGES, is a restricted permission Play grants by
+         exception and refuses for most reasons, and asking for it here would
+         be asking for far more than this app needs.
+
+         These three declare exactly what the picker and the enforcement loop
+         look at: apps with a launcher entry, which is the same set a
+         launcher shows and what a person means by "my apps"; the home app
+         and the settings app, which are looked up so they can be kept *out*
+         of the picker -- a person who can block Settings cannot revoke the
+         permissions Asr runs on, and one who can block their launcher cannot
+         reach any app at all. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SETTINGS" />
+        </intent>
+    </queries>
+
 
     <application
         android:name=".AsrApplication"

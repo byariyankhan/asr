@@ -6,14 +6,21 @@ Read this first, because everything after it is a plan.
 
 In the repository right now: a Gradle project (`minSdk 26`, `targetSdk 35`),
 the design system taken from Figma (`docs/DESIGN.md`), and the screens up to
-the end of setup: Welcome, Sign Up, Log In, About You, Usage Access,
-Protection, and the app-blocking disclosure.
+the end of setup: Welcome, Sign Up, Log In, About You, Usage Access, Choose
+Apps, Set Daily Limits, Protection, and the app-blocking disclosure.
 
 Sign-up and log-in reach the live API and store a session token; About You
 sends the profile and uploads a photo. The setup screens read the real
-permission state and open the real Settings screens. What does not exist yet
-is the thing they are permissions *for*: no foreground service, no usage
-polling, no block screen, no database on the phone.
+permission state and open the real Settings screens. Choose Apps lists the
+phone's real launchable apps, minus the ones that must never be blockable —
+the launcher, Settings, the dialer, the SMS app, Asr itself — and Set Daily
+Limits gives each chosen app a limit from a fixed ladder.
+
+What does not exist yet is the thing all of it is *for*: no foreground
+service, no usage polling, no block screen, no database on the phone. The
+chosen apps and their limits live in memory for the length of the setup flow
+and are not persisted or sent anywhere, because the screen that commits them
+(Figma 11, Review) is not built.
 
 None of Hilt, Room, WorkManager or Play Billing is a dependency yet. They are
 named below because that is what this document is: the design of the app to

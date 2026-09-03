@@ -15,9 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.ui.screens.AboutYouScreen
 import io.joinasr.app.ui.screens.BlockingDisclosureScreen
+import io.joinasr.app.ui.screens.ChooseAppsScreen
+import io.joinasr.app.ui.screens.DailyLimitsScreen
 import io.joinasr.app.ui.screens.LogInScreen
 import io.joinasr.app.ui.screens.SignUpScreen
 import io.joinasr.app.ui.screens.ProtectionScreen
@@ -38,9 +41,20 @@ private sealed interface Destination {
     data object LogIn : Destination
 }
 
-/** The setup steps that come after an account exists. */
+/**
+ * The setup steps that come after an account exists.
+ *
+ * The design numbers six of them, and the screens themselves say so in their
+ * eyebrows: duration, usage access, choose apps, daily limits, witnesses,
+ * protection. Four exist so far. The numbering is left alone rather than
+ * renumbered to match what is built, because it is what the finished flow
+ * says and renumbering twice is how the labels end up disagreeing with the
+ * screens.
+ */
 private sealed interface SetupStep {
     data object UsageAccess : SetupStep
+    data object ChooseApps : SetupStep
+    data object DailyLimits : SetupStep
     data object Protection : SetupStep
     data object BlockingDisclosure : SetupStep
 }
@@ -54,6 +68,11 @@ fun AsrApp(viewModel: SessionViewModel = viewModel()) {
     val context = LocalContext.current
     var destination by remember { mutableStateOf<Destination>(Destination.Welcome) }
     var setupStep by remember { mutableStateOf<SetupStep>(SetupStep.UsageAccess) }
+    // Held here, not in storage. A half-made challenge is not something the
+    // app should remember: it is committed on the review screen, with its
+    // limits and its witnesses, or it never existed.
+    var chosenApps by remember { mutableStateOf(emptyList<AppEntry>()) }
+    var chosenLimits by remember { mutableStateOf(emptyMap<String, Int>()) }
     // Seeded from the live state so somebody who already granted both never
     // sees the setup screens again.
     var setupDone by remember { mutableStateOf(PermissionState.read(context).requiredGranted) }
@@ -104,11 +123,31 @@ fun AsrApp(viewModel: SessionViewModel = viewModel()) {
                             destination = Destination.Welcome
                             viewModel.signOut()
                         },
-                        onGranted = { setupStep = SetupStep.Protection },
+                        onGranted = { setupStep = SetupStep.ChooseApps },
+                    )
+
+                    // Figma 06.
+                    SetupStep.ChooseApps -> ChooseAppsScreen(
+                        onBack = { setupStep = SetupStep.UsageAccess },
+                        onContinue = { apps ->
+                            chosenApps = apps
+                            setupStep = SetupStep.DailyLimits
+                        },
+                    )
+
+                    // Figma 07. Screen 08 (witnesses) belongs between this
+                    // and protection; until it exists the two run together.
+                    SetupStep.DailyLimits -> DailyLimitsScreen(
+                        apps = chosenApps,
+                        onBack = { setupStep = SetupStep.ChooseApps },
+                        onContinue = { limits ->
+                            chosenLimits = limits
+                            setupStep = SetupStep.Protection
+                        },
                     )
 
                     SetupStep.Protection -> ProtectionScreen(
-                        onBack = { setupStep = SetupStep.UsageAccess },
+                        onBack = { setupStep = SetupStep.DailyLimits },
                         // Figma 10, which explains what the overlay reads
                         // before Settings opens rather than after.
                         onReviewBlocking = { setupStep = SetupStep.BlockingDisclosure },
@@ -127,6 +166,8 @@ fun AsrApp(viewModel: SessionViewModel = viewModel()) {
             } else {
                 SignedInScreen(
                     me = current.me,
+                    apps = chosenApps,
+                    limits = chosenLimits,
                     onSignOut = {
                         destination = Destination.Welcome
                         viewModel.signOut()

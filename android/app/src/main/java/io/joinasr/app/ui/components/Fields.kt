@@ -4,9 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -81,5 +83,50 @@ fun AsrTextField(
                 },
             )
         }
+    }
+}
+
+/**
+ * The search box on the app picker: 52dp, a leading magnifier, no label.
+ *
+ * Separate from [AsrTextField] rather than a flag on it. The two differ in
+ * height, in having a label at all and in carrying a leading glyph, and a
+ * shared function with three booleans deciding which of two shapes it draws
+ * is harder to read than two functions that each draw one.
+ */
+@Composable
+fun AsrSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .background(AsrColors.Surface, RoundedCornerShape(14.dp))
+            .border(1.dp, AsrColors.SurfaceBorder, RoundedCornerShape(14.dp))
+            .padding(horizontal = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("⌕", style = AsrType.display(22), color = AsrColors.TextSecondary)
+        Spacer(Modifier.width(10.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = AsrType.Field.copy(color = AsrColors.TextPrimary),
+            cursorBrush = SolidColor(AsrColors.Accent),
+            modifier = Modifier.fillMaxWidth(),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) {
+                        Text(placeholder, style = AsrType.Field, color = AsrColors.TextSecondary)
+                    }
+                    inner()
+                }
+            },
+        )
     }
 }

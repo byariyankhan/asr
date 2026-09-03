@@ -29,6 +29,14 @@ object AsrColors {
     /** The filled background behind an accent-coloured pill. */
     val AccentMuted = Color(0xFF071A13)
 
+    /**
+     * A row the person has chosen: the app picker, and the limit rows after
+     * it. Lighter than Surface rather than accent-tinted, because the accent
+     * border already says "chosen" and a green fill under a green border
+     * makes the app name harder to read, not easier.
+     */
+    val SurfaceSelected = Color(0xFF121513)
+
     /** Text inputs sit slightly darker than the panel they are inside. */
     val Field = Color(0xFF0E0E0E)
     val FieldBorder = Color(0xFF212926)
