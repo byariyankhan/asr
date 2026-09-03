@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.joinasr.app.apps.AppEntry
+import io.joinasr.app.enforcement.PactViewModel
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.ui.screens.AboutYouScreen
 import io.joinasr.app.ui.screens.BlockingDisclosureScreen
@@ -60,8 +61,12 @@ private sealed interface SetupStep {
 }
 
 @Composable
-fun AsrApp(viewModel: SessionViewModel = viewModel()) {
+fun AsrApp(
+    viewModel: SessionViewModel = viewModel(),
+    pactViewModel: PactViewModel = viewModel(),
+) {
     val session by viewModel.session.collectAsStateWithLifecycle()
+    val pact by pactViewModel.pact.collectAsStateWithLifecycle()
     val submitting by viewModel.submitting.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
@@ -71,8 +76,10 @@ fun AsrApp(viewModel: SessionViewModel = viewModel()) {
     // Held here, not in storage. A half-made challenge is not something the
     // app should remember: it is committed on the review screen, with its
     // limits and its witnesses, or it never existed.
+    // Only for the length of the setup flow: the limits screen needs the
+    // apps the picker chose. Once the pact is committed it is read back from
+    // storage, never from here.
     var chosenApps by remember { mutableStateOf(emptyList<AppEntry>()) }
-    var chosenLimits by remember { mutableStateOf(emptyMap<String, Int>()) }
     // Seeded from the live state so somebody who already granted both never
     // sees the setup screens again.
     var setupDone by remember { mutableStateOf(PermissionState.read(context).requiredGranted) }
@@ -141,7 +148,10 @@ fun AsrApp(viewModel: SessionViewModel = viewModel()) {
                         apps = chosenApps,
                         onBack = { setupStep = SetupStep.ChooseApps },
                         onContinue = { limits ->
-                            chosenLimits = limits
+                            // The one place a challenge is committed. From
+                            // here it survives the app being killed, which is
+                            // the whole difference between a form and a pact.
+                            pactViewModel.commit(chosenApps, limits)
                             setupStep = SetupStep.Protection
                         },
                     )
@@ -166,8 +176,7 @@ fun AsrApp(viewModel: SessionViewModel = viewModel()) {
             } else {
                 SignedInScreen(
                     me = current.me,
-                    apps = chosenApps,
-                    limits = chosenLimits,
+                    pact = pact,
                     onSignOut = {
                         destination = Destination.Welcome
                         viewModel.signOut()

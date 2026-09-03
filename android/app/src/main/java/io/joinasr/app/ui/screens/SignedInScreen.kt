@@ -16,8 +16,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.data.Me
+import io.joinasr.app.enforcement.Pact
+import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.formatMinutes
 import io.joinasr.app.ui.components.AsrPanel
 import io.joinasr.app.ui.components.AsrPrimaryButton
@@ -31,16 +32,17 @@ import io.joinasr.app.ui.theme.AsrType
  *
  * Two things are shown, both of them real. The name and email are what the
  * *server* returned from GET /v1/me rather than what was typed, which is
- * what makes them proof the session token works. The limits are what the
- * person just set, held in memory, and the note below says plainly that
- * nothing enforces them yet -- a placeholder that implied otherwise would be
- * worse than no screen at all.
+ * what makes them proof the session token works. The limits are read back
+ * out of storage rather than passed down from the screen that set them, so
+ * seeing them here is proof the pact was actually committed.
+ *
+ * The note below says plainly that nothing enforces them yet. A placeholder
+ * that implied otherwise would be worse than no screen at all.
  */
 @Composable
 fun SignedInScreen(
     me: Me,
-    apps: List<AppEntry>,
-    limits: Map<String, Int>,
+    pact: Pact?,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -73,37 +75,26 @@ fun SignedInScreen(
             Text(me.email, style = AsrType.Body, color = AsrColors.TextPrimary)
         }
 
-        if (apps.isNotEmpty()) {
+        if (pact != null) {
             Spacer(Modifier.height(14.dp))
             AsrPanel {
                 Text("Your limits", style = AsrType.Label, color = AsrColors.TextSecondary)
-                for (app in apps) {
+                for (app in pact.apps) {
                     Spacer(Modifier.height(10.dp))
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            app.label,
-                            style = AsrType.Body,
-                            color = AsrColors.TextPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            formatMinutes(limits[app.packageName] ?: 0),
-                            style = AsrType.Body,
-                            color = AsrColors.Accent,
-                        )
-                    }
+                    LimitLine(app)
                 }
             }
         }
 
         Spacer(Modifier.height(20.dp))
         Text(
-            text = "Nothing above is enforced yet. The service that watches app " +
-                "usage and shows the block screen is the next part being built, " +
-                "and these limits are held in memory until the review screen " +
-                "commits them.",
+            text = if (pact == null) {
+                "Setting up a challenge is the next thing to do here."
+            } else {
+                "These limits are saved on this phone. Nothing enforces them " +
+                    "yet: the service that watches app usage and shows the block " +
+                    "screen is the next part being built."
+            },
             style = AsrType.Legal,
             color = AsrColors.TextTertiary,
             textAlign = TextAlign.Center,
@@ -115,14 +106,36 @@ fun SignedInScreen(
     }
 }
 
+/** One app and the time it gets, as stored. */
+@Composable
+private fun LimitLine(app: PactApp) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            app.label,
+            style = AsrType.Body,
+            color = AsrColors.TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            formatMinutes(app.limitMinutes),
+            style = AsrType.Body,
+            color = AsrColors.Accent,
+        )
+    }
+}
+
 @Preview(widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 private fun SignedInPreview() {
     AsrTheme {
         SignedInScreen(
             me = Me(id = "1", name = "ariyanfiles", email = "ariyanfiles@gmail.com"),
-            apps = listOf(AppEntry("com.instagram.android", "Instagram")),
-            limits = mapOf("com.instagram.android" to 30),
+            pact = Pact(
+                apps = listOf(PactApp("com.instagram.android", "Instagram", 30)),
+                startedAtMillis = 0,
+            ),
             onSignOut = {},
         )
     }

@@ -16,11 +16,23 @@ phone's real launchable apps, minus the ones that must never be blockable —
 the launcher, Settings, the dialer, the SMS app, Asr itself — and Set Daily
 Limits gives each chosen app a limit from a fixed ladder.
 
-What does not exist yet is the thing all of it is *for*: no foreground
-service, no usage polling, no block screen, no database on the phone. The
-chosen apps and their limits live in memory for the length of the setup flow
-and are not persisted or sent anywhere, because the screen that commits them
-(Figma 11, Review) is not built.
+The pact — the chosen apps, their limits and when it started — is committed
+at the end of the limits screen and stored on the phone, so it survives the
+app being killed. `ForegroundAccumulator` measures how long each app has
+actually been in front of the person today, by walking Android's usage
+events rather than trusting `totalTimeInForeground`, and `Enforcement`
+decides from a pact and a reading whether the app in front should be
+blocked. Both are covered by tests.
+
+What does not exist yet is the part that acts on that decision: no
+foreground service running the loop, no block screen, nothing sent to a
+witness, and no database on the phone. Until the service exists, a limit is
+recorded and measured but never enforced, and the placeholder screen at the
+end of setup says so.
+
+Storage is DataStore, not Room. The pact is one small immutable value read
+at service start and written once; Room earns its place with the usage
+history and the outbox, and that is the change that will bring it in.
 
 None of Hilt, Room, WorkManager or Play Billing is a dependency yet. They are
 named below because that is what this document is: the design of the app to
