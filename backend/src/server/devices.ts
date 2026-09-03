@@ -81,7 +81,7 @@ export async function recordHeartbeat(userId: string, deviceId: string, input: H
 }
 
 // Logout from a device: forget its push token so nothing is sent to a phone
-// that no longer has a session. The row stays (commitments reference it).
+// that no longer has a session. The row stays (pacts reference it).
 export async function forgetDevice(userId: string, deviceId: string): Promise<void> {
   const result = await db
     .updateTable("device")

@@ -38,7 +38,7 @@ backend/
       fcm.ts         Firebase Admin wrapper; maps UNREGISTERED to device flag
       play.ts        Play Developer API verification
       watchdog.ts    the 15-minute job
-      commitments.ts, challenges.ts, witnesses.ts, notifications.ts
+      pacts.ts, activities.ts, witnesses.ts, notifications.ts
     lib/
       uuid.ts        uuidv7() and isUuidLike()
       time.ts        timezone helpers (day boundaries in an IANA zone)
@@ -55,7 +55,7 @@ backend/
   argument and scopes the query with it.
 - Device-originated ids are validated with `isUuidLike` before touching the
   database.
-- Tests cover: idempotent event ingestion, the one-active-commitment rule,
+- Tests cover: idempotent event ingestion, the one-active-pact rule,
   watchdog transitions, witness scoping, and the snapshot lock rules.
 
 ## Android

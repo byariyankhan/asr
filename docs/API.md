@@ -28,7 +28,7 @@ Success: `200`/`201` with the resource, or `204` with no body.
 Error:
 
 ```json
-{ "error": "commitment_active", "message": "You already have an active commitment." }
+{ "error": "pact_active", "message": "You already have an active pact." }
 ```
 
 | Status | Meaning |
@@ -37,7 +37,7 @@ Error:
 | 401 | Missing or expired token |
 | 403 | Not your resource, or witness access not granted |
 | 404 | Not found |
-| 409 | State conflict (`commitment_active`, `locked_by_commitment`, `invite_used`, `daily_cap_reached`) |
+| 409 | State conflict (`pact_active`, `locked_by_pact`, `invite_used`, `daily_cap_reached`) |
 | 429 | Rate limited; `Retry-After` header set |
 
 ## Rate limits
@@ -77,35 +77,35 @@ post.
 
 Logout from this device. `204`.
 
-## Commitments
+## Pacts
 
-### `POST /commitments`
+### `POST /pacts`
 
 ```json
 {
   "device_id": "…",
   "duration_days": 7,
   "timezone": "Asia/Dhaka",
-  "snapshot": { "apps": [...], "reset_time": "04:00", "challenges": {...} }
+  "snapshot": { "apps": [...], "reset_time": "04:00", "activities": {...} }
 }
 ```
 
-`201` with the commitment. `409 commitment_active` if one exists. Writes a
+`201` with the pact. `409 pact_active` if one exists. Writes a
 `started` event and notifies witnesses with `notify_start`.
 
-### `GET /commitments/current`
+### `GET /pacts/current`
 
-The active commitment or `404`.
+The active pact or `404`.
 
-### `GET /commitments?cursor=&limit=`  **witness**
+### `GET /pacts?cursor=&limit=`  **witness**
 
 History, newest first, cursor pagination on `(created_at, id)`.
 
-### `GET /commitments/{id}`  **witness**
+### `GET /pacts/{id}`  **witness**
 
-Commitment with its events and challenges.
+Pact with its events and activities.
 
-### `POST /commitments/{id}/events`
+### `POST /pacts/{id}/events`
 
 Device reports an outcome.
 
@@ -122,17 +122,17 @@ Device reports an outcome.
 `id` is a UUIDv7 generated on the device and is the idempotency key. `201`
 with the event, or `200` with the existing event if the id was seen before.
 Allowed device types: `broken`, `completed`, `limit_hit`,
-`challenge_completed`, `restored`. A `broken` or `completed` event closes the
-commitment and triggers witness notifications. Anything else on a closed
-commitment returns `409`.
+`activity_completed`, `restored`. A `broken` or `completed` event closes the
+pact and triggers witness notifications. Anything else on a closed
+pact returns `409`.
 
-### `POST /commitments/{id}/give-up`
+### `POST /pacts/{id}/give-up`
 
 Shortcut for a deliberate early exit from the app's own UI. Body
 `{ "id": "<uuidv7>" }`. Same as posting a `broken` event with reason
 `user_gave_up`.
 
-### `POST /commitments/{id}/summary`
+### `POST /pacts/{id}/summary`
 
 Daily aggregate, sent once per day per app while active.
 
@@ -142,32 +142,32 @@ Daily aggregate, sent once per day per app while active.
 
 `204`. Upserts `daily_summary`.
 
-## Challenges
+## Activities
 
-### `POST /commitments/{id}/challenges`
+### `POST /pacts/{id}/activities`
 
 ```json
 { "id": "<uuidv7>", "type": "walk_steps", "target": 3000, "reward_min": 10, "started_at": "…", "deadline_at": "…" }
 ```
 
-`201`. The server checks the type and reward against the commitment
-snapshot's challenge rules and the daily cap; `409 daily_cap_reached` if
+`201`. The server checks the type and reward against the pact
+snapshot's activity rules and the daily cap; `409 daily_cap_reached` if
 exhausted.
 
-### `POST /challenges/{id}/complete`
+### `POST /activities/{id}/complete`
 
 ```json
 { "event_id": "<uuidv7>", "occurred_at": "…" }
 ```
 
-`200` with the challenge. Writes a `challenge_completed` event carrying the
+`200` with the activity. Writes a `activity_completed` event carrying the
 reward minutes.
 
-### `POST /challenges/{id}/cancel`
+### `POST /activities/{id}/cancel`
 
 `204`. No penalty; used when the user abandons a waiting period.
 
-Failed challenges are set by the server watchdog when `deadline_at` passes
+Failed activities are set by the server watchdog when `deadline_at` passes
 without completion; the app learns about it on next sync.
 
 ## Witnesses
@@ -230,12 +230,12 @@ What the witness dashboard shows about the user:
 ```json
 {
   "user": { "id": "…", "name": "…" },
-  "current": { "commitment_id": "…", "day": 3, "of": 7, "status": "active", "apps": [ { "label": "Instagram", "limit_min": 30 } ] },
+  "current": { "pact_id": "…", "day": 3, "of": 7, "status": "active", "apps": [ { "label": "Instagram", "limit_min": 30 } ] },
   "streak_days": 12,
   "longest_streak_days": 21,
   "completed": 4,
   "broken": 1,
-  "recent_events": [ { "type": "challenge_completed", "minutes": 10, "received_at": "…" } ]
+  "recent_events": [ { "type": "activity_completed", "minutes": 10, "received_at": "…" } ]
 }
 ```
 
@@ -245,11 +245,24 @@ What the witness dashboard shows about the user:
 
 ### `GET /me`
 
-Profile, timezone, notification flags, subscription status, device count.
+```json
+{
+  "id": "…", "name": "Ariyan", "email": "…", "email_verified": true,
+  "timezone": "Asia/Dhaka", "notify_email": true, "notify_push": true,
+  "date_of_birth": "2000-02-29", "country": "BD", "gender": "male",
+  "created_at": "…", "device_count": 1
+}
+```
+
+Subscription status joins this response once Play Billing lands.
 
 ### `PATCH /me`
 
-`{ "name", "timezone", "notify_email", "notify_push" }`.
+Any subset of `name`, `timezone`, `notify_email`, `notify_push`,
+`date_of_birth` (YYYY-MM-DD, 13+), `country` (ISO 3166-1 alpha-2), `gender`
+(`male` | `female` | `other` | `prefer_not_to_say`). The three profile
+fields accept `null` to clear them. `200` with the same shape as `GET /me`.
+The "About You" screen after sign-up is one `PATCH`.
 
 ### `GET /me/progress`
 
@@ -300,11 +313,11 @@ the container healthcheck and uptime monitoring. No auth, no details.
 Not an endpoint. A loop started by the API process on boot runs every
 15 minutes (single-flight via a Redis lock, so a second replica is safe):
 
-1. Mark `protection_lost` for active commitments whose device has been silent
+1. Mark `protection_lost` for active pacts whose device has been silent
    for 24 h.
-2. Mark `challenge_failed` for pending challenges past their deadline.
-3. Mark `completed` for active commitments past `ends_at` with no break.
+2. Mark `activity_failed` for pending activities past their deadline.
+3. Mark `completed` for active pacts past `ends_at` with no break.
 4. Drain the notification queue (push via FCM, email via Resend), recording
    `UNREGISTERED` tokens on the device and writing an `uninstalled` event
-   when that happens during an active commitment.
+   when that happens during an active pact.
 5. Write its finish time to Redis for `/health`.

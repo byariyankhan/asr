@@ -1,10 +1,10 @@
 import { json, notFound, route } from "@/lib/http";
-import { getCurrentCommitment } from "@/server/commitments";
+import { getCurrentPact } from "@/server/pacts";
 import { requireCaller } from "@/server/session";
 
 export const GET = route(async (request) => {
   const caller = await requireCaller(request);
-  const current = await getCurrentCommitment(caller.userId);
-  if (!current) throw notFound("Active commitment");
+  const current = await getCurrentPact(caller.userId);
+  if (!current) throw notFound("Active pact");
   return json(current);
 });

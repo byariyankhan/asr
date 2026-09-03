@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isValidTimeZone } from "./time";
+import { isValidCountry, isValidTimeZone } from "./time";
 import { UUID_RE } from "./uuid";
 
 // Request bodies, validated at the edge of every route. Shapes match
@@ -38,7 +38,7 @@ export type Heartbeat = z.infer<typeof heartbeat>;
 export const MIN_DURATION_DAYS = 1;
 export const MAX_DURATION_DAYS = 90;
 
-const challengeRule = z.object({
+const activityRule = z.object({
   reward_min: z.number().int().min(1).max(120),
   daily_cap_min: z.number().int().min(1).max(240),
 });
@@ -60,27 +60,27 @@ export const snapshot = z.object({
       "duplicate package",
     ),
   reset_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "HH:MM"),
-  challenges: z
+  activities: z
     .object({
-      walk_steps: challengeRule.extend({ target: z.number().int().min(100).max(50_000) }).optional(),
-      focus_session: challengeRule.extend({ target_min: z.number().int().min(5).max(180) }).optional(),
-      waiting_period: challengeRule.extend({ wait_min: z.number().int().min(1).max(60) }).optional(),
+      walk_steps: activityRule.extend({ target: z.number().int().min(100).max(50_000) }).optional(),
+      focus_session: activityRule.extend({ target_min: z.number().int().min(5).max(180) }).optional(),
+      waiting_period: activityRule.extend({ wait_min: z.number().int().min(1).max(60) }).optional(),
     })
     .default({}),
 });
 export type Snapshot = z.infer<typeof snapshot>;
 
-export const commitmentCreate = z.object({
+export const pactCreate = z.object({
   device_id: uuid,
   duration_days: z.number().int().min(MIN_DURATION_DAYS).max(MAX_DURATION_DAYS),
   timezone: timeZone,
   snapshot,
 });
-export type CommitmentCreate = z.infer<typeof commitmentCreate>;
+export type PactCreate = z.infer<typeof pactCreate>;
 
 // Event types a device may report. Server-only types (protection_lost,
-// uninstalled, challenge_failed, started) are refused here on purpose.
-export const DEVICE_EVENT_TYPES = ["broken", "completed", "limit_hit", "challenge_completed", "restored"] as const;
+// uninstalled, activity_failed, started) are refused here on purpose.
+export const DEVICE_EVENT_TYPES = ["broken", "completed", "limit_hit", "activity_completed", "restored"] as const;
 export const EVENT_REASONS = [
   "limit_exceeded",
   "app_removed",
@@ -102,8 +102,8 @@ export const eventCreate = z
     message: "a broken event needs a reason",
     path: ["reason"],
   })
-  .refine((e) => e.type !== "challenge_completed" || e.minutes !== undefined, {
-    message: "challenge_completed needs minutes",
+  .refine((e) => e.type !== "activity_completed" || e.minutes !== undefined, {
+    message: "activity_completed needs minutes",
     path: ["minutes"],
   });
 export type EventCreate = z.infer<typeof eventCreate>;
@@ -114,3 +114,30 @@ export const listQuery = z.object({
   cursor: z.string().max(80).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+export const GENDERS = ["male", "female", "other", "prefer_not_to_say"] as const;
+
+// YYYY-MM-DD, a real calendar date, age 13..120 today.
+const dateOfBirth = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD")
+  .refine((s) => {
+    const d = new Date(`${s}T00:00:00Z`);
+    if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return false;
+    const now = new Date();
+    const age = now.getUTCFullYear() - d.getUTCFullYear() - (now < new Date(Date.UTC(now.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())) ? 1 : 0);
+    return age >= 13 && age <= 120;
+  }, "must be a real date; users must be 13 or older");
+
+export const meUpdate = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    timezone: timeZone.optional(),
+    notify_email: z.boolean().optional(),
+    notify_push: z.boolean().optional(),
+    date_of_birth: dateOfBirth.nullable().optional(),
+    country: z.string().regex(/^[A-Z]{2}$/, "ISO 3166-1 alpha-2").refine(isValidCountry, "unknown country").nullable().optional(),
+    gender: z.enum(GENDERS).nullable().optional(),
+  })
+  .refine((o) => Object.keys(o).length > 0, "nothing to update");
+export type MeUpdate = z.infer<typeof meUpdate>;

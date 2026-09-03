@@ -1,6 +1,6 @@
 import { db, isUniqueViolation } from "./db/client";
 import type { Database } from "./db/schema";
-import { requireOwnedCommitment } from "./commitments";
+import { requireOwnedPact } from "./pacts";
 import { conflict } from "@/lib/http";
 import type { EventCreate } from "@/lib/schemas";
 import { newId } from "@/lib/uuid";
@@ -8,7 +8,7 @@ import type { Kysely, Transaction } from "kysely";
 
 const eventColumns = [
   "id",
-  "commitment_id",
+  "pact_id",
   "device_id",
   "type",
   "reason",
@@ -29,35 +29,35 @@ const CLOSING: ReadonlySet<string> = new Set(["broken", "completed"]);
 // A device reports an outcome. The event id was generated on the phone and is
 // the primary key, so a retried POST after a lost response returns the row
 // that already exists instead of double-reporting a break. A closing event
-// also closes the commitment; every other type on a closed commitment is
+// also closes the pact; every other type on a closed pact is
 // refused so a late limit_hit cannot resurrect anything.
-export async function recordDeviceEvent(userId: string, commitmentId: string, input: EventCreate) {
-  const commitment = await requireOwnedCommitment(userId, commitmentId);
+export async function recordDeviceEvent(userId: string, pactId: string, input: EventCreate) {
+  const pact = await requireOwnedPact(userId, pactId);
 
   const existing = await db
-    .selectFrom("commitment_event")
+    .selectFrom("pact_event")
     .select(eventColumns)
     .where("id", "=", input.id)
     .executeTakeFirst();
   if (existing) {
-    if (existing.commitment_id !== commitmentId) {
-      throw conflict("event_id_reused", "That event id belongs to another commitment.");
+    if (existing.pact_id !== pactId) {
+      throw conflict("event_id_reused", "That event id belongs to another pact.");
     }
     return { event: existing, created: false };
   }
 
-  if (commitment.status !== "active") {
-    throw conflict("commitment_closed", `This commitment is already ${commitment.status}.`);
+  if (pact.status !== "active") {
+    throw conflict("pact_closed", `This pact is already ${pact.status}.`);
   }
 
   try {
     return await db.transaction().execute(async (trx) => {
       const event = await trx
-        .insertInto("commitment_event")
+        .insertInto("pact_event")
         .values({
           id: input.id,
-          commitment_id: commitmentId,
-          device_id: commitment.device_id,
+          pact_id: pactId,
+          device_id: pact.device_id,
           type: input.type,
           reason: input.reason ?? null,
           app_package: input.app_package ?? null,
@@ -69,21 +69,21 @@ export async function recordDeviceEvent(userId: string, commitmentId: string, in
         .executeTakeFirstOrThrow();
 
       if (CLOSING.has(input.type)) {
-        await closeCommitment(trx, commitmentId, input.type as "broken" | "completed");
+        await closePact(trx, pactId, input.type as "broken" | "completed");
         await queueWitnessNotifications(trx, {
           userId,
           eventId: event.id,
-          kind: input.type === "broken" ? "commitment_broken" : "commitment_completed",
-          commitmentId,
+          kind: input.type === "broken" ? "pact_broken" : "pact_completed",
+          pactId,
         });
       }
       return { event, created: true };
     });
   } catch (error) {
     // Lost the race with an identical retry: hand back the winner's row.
-    if (isUniqueViolation(error, "commitment_event_pkey")) {
+    if (isUniqueViolation(error, "pact_event_pkey")) {
       const winner = await db
-        .selectFrom("commitment_event")
+        .selectFrom("pact_event")
         .select(eventColumns)
         .where("id", "=", input.id)
         .executeTakeFirstOrThrow();
@@ -93,20 +93,20 @@ export async function recordDeviceEvent(userId: string, commitmentId: string, in
   }
 }
 
-async function closeCommitment(
+async function closePact(
   trx: Transaction<Database>,
-  commitmentId: string,
+  pactId: string,
   status: "broken" | "completed",
 ): Promise<void> {
   const now = new Date();
   const result = await trx
-    .updateTable("commitment")
+    .updateTable("pact")
     .set({ status, ended_at: now, updated_at: now })
-    .where("id", "=", commitmentId)
+    .where("id", "=", pactId)
     .where("status", "=", "active")
     .executeTakeFirst();
   if (result.numUpdatedRows === 0n) {
-    throw conflict("commitment_closed", "This commitment was closed by an earlier event.");
+    throw conflict("pact_closed", "This pact was closed by an earlier event.");
   }
 }
 
@@ -115,12 +115,12 @@ async function closeCommitment(
 // the ledger rows, and the partial unique index makes a retry harmless.
 export async function queueWitnessNotifications(
   trx: Transaction<Database> | Kysely<Database>,
-  args: { userId: string; eventId: string; kind: "commitment_broken" | "commitment_completed" | "commitment_started"; commitmentId: string },
+  args: { userId: string; eventId: string; kind: "pact_broken" | "pact_completed" | "pact_started"; pactId: string },
 ): Promise<number> {
   const prefColumn =
-    args.kind === "commitment_broken"
+    args.kind === "pact_broken"
       ? "notify_failure"
-      : args.kind === "commitment_completed"
+      : args.kind === "pact_completed"
         ? "notify_success"
         : "notify_start";
 
@@ -148,7 +148,7 @@ export async function queueWitnessNotifications(
         kind: args.kind,
         title: copy.title,
         body: copy.body,
-        deep_link: `/witness/${args.userId}/commitments/${args.commitmentId}`,
+        deep_link: `/witness/${args.userId}/pacts/${args.pactId}`,
       })
       .onConflict((oc) => oc.doNothing())
       .executeTakeFirst();
@@ -158,18 +158,18 @@ export async function queueWitnessNotifications(
 }
 
 export function notificationCopy(
-  kind: "commitment_broken" | "commitment_completed" | "commitment_started",
+  kind: "pact_broken" | "pact_completed" | "pact_started",
   name: string,
   roast: boolean,
 ): { title: string; body: string } {
   switch (kind) {
-    case "commitment_started":
-      return { title: `${name} made a promise`, body: `${name} started a new commitment and named you as a witness.` };
-    case "commitment_completed":
-      return { title: `${name} kept their word`, body: `${name} finished their commitment. Tell them you noticed.` };
-    case "commitment_broken":
+    case "pact_started":
+      return { title: `${name} made a promise`, body: `${name} started a new pact and named you as a witness.` };
+    case "pact_completed":
+      return { title: `${name} kept their word`, body: `${name} finished their pact. Tell them you noticed.` };
+    case "pact_broken":
       return roast
-        ? { title: `${name} folded`, body: `${name} broke their commitment. You know what to do.` }
-        : { title: `${name} broke their commitment`, body: `${name} didn't make it this time. A word from you might help.` };
+        ? { title: `${name} folded`, body: `${name} broke their pact. You know what to do.` }
+        : { title: `${name} broke their pact`, body: `${name} didn't make it this time. A word from you might help.` };
   }
 }

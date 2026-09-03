@@ -18,8 +18,13 @@ export interface UserTable {
   timezone: Generated<string>;
   notify_email: Generated<boolean>;
   notify_push: Generated<boolean>;
+  date_of_birth: ColumnType<string, string, string> | null; // date, as YYYY-MM-DD
+  country: string | null; // ISO 3166-1 alpha-2
+  gender: Gender | null;
   deleted_at: Timestamp | null;
 }
+
+export type Gender = "male" | "female" | "other" | "prefer_not_to_say";
 
 export interface SessionTable {
   id: string;
@@ -74,9 +79,9 @@ export interface DeviceTable {
   updated_at: GeneratedTimestamp;
 }
 
-export type CommitmentStatus = "active" | "completed" | "broken";
+export type PactStatus = "active" | "completed" | "broken";
 
-export interface CommitmentTable {
+export interface PactTable {
   id: string;
   user_id: string;
   device_id: string | null;
@@ -84,7 +89,7 @@ export interface CommitmentTable {
   timezone: string;
   starts_at: GeneratedTimestamp;
   ends_at: Timestamp;
-  status: Generated<CommitmentStatus>;
+  status: Generated<PactStatus>;
   ended_at: Timestamp | null;
   snapshot: JSONColumnType<Snapshot>;
   created_at: GeneratedTimestamp;
@@ -99,8 +104,8 @@ export type EventType =
   | "uninstalled"
   | "restored"
   | "limit_hit"
-  | "challenge_completed"
-  | "challenge_failed";
+  | "activity_completed"
+  | "activity_failed";
 
 export type EventReason =
   | "limit_exceeded"
@@ -112,9 +117,9 @@ export type EventReason =
   | "user_gave_up"
   | "deadline_passed";
 
-export interface CommitmentEventTable {
+export interface PactEventTable {
   id: string;
-  commitment_id: string;
+  pact_id: string;
   device_id: string | null;
   type: EventType;
   reason: EventReason | null;
@@ -126,9 +131,9 @@ export interface CommitmentEventTable {
   created_at: GeneratedTimestamp;
 }
 
-export interface ChallengeTable {
+export interface ActivityTable {
   id: string;
-  commitment_id: string;
+  pact_id: string;
   user_id: string;
   type: "walk_steps" | "focus_session" | "waiting_period";
   target: number;
@@ -192,7 +197,7 @@ export interface SubscriptionTable {
 }
 
 export interface DailySummaryTable {
-  commitment_id: string;
+  pact_id: string;
   day: ColumnType<string, string, string>; // date, as YYYY-MM-DD
   app_package: string;
   minutes_used: number;
@@ -207,9 +212,9 @@ export interface Database {
   account: AccountTable;
   verification: VerificationTable;
   device: DeviceTable;
-  commitment: CommitmentTable;
-  commitment_event: CommitmentEventTable;
-  challenge: ChallengeTable;
+  pact: PactTable;
+  pact_event: PactEventTable;
+  activity: ActivityTable;
   witness: WitnessTable;
   notification: NotificationTable;
   subscription: SubscriptionTable;

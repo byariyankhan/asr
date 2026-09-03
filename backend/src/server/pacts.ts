@@ -2,11 +2,11 @@ import { sql } from "kysely";
 import { db, isUniqueViolation } from "./db/client";
 import { requireOwnedDevice } from "./devices";
 import { conflict, notFound } from "@/lib/http";
-import type { CommitmentCreate } from "@/lib/schemas";
+import type { PactCreate } from "@/lib/schemas";
 import { addDays } from "@/lib/time";
 import { isUuidLike, newId } from "@/lib/uuid";
 
-export const commitmentColumns = [
+export const pactColumns = [
   "id",
   "user_id",
   "device_id",
@@ -21,18 +21,18 @@ export const commitmentColumns = [
   "updated_at",
 ] as const;
 
-// Lock a commitment. The partial unique index commitment_one_active_idx is
-// the real guard against two active commitments; the pre-check only makes
+// Lock a pact. The partial unique index pact_one_active_idx is
+// the real guard against two active pacts; the pre-check only makes
 // the common case a clean 409 without a failed insert.
-export async function createCommitment(userId: string, input: CommitmentCreate) {
+export async function createPact(userId: string, input: PactCreate) {
   await requireOwnedDevice(userId, input.device_id);
 
   const startsAt = new Date();
   const id = newId();
   try {
     return await db.transaction().execute(async (trx) => {
-      const commitment = await trx
-        .insertInto("commitment")
+      const pact = await trx
+        .insertInto("pact")
         .values({
           id,
           user_id: userId,
@@ -43,14 +43,14 @@ export async function createCommitment(userId: string, input: CommitmentCreate) 
           ends_at: addDays(startsAt, input.duration_days),
           snapshot: JSON.stringify(input.snapshot),
         })
-        .returning(commitmentColumns)
+        .returning(pactColumns)
         .executeTakeFirstOrThrow();
 
       await trx
-        .insertInto("commitment_event")
+        .insertInto("pact_event")
         .values({
           id: newId(),
-          commitment_id: id,
+          pact_id: id,
           device_id: input.device_id,
           type: "started",
           reason: null,
@@ -61,57 +61,57 @@ export async function createCommitment(userId: string, input: CommitmentCreate) 
         })
         .execute();
 
-      return commitment;
+      return pact;
     });
   } catch (error) {
-    if (isUniqueViolation(error, "commitment_one_active_idx")) {
-      throw conflict("commitment_active", "You already have an active commitment.");
+    if (isUniqueViolation(error, "pact_one_active_idx")) {
+      throw conflict("pact_active", "You already have an active pact.");
     }
     throw error;
   }
 }
 
-export async function getCurrentCommitment(userId: string) {
+export async function getCurrentPact(userId: string) {
   return db
-    .selectFrom("commitment")
-    .select(commitmentColumns)
+    .selectFrom("pact")
+    .select(pactColumns)
     .where("user_id", "=", userId)
     .where("status", "=", "active")
     .executeTakeFirst();
 }
 
 // Owner-only for now; witness access is added with the witness routes.
-export async function requireOwnedCommitment(userId: string, commitmentId: string) {
-  if (!isUuidLike(commitmentId)) throw notFound("Commitment");
-  const commitment = await db
-    .selectFrom("commitment")
-    .select(commitmentColumns)
-    .where("id", "=", commitmentId)
+export async function requireOwnedPact(userId: string, pactId: string) {
+  if (!isUuidLike(pactId)) throw notFound("Pact");
+  const pact = await db
+    .selectFrom("pact")
+    .select(pactColumns)
+    .where("id", "=", pactId)
     .where("user_id", "=", userId)
     .executeTakeFirst();
-  if (!commitment) throw notFound("Commitment");
-  return commitment;
+  if (!pact) throw notFound("Pact");
+  return pact;
 }
 
-export async function getCommitmentWithEvents(userId: string, commitmentId: string) {
-  const commitment = await requireOwnedCommitment(userId, commitmentId);
+export async function getPactWithEvents(userId: string, pactId: string) {
+  const pact = await requireOwnedPact(userId, pactId);
   const events = await db
-    .selectFrom("commitment_event")
+    .selectFrom("pact_event")
     .select(["id", "type", "reason", "app_package", "minutes", "occurred_at", "received_at", "source"])
-    .where("commitment_id", "=", commitmentId)
+    .where("pact_id", "=", pactId)
     .orderBy("received_at", "desc")
     .orderBy("id", "desc")
     .execute();
-  return { ...commitment, events };
+  return { ...pact, events };
 }
 
 // Newest first, cursor = id of the last row seen. The (created_at, id) tuple
 // is compared inside SQL against the cursor row so microsecond precision is
 // never lost through a JS Date.
-export async function listCommitments(userId: string, cursor: string | undefined, limit: number) {
+export async function listPacts(userId: string, cursor: string | undefined, limit: number) {
   let query = db
-    .selectFrom("commitment")
-    .select(commitmentColumns)
+    .selectFrom("pact")
+    .select(pactColumns)
     .where("user_id", "=", userId)
     .orderBy("created_at", "desc")
     .orderBy("id", "desc")
@@ -120,7 +120,7 @@ export async function listCommitments(userId: string, cursor: string | undefined
   if (cursor) {
     if (!isUuidLike(cursor)) throw notFound("Cursor");
     query = query.where(
-      sql<boolean>`(commitment.created_at, commitment.id) < (select c.created_at, c.id from commitment c where c.id = ${cursor} and c.user_id = ${userId})`,
+      sql<boolean>`(pact.created_at, pact.id) < (select c.created_at, c.id from pact c where c.id = ${cursor} and c.user_id = ${userId})`,
     );
   }
 

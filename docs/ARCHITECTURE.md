@@ -12,9 +12,9 @@ witnesses what happened.
 │ Android app (per device)     │        │ Backend (api.joinasr.com)    │
 │                              │  HTTPS │                              │
 │ • reads usage (UsageStats)   │───────▶│ • accounts + sessions        │
-│ • blocks apps (overlay)      │        │ • commitment ledger          │
+│ • blocks apps (overlay)      │        │ • pact ledger          │
 │ • keeps limits, reset times  │        │ • outcome events             │
-│ • runs challenges            │        │ • witness graph              │
+│ • runs activities            │        │ • witness graph              │
 │ • computes streaks locally   │◀───────│ • heartbeat watchdog         │
 │ • sends: heartbeats, events, │  FCM   │ • notifications (FCM/email)  │
 │   daily summary              │        │ • Play Billing verification  │
@@ -29,10 +29,10 @@ witnesses what happened.
 ### The phone owns
 
 - Which apps are controlled, their limits, reset times (also mirrored to the
-  server inside the commitment snapshot, so a reinstall can restore them).
+  server inside the pact snapshot, so a reinstall can restore them).
 - Real-time foreground detection and blocking.
 - Per-app usage counters and their daily reset.
-- Challenge progress (steps, focus timer, waiting period).
+- Activity progress (steps, focus timer, waiting period).
 - Deciding that a rule was broken, and reporting it as an event.
 - Streak and history screens (computed from the local event log; the server
   copy exists only so witnesses can see the same numbers).
@@ -40,10 +40,10 @@ witnesses what happened.
 ### The server owns
 
 - Identity: accounts, sessions, devices, FCM tokens.
-- The commitment ledger: what was promised, when, for how long, with which
+- The pact ledger: what was promised, when, for how long, with which
   apps and limits, and how it ended.
 - Outcome events reported by the device, deduplicated by idempotency key.
-- Detecting silence: no heartbeat during an active commitment means
+- Detecting silence: no heartbeat during an active pact means
   protection was lost or the app was removed.
 - Witness relationships and their notification preferences.
 - Sending notifications and remembering that they were sent.
@@ -60,11 +60,11 @@ user went quiet:
 
 | Leaves the device | Does not |
 |---|---|
-| Commitment snapshot (package names + limits) | Installed app list |
+| Pact snapshot (package names + limits) | Installed app list |
 | `broken` / `completed` events with a reason code | Per-session start/end times |
-| Challenge completed / failed | Step counts, locations |
+| Activity completed / failed | Step counts, locations |
 | Daily summary: minutes per controlled app per day (optional) | Which app was opened when |
-| Heartbeat (device alive, protection on, app version) | Anything about apps not under a commitment |
+| Heartbeat (device alive, protection on, app version) | Anything about apps not under a pact |
 
 Why:
 
@@ -87,9 +87,9 @@ Definitions and DDL are in `DATABASE.md`.
 |---|---|
 | `user` | Account, timezone, notification preferences (Better Auth also owns `session`, `account`, `verification`) |
 | `device` | Android install: FCM token, app version, `last_heartbeat_at`, protection flag |
-| `commitment` | One promise: duration, start/end, status, JSON snapshot of controlled apps and limits at lock time |
-| `commitment_event` | Ledger rows: `completed`, `broken`, `protection_lost`, `uninstalled`, `restored`, ... with reason code, device time, and server receive time |
-| `challenge` | One earn-your-time attempt: type, target, reward minutes, deadline, outcome |
+| `pact` | One promise: duration, start/end, status, JSON snapshot of controlled apps and limits at lock time |
+| `pact_event` | Ledger rows: `completed`, `broken`, `protection_lost`, `uninstalled`, `restored`, ... with reason code, device time, and server receive time |
+| `activity` | One earn-your-time attempt: type, target, reward minutes, deadline, outcome |
 | `witness` | Directed relationship user → witness, status, per-witness notification settings, invite code |
 | `notification` | Every message sent to anyone, with delivery result |
 | `subscription` | Play Billing state |
@@ -99,25 +99,25 @@ Nothing references Bookween.
 
 ## Key flows
 
-### Locking a commitment
+### Locking a pact
 
 1. User picks apps and limits on the phone, chooses a duration, confirms.
-2. App `POST /v1/commitments` with the snapshot. Server refuses if another
-   commitment is active.
-3. Server returns the commitment id. From now until `ends_at` the app refuses
+2. App `POST /v1/pacts` with the snapshot. Server refuses if another
+   pact is active.
+3. Server returns the pact id. From now until `ends_at` the app refuses
    to raise limits or remove controlled apps; the server refuses the same on
    its side if an API call tries.
-4. Witnesses get "X started a 7-day commitment" (if they opted in).
+4. Witnesses get "X started a 7-day pact" (if they opted in).
 
-### Breaking a commitment
+### Breaking a pact
 
 1. The phone detects a breach: limit exceeded and the user chose to continue,
    a controlled app was removed, protection was turned off in settings, or
    the usage permission was revoked.
 2. The phone writes the event to its local outbox with a fresh UUIDv7 as
-   idempotency key, then `POST /v1/commitments/{id}/events`.
+   idempotency key, then `POST /v1/pacts/{id}/events`.
 3. Server inserts the event (primary key is the device-generated id, so
-   retries are harmless), marks the commitment `broken`, and enqueues witness
+   retries are harmless), marks the pact `broken`, and enqueues witness
    notifications.
 4. If the phone was offline, the outbox drains on next connectivity. The
    event carries `occurred_at` from the device clock; the server also stores
@@ -131,9 +131,9 @@ WorkManager, plus on every app open and after every event. A server job runs
 every 15 minutes:
 
 ```
-for each active commitment:
+for each active pact:
   if latest heartbeat older than 24h:
-     insert commitment_event(type='protection_lost') if not already present
+     insert pact_event(type='protection_lost') if not already present
      notify witnesses
 ```
 
@@ -144,14 +144,14 @@ Uninstall is detected two ways, either of which is enough:
 - Heartbeats stop and the user has no other active device.
 
 On reinstall and login the device registers again, a `restored` event is
-written, and the commitment continues if it has not ended. V1 rule: any
-`protection_lost` during an active commitment counts as a break.
+written, and the pact continues if it has not ended. V1 rule: any
+`protection_lost` during an active pact counts as a break.
 
-### Challenges
+### Activities
 
-1. Challenge rules (which types, reward minutes, daily cap) are part of the
-   commitment snapshot, so they cannot be changed mid-commitment.
-2. The phone runs the challenge and reports `completed` with the earned
+1. Activity rules (which types, reward minutes, daily cap) are part of the
+   pact snapshot, so they cannot be changed mid-pact.
+2. The phone runs the activity and reports `completed` with the earned
    minutes, or the server marks `failed` when the deadline passes with no
    completion event (same 15-minute job).
 3. Earned minutes are applied on the phone immediately and recorded on the
@@ -165,7 +165,7 @@ written, and the commitment continues if it has not ended. V1 rule: any
    screen; otherwise it opens the Play Store listing with the code in the
    install referrer, and the app picks it up on first launch.
 4. Witness accepts: `POST /v1/witnesses/invites/{code}/accept`. The witness
-   needs an account but does not need to run any commitment themselves.
+   needs an account but does not need to run any pact themselves.
 5. Witnesses choose what they want to hear about: start, success, failure,
    daily digest, roast mode (harsher copy on failure). Preferences live on the
    `witness` row, not on the user.
@@ -191,7 +191,7 @@ Android choices are in `ANDROID.md`.
 
 - Every timestamp column is `timestamptz`.
 - The user's IANA timezone is stored on `user` and copied into every
-  commitment so daily reset and "day N of 7" are computed the way the user
+  pact so daily reset and "day N of 7" are computed the way the user
   experiences them, DST included.
 - Device clocks are untrusted. The server stores `received_at` alongside any
   device-supplied `occurred_at` and uses server time for deadlines.
@@ -203,7 +203,7 @@ Android choices are in `ANDROID.md`.
 - Rate limits per route via Redis (signup, login, invite creation, event
   ingestion). Same helper as Bookween.
 - All device-originated writes are scoped to the authenticated user's own
-  devices and commitments; ids in the path are checked against ownership
+  devices and pacts; ids in the path are checked against ownership
   before any read.
 - Witness reads are scoped by the `witness` row's `status = accepted` and the
   user's `views_progress` flag.

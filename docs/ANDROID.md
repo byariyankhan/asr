@@ -22,8 +22,8 @@ comfortable with and keep the other as a fallback that is off by default.
    resumes that app's local usage counter.
 3. When the counter reaches the limit, the service shows a full-screen
    overlay (`SYSTEM_ALERT_WINDOW`, also granted in settings) on top of the
-   blocked app. The overlay offers: go back, start a challenge to earn
-   minutes, or (during a commitment) "I give up", which records a break.
+   blocked app. The overlay offers: go back, start a activity to earn
+   minutes, or (during a pact) "I give up", which records a break.
 4. Pressing home or back returns the user to the launcher; the overlay
    re-appears the moment the blocked app is foregrounded again.
 
@@ -55,8 +55,8 @@ casually.
 | Table | Purpose |
 |---|---|
 | `controlled_app` | package, label, limit, reset time, per-day used seconds |
-| `commitment` | mirror of the server row plus `locked` flag |
-| `challenge` | local progress (steps counted, focus seconds elapsed) |
+| `pact` | mirror of the server row plus `locked` flag |
+| `activity` | local progress (steps counted, focus seconds elapsed) |
 | `outbox` | events waiting to be sent, with the UUIDv7 id, retry count, next attempt |
 | `local_event` | full history for the user's own screens (streaks, charts) |
 
@@ -84,18 +84,18 @@ The user picks a reset time (default 04:00) so a limit does not refresh at
 midnight while they are still scrolling. Counters reset when the device
 clock crosses the reset time in the user's zone. If the phone was off at
 that moment, the reset is applied on next wake based on the last reset
-timestamp. Changing the reset time is locked during a commitment.
+timestamp. Changing the reset time is locked during a pact.
 
-## Challenges
+## Activities
 
 | Type | Sensor | Verification |
 |---|---|---|
-| `walk_steps` | `TYPE_STEP_COUNTER` (needs `ACTIVITY_RECOGNITION` on API 29+) | Delta since challenge start; capped at 200 steps/min to reject shaking |
+| `walk_steps` | `TYPE_STEP_COUNTER` (needs `ACTIVITY_RECOGNITION` on API 29+) | Delta since activity start; capped at 200 steps/min to reject shaking |
 | `focus_session` | None: timer with screen-on and no controlled app foregrounded | Any controlled app foreground cancels the session |
 | `waiting_period` | None: countdown | Nothing to verify; it is friction, not proof |
 
-Reward minutes are applied locally the instant the challenge completes and
-reported to the server with the `challenge_completed` event. The daily cap
+Reward minutes are applied locally the instant the activity completes and
+reported to the server with the `activity_completed` event. The daily cap
 is enforced locally and re-checked by the server.
 
 ## Witness invite (App Links)
@@ -114,7 +114,7 @@ opens the accept screen after sign-up.
 | `PACKAGE_USAGE_STATS` | Detect the foreground app and count time | Onboarding step 2 |
 | `SYSTEM_ALERT_WINDOW` | Show the block screen over other apps | Onboarding step 3 |
 | `POST_NOTIFICATIONS` | Witness and reminder notifications | Onboarding step 4 |
-| `ACTIVITY_RECOGNITION` | Step challenges | First time a step challenge is started |
+| `ACTIVITY_RECOGNITION` | Step activities | First time a step activity is started |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | The protection service | Manifest |
 | `RECEIVE_BOOT_COMPLETED` | Restart protection after reboot | Manifest |
 

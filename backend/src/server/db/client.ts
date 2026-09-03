@@ -20,7 +20,7 @@ export const db = new Kysely<Database>({
   dialect: new PostgresDialect({ pool }),
 });
 
-// Postgres unique_violation, used to turn "one active commitment per user"
+// Postgres unique_violation, used to turn "one active pact per user"
 // and "event id already seen" into 409/200 instead of 500.
 export function isUniqueViolation(error: unknown, constraint?: string): boolean {
   if (typeof error !== "object" || error === null) return false;

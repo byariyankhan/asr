@@ -1,38 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { commitmentCreate, eventCreate, snapshot } from "./schemas";
+import { pactCreate, eventCreate, snapshot } from "./schemas";
 
 const goodSnapshot = {
   apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }],
   reset_time: "04:00",
 };
 
-const goodCommitment = {
+const goodPact = {
   device_id: "0192f1c2-1234-7abc-8def-0123456789ab",
   duration_days: 7,
   timezone: "Asia/Dhaka",
   snapshot: goodSnapshot,
 };
 
-describe("commitmentCreate", () => {
-  it("accepts a valid body and defaults challenges to {}", () => {
-    const parsed = commitmentCreate.parse(goodCommitment);
-    expect(parsed.snapshot.challenges).toEqual({});
+describe("pactCreate", () => {
+  it("accepts a valid body and defaults activities to {}", () => {
+    const parsed = pactCreate.parse(goodPact);
+    expect(parsed.snapshot.activities).toEqual({});
   });
 
   it("accepts any whole number of days from 1 to 90 and nothing else", () => {
-    expect(commitmentCreate.parse({ ...goodCommitment, duration_days: 21 }).duration_days).toBe(21);
-    expect(commitmentCreate.parse({ ...goodCommitment, duration_days: 1 }).duration_days).toBe(1);
-    expect(() => commitmentCreate.parse({ ...goodCommitment, duration_days: 0 })).toThrow();
-    expect(() => commitmentCreate.parse({ ...goodCommitment, duration_days: 91 })).toThrow();
-    expect(() => commitmentCreate.parse({ ...goodCommitment, duration_days: 7.5 })).toThrow();
+    expect(pactCreate.parse({ ...goodPact, duration_days: 21 }).duration_days).toBe(21);
+    expect(pactCreate.parse({ ...goodPact, duration_days: 1 }).duration_days).toBe(1);
+    expect(() => pactCreate.parse({ ...goodPact, duration_days: 0 })).toThrow();
+    expect(() => pactCreate.parse({ ...goodPact, duration_days: 91 })).toThrow();
+    expect(() => pactCreate.parse({ ...goodPact, duration_days: 7.5 })).toThrow();
   });
 
   it("rejects an unknown timezone", () => {
-    expect(() => commitmentCreate.parse({ ...goodCommitment, timezone: "Mars/Olympus" })).toThrow();
+    expect(() => pactCreate.parse({ ...goodPact, timezone: "Mars/Olympus" })).toThrow();
   });
 
   it("rejects a device id that is not uuid-shaped", () => {
-    expect(() => commitmentCreate.parse({ ...goodCommitment, device_id: "1 or 1=1" })).toThrow();
+    expect(() => pactCreate.parse({ ...goodPact, device_id: "1 or 1=1" })).toThrow();
   });
 });
 
@@ -73,8 +73,8 @@ describe("eventCreate", () => {
     expect(eventCreate.parse({ ...base, type: "broken", reason: "limit_exceeded" }).reason).toBe("limit_exceeded");
   });
 
-  it("requires minutes on challenge_completed", () => {
-    expect(() => eventCreate.parse({ ...base, type: "challenge_completed" })).toThrow(/minutes/);
+  it("requires minutes on activity_completed", () => {
+    expect(() => eventCreate.parse({ ...base, type: "activity_completed" })).toThrow(/minutes/);
   });
 
   it("refuses server-only event types from a device", () => {

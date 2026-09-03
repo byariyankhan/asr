@@ -7,6 +7,11 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       add column timezone text not null default 'UTC',
       add column notify_email boolean not null default true,
       add column notify_push boolean not null default true,
+      -- Optional profile, set from the "About You" screen. Kept for future
+      -- personalisation (birthday greetings, relevant offers); never required.
+      add column date_of_birth date,
+      add column country text check (country ~ '^[A-Z]{2}$'),
+      add column gender text check (gender in ('male', 'female', 'other', 'prefer_not_to_say')),
       add column deleted_at timestamptz
   `.execute(db);
 
@@ -31,7 +36,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`create index device_heartbeat_idx on device (last_heartbeat_at)`.execute(db);
 
   await sql`
-    create table commitment (
+    create table pact (
       id            uuid primary key,
       user_id       text not null references "user"(id) on delete cascade,
       device_id     uuid references device(id) on delete set null,
@@ -47,19 +52,19 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       updated_at    timestamptz not null default now()
     )
   `.execute(db);
-  await sql`create index commitment_user_status_idx on commitment (user_id, status)`.execute(db);
-  await sql`create index commitment_active_ends_idx on commitment (ends_at) where status = 'active'`.execute(db);
-  await sql`create unique index commitment_one_active_idx on commitment (user_id) where status = 'active'`.execute(db);
+  await sql`create index pact_user_status_idx on pact (user_id, status)`.execute(db);
+  await sql`create index pact_active_ends_idx on pact (ends_at) where status = 'active'`.execute(db);
+  await sql`create unique index pact_one_active_idx on pact (user_id) where status = 'active'`.execute(db);
 
   await sql`
-    create table commitment_event (
+    create table pact_event (
       id              uuid primary key,
-      commitment_id   uuid not null references commitment(id) on delete cascade,
+      pact_id   uuid not null references pact(id) on delete cascade,
       device_id       uuid references device(id) on delete set null,
       type            text not null check (type in (
                         'started', 'completed', 'broken',
                         'protection_lost', 'uninstalled', 'restored',
-                        'limit_hit', 'challenge_completed', 'challenge_failed'
+                        'limit_hit', 'activity_completed', 'activity_failed'
                       )),
       reason          text check (reason in (
                         'limit_exceeded', 'app_removed', 'protection_disabled',
@@ -74,12 +79,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       created_at      timestamptz not null default now()
     )
   `.execute(db);
-  await sql`create index commitment_event_commitment_idx on commitment_event (commitment_id, received_at desc)`.execute(db);
+  await sql`create index pact_event_pact_idx on pact_event (pact_id, received_at desc)`.execute(db);
 
   await sql`
-    create table challenge (
+    create table activity (
       id             uuid primary key,
-      commitment_id  uuid not null references commitment(id) on delete cascade,
+      pact_id  uuid not null references pact(id) on delete cascade,
       user_id        text not null references "user"(id) on delete cascade,
       type           text not null check (type in ('walk_steps', 'focus_session', 'waiting_period')),
       target         integer not null,
@@ -93,8 +98,8 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       updated_at     timestamptz not null default now()
     )
   `.execute(db);
-  await sql`create index challenge_pending_deadline_idx on challenge (deadline_at) where status = 'pending'`.execute(db);
-  await sql`create index challenge_commitment_idx on challenge (commitment_id)`.execute(db);
+  await sql`create index activity_pending_deadline_idx on activity (deadline_at) where status = 'pending'`.execute(db);
+  await sql`create index activity_pact_idx on activity (pact_id)`.execute(db);
 
   await sql`
     create table witness (
@@ -129,7 +134,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       id             uuid primary key,
       recipient_id   text not null references "user"(id) on delete cascade,
       about_user_id  text references "user"(id) on delete set null,
-      event_id       uuid references commitment_event(id) on delete set null,
+      event_id       uuid references pact_event(id) on delete set null,
       channel        text not null check (channel in ('push', 'email')),
       kind           text not null,
       title          text not null,
@@ -169,14 +174,14 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 
   await sql`
     create table daily_summary (
-      commitment_id    uuid not null references commitment(id) on delete cascade,
+      pact_id    uuid not null references pact(id) on delete cascade,
       day              date not null,
       app_package      text not null,
       minutes_used     integer not null,
       limit_min        integer not null,
       earned_min       integer not null default 0,
       received_at      timestamptz not null default now(),
-      primary key (commitment_id, day, app_package)
+      primary key (pact_id, day, app_package)
     )
   `.execute(db);
 }
@@ -187,9 +192,9 @@ export async function down(db: Kysely<unknown>): Promise<void> {
     "subscription",
     "notification",
     "witness",
-    "challenge",
-    "commitment_event",
-    "commitment",
+    "activity",
+    "pact_event",
+    "pact",
     "device",
   ]) {
     await db.schema.dropTable(table).execute();
@@ -199,6 +204,9 @@ export async function down(db: Kysely<unknown>): Promise<void> {
       drop column timezone,
       drop column notify_email,
       drop column notify_push,
+      drop column date_of_birth,
+      drop column country,
+      drop column gender,
       drop column deleted_at
   `.execute(db);
 }

@@ -4,8 +4,8 @@
 
 Asr is an Android app for people who want to use certain apps less and cannot
 do it alone. You pick the apps, set daily limits, lock them behind a
-commitment (7, 14, 21 or 30 days, or a custom length), and name one or more **witnesses**. If you break the
-commitment, disable protection, or uninstall the app, your witnesses are told.
+pact (7, 14, 21 or 30 days, or a custom length), and name one or more **witnesses**. If you break the
+pact, disable protection, or uninstall the app, your witnesses are told.
 If you keep it, they are told that too.
 
 The name comes from Surah Al-Asr (Quran 103), a short chapter about time
@@ -17,7 +17,7 @@ who hold you to it.
 
 | Path | Contents |
 |---|---|
-| `backend/` | Next.js API (`api.joinasr.com`): accounts, commitment ledger, witnesses, notifications |
+| `backend/` | Next.js API (`api.joinasr.com`): accounts, pact ledger, witnesses, notifications |
 | `android/` | Kotlin + Jetpack Compose app: enforcement, usage tracking, UI |
 | `docs/` | Design and operations documents (start with `ARCHITECTURE.md`) |
 | `infra/` | Production `docker-compose.yml`, nginx site, backup script: version of record for the VPS |
@@ -39,8 +39,8 @@ who hold you to it.
 
 ## Scope of V1
 
-In: app limits, custom reset time, commitments (presets plus custom, 1 to 90 days) that lock
-limits and app lists, "earn your time" challenges (steps, focus session,
+In: app limits, custom reset time, pacts (presets plus custom, 1 to 90 days) that lock
+limits and app lists, "earn your time" activities (steps, focus session,
 waiting period), witnesses with invite links and notification preferences
 including roast mode, protection-loss and uninstall detection, streaks and
 history, onboarding, dark/light theme, offline handling, account deletion and
