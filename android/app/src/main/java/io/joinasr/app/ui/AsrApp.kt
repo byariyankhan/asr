@@ -29,6 +29,7 @@ import io.joinasr.app.enforcement.PactViewModel
 import io.joinasr.app.ui.components.AsrBottomNav
 import io.joinasr.app.ui.components.AsrTab
 import io.joinasr.app.ui.screens.AboutYouScreen
+import io.joinasr.app.ui.screens.AddWitnessesScreen
 import io.joinasr.app.ui.screens.BlockingDisclosureScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ChooseAppsScreen
@@ -46,6 +47,8 @@ import io.joinasr.app.ui.screens.SignUpScreen
 import io.joinasr.app.ui.screens.UsageAccessScreen
 import io.joinasr.app.ui.screens.WelcomeScreen
 import io.joinasr.app.ui.screens.WitnessesScreen
+import io.joinasr.app.witness.Relationships
+import io.joinasr.app.witness.WitnessViewModel
 import io.joinasr.app.ui.theme.AsrColors
 
 /**
@@ -65,10 +68,7 @@ private sealed interface Destination {
  *
  * The design numbers six of them, and the screens say so in their eyebrows:
  * duration, usage access, choose apps, daily limits, witnesses, protection.
- * Five exist; witnesses (Figma 08) does not. The numbering is left alone
- * rather than renumbered to match what is built, because it is what the
- * finished flow says and renumbering twice is how the labels end up
- * disagreeing with the screens.
+ * All six exist.
  *
  * Setup ends when the pact is committed, not on a flag. That is why the
  * commit happens on the last step rather than partway through: a challenge
@@ -80,6 +80,7 @@ private sealed interface SetupStep {
     data object UsageAccess : SetupStep
     data object ChooseApps : SetupStep
     data object DailyLimits : SetupStep
+    data object Witnesses : SetupStep
     data object Protection : SetupStep
     data object BlockingDisclosure : SetupStep
 }
@@ -98,9 +99,11 @@ private val ProfileRoutes = setOf(
 fun AsrApp(
     viewModel: SessionViewModel = viewModel(),
     pactViewModel: PactViewModel = viewModel(),
+    witnessViewModel: WitnessViewModel = viewModel(),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
+    val witnesses by witnessViewModel.witnesses.collectAsStateWithLifecycle()
     val submitting by viewModel.submitting.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
@@ -113,6 +116,7 @@ fun AsrApp(
     // stack, for the same reason Destination is: three destinations do not
     // need a navigation library.
     var profileRoute by remember { mutableStateOf<ProfileDestination?>(null) }
+    var addingWitness by remember { mutableStateOf(false) }
 
     // Held here and nowhere else, for the length of the setup flow only. A
     // half-made challenge is not something the app should remember: it is
@@ -140,8 +144,12 @@ fun AsrApp(
 
     // Back from any other tab returns to Home rather than leaving the app,
     // which is what a bottom bar implies and what every app with one does.
-    BackHandler(enabled = tab != AsrTab.Home || profileRoute != null) {
-        if (profileRoute != null) profileRoute = null else tab = AsrTab.Home
+    BackHandler(enabled = tab != AsrTab.Home || profileRoute != null || addingWitness) {
+        when {
+            profileRoute != null -> profileRoute = null
+            addingWitness -> addingWitness = false
+            else -> tab = AsrTab.Home
+        }
     }
 
     when (val current = session) {
@@ -203,12 +211,23 @@ fun AsrApp(
                         onBack = { setupStep = SetupStep.ChooseApps },
                         onContinue = { limits ->
                             chosenLimits = limits
-                            setupStep = SetupStep.Protection
+                            setupStep = SetupStep.Witnesses
                         },
                     )
 
-                    SetupStep.Protection -> ProtectionScreen(
+                    // Figma 08. Invites go through Android's share sheet, so
+                    // this step needs no server and works today.
+                    SetupStep.Witnesses -> AddWitnessesScreen(
+                        fromName = current.me.name,
+                        challengeDays = chosenDays,
+                        witnesses = witnesses,
                         onBack = { setupStep = SetupStep.DailyLimits },
+                        onAdd = witnessViewModel::add,
+                        onContinue = { setupStep = SetupStep.Protection },
+                    )
+
+                    SetupStep.Protection -> ProtectionScreen(
+                        onBack = { setupStep = SetupStep.Witnesses },
                         // Figma 10, which explains what the overlay reads
                         // before Settings opens rather than after.
                         onReviewBlocking = { setupStep = SetupStep.BlockingDisclosure },
@@ -249,15 +268,26 @@ fun AsrApp(
 
                             AsrTab.Progress -> ProgressScreen(pact = activePact)
 
-                            AsrTab.Witnesses -> WitnessesScreen(
-                                witnesses = emptyList(),
-                                onAdd = {},
-                                // Inviting somebody needs a link the server
-                                // issues and a way to tell them a pact broke.
-                                // Until that exists the button is visibly not
-                                // pressable, rather than pressable and inert.
-                                addEnabled = false,
-                            )
+                            AsrTab.Witnesses -> if (addingWitness) {
+                                AddWitnessesScreen(
+                                    fromName = current.me.name,
+                                    challengeDays = activePact.durationDays,
+                                    witnesses = witnesses,
+                                    onBack = { addingWitness = false },
+                                    onAdd = witnessViewModel::add,
+                                    onContinue = { addingWitness = false },
+                                    // Not a setup step here: the eyebrow
+                                    // would be counting a flow the person is
+                                    // not in.
+                                    showStepNumber = false,
+                                )
+                            } else {
+                                WitnessesScreen(
+                                    witnesses = witnesses,
+                                    onAdd = { addingWitness = true },
+                                    addEnabled = witnesses.size < Relationships.SLOTS,
+                                )
+                            }
 
                             AsrTab.Profile -> when (profileRoute) {
                                 null -> ProfileScreen(

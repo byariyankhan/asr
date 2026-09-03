@@ -26,32 +26,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.joinasr.app.witness.Witness
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
 
-/** One person keeping somebody honest. */
-data class Witness(
-    val id: String,
-    val name: String,
-    val relationship: String,
-    val active: Boolean,
-    /** The last thing they reacted with, if they have. */
-    val reaction: String? = null,
-)
-
 /**
  * Figma 15 — Accountability / My Witnesses (node 91:2).
  *
- * The list is empty, and will be until witnesses can be invited: that needs
- * an invite on the server, a link for the other person to open, and a way to
- * tell them a pact broke, none of which exist yet. The screen is drawn
- * anyway, with the counts reading zero and the summary saying what that
- * means, because the alternative is either a tab that is not there or a tab
- * showing three people who do not exist.
+ * Witnesses invited on Figma 08 appear here. They stay pending until the
+ * other person accepts, which needs an invite the server issues and a link
+ * that opens this app — so for now every one of them reads INVITED, which is
+ * exactly what it is.
  *
- * Everything else on the frame is real and ready: the moment the invite flow
- * lands, the cards below fill in.
+ * The reaction badge the frame draws over each avatar is not here. A
+ * reaction is something a witness sends, and nothing can reach them yet.
  */
 @Composable
 fun WitnessesScreen(
@@ -60,7 +49,7 @@ fun WitnessesScreen(
     addEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val active = witnesses.count { it.active }
+    val accepted = witnesses.count { it.accepted }
 
     Column(
         modifier = modifier
@@ -81,7 +70,7 @@ fun WitnessesScreen(
         )
 
         Spacer(Modifier.height(20.dp))
-        SummaryCard(count = witnesses.size, active = active)
+        SummaryCard(count = witnesses.size, accepted = accepted)
 
         Spacer(Modifier.height(26.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -92,7 +81,7 @@ fun WitnessesScreen(
                 modifier = Modifier.weight(1f),
             )
             Text(
-                "$active active",
+                if (witnesses.isEmpty()) "none yet" else "${witnesses.size} invited",
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,
             )
@@ -118,7 +107,7 @@ fun WitnessesScreen(
 }
 
 @Composable
-private fun SummaryCard(count: Int, active: Int) {
+private fun SummaryCard(count: Int, accepted: Int) {
     val shape = RoundedCornerShape(20.dp)
     Column(
         modifier = Modifier
@@ -139,18 +128,18 @@ private fun SummaryCard(count: Int, active: Int) {
             StatusPill(
                 text = when {
                     count == 0 -> "NONE YET"
-                    active == count -> "ALL ACTIVE"
-                    else -> "SOME PENDING"
+                    accepted == count -> "ALL ACTIVE"
+                    else -> "INVITED"
                 },
-                highlighted = count > 0 && active == count,
+                highlighted = count > 0 && accepted == count,
             )
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            if (count == 0) {
-                "Nobody is watching this challenge yet."
-            } else {
-                "They'll be notified if you break the pact."
+            when {
+                count == 0 -> "Nobody is watching this challenge yet."
+                accepted == count -> "They'll be notified if you break the pact."
+                else -> "Invitations are out. They'll be notified once they accept."
             },
             style = AsrType.Field.copy(fontSize = 14.sp),
             color = AsrColors.TextSecondary,
@@ -198,29 +187,17 @@ private fun WitnessCard(witness: Witness) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    witness.name.take(1).uppercase(),
+                    witness.label.take(1).uppercase(),
                     style = AsrType.Button.copy(fontSize = 16.sp),
                     color = AsrColors.Accent,
                 )
-            }
-            if (witness.reaction != null) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(AsrColors.Background)
-                        .border(1.5.dp, AsrColors.Accent, RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(witness.reaction, style = AsrType.Label.copy(fontSize = 13.sp))
-                }
             }
         }
 
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                witness.name,
+                witness.label,
                 style = AsrType.CardTitle,
                 color = AsrColors.TextPrimary,
                 maxLines = 1,
@@ -228,7 +205,7 @@ private fun WitnessCard(witness: Witness) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "Relationship · ${witness.relationship}",
+                "Relationship · ${witness.label}",
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,
                 maxLines = 1,
@@ -236,7 +213,7 @@ private fun WitnessCard(witness: Witness) {
             )
         }
         Spacer(Modifier.width(10.dp))
-        StatusPill(if (witness.active) "ACTIVE" else "PENDING", witness.active)
+        StatusPill(if (witness.accepted) "ACTIVE" else "INVITED", witness.accepted)
     }
 }
 
@@ -254,8 +231,8 @@ private fun EmptyState() {
         Spacer(Modifier.height(8.dp))
         Text(
             "A witness is somebody who is told when you break your pact. " +
-                "Inviting them needs the invite link, which is the next part " +
-                "being built.",
+                "Add one and Asr hands the invitation to whatever you already " +
+                "use to talk to them.",
             style = AsrType.Legal,
             color = AsrColors.TextSecondary,
         )
@@ -320,7 +297,7 @@ private fun LockNote() {
 @Preview(widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 private fun WitnessesEmptyPreview() {
-    AsrTheme { WitnessesScreen(witnesses = emptyList(), onAdd = {}, addEnabled = false) }
+    AsrTheme { WitnessesScreen(witnesses = emptyList(), onAdd = {}, addEnabled = true) }
 }
 
 @Preview(widthDp = 393, heightDp = 852, showBackground = true)
@@ -329,9 +306,8 @@ private fun WitnessesPreview() {
     AsrTheme {
         WitnessesScreen(
             witnesses = listOf(
-                Witness("1", "Mom", "Mom", active = true, reaction = "👏"),
-                Witness("2", "Brother", "Brother", active = true, reaction = "😂"),
-                Witness("3", "Friend", "Friend", active = false),
+                Witness("1", "mother", 0, accepted = true),
+                Witness("2", "brother", 0),
             ),
             onAdd = {},
             addEnabled = true,
