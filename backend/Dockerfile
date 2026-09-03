@@ -21,6 +21,21 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm build
 
+# Next's standalone tracer copies @swc/helpers without its esm/ subfolder when
+# the package is reached through pnpm's symlinked store, and next's
+# require-hook then dies at boot on _interop_require_default.js. Confirmed
+# here the hard way: the container started, exited MODULE_NOT_FOUND, and
+# /v1/health never answered. Copy esm/ back for every version present, then
+# assert the exact file Next asked for exists — a silent no-op glob would put
+# the same crash back into production.
+RUN set -eu; \
+    for dest in .next/standalone/node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers; do \
+      pkg=$(echo "$dest" | sed "s#.*/\.pnpm/\([^/]*\)/.*#\1#"); \
+      cp -r "node_modules/.pnpm/$pkg/node_modules/@swc/helpers/esm" "$dest/esm"; \
+      echo "patched $dest"; \
+    done; \
+    ls .next/standalone/node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/esm/_interop_require_default.js
+
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
