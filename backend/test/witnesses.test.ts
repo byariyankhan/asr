@@ -43,7 +43,7 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
   it("creates an invite with a shareable code", async () => {
     const invite = await createInvite(alice, { relationship: "sibling" });
     expect(invite.invite_code).toMatch(/^[A-HJ-NP-Z2-9]{10}$/);
-    expect(invite.url).toBe(`https://joinasr.com/w/${invite.invite_code}`);
+    expect(invite.url).toBe(`https://joinasr.io/w/${invite.invite_code}`);
     inviteCode = invite.invite_code;
     witnessRowId = invite.id;
   });

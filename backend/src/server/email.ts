@@ -11,8 +11,8 @@ function resend(): Resend | null {
   return client;
 }
 
-const FROM = () => process.env.EMAIL_FROM ?? "Asr <noreply@joinasr.com>";
-const SITE = () => process.env.PUBLIC_SITE_URL ?? "https://joinasr.com";
+const FROM = () => process.env.EMAIL_FROM ?? "Asr <noreply@joinasr.io>";
+const SITE = () => process.env.PUBLIC_SITE_URL ?? "https://joinasr.io";
 
 export async function sendEmail(to: string, subject: string, text: string): Promise<EmailResult> {
   const api = resend();

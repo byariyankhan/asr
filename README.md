@@ -17,7 +17,7 @@ who hold you to it.
 
 | Path | Contents |
 |---|---|
-| `backend/` | Next.js API (`api.joinasr.com`): accounts, pact ledger, witnesses, notifications |
+| `backend/` | Next.js API (`api.joinasr.io`): accounts, pact ledger, witnesses, notifications |
 | `android/` | Kotlin + Jetpack Compose app: enforcement, usage tracking, UI |
 | `docs/` | Design and operations documents (start with `ARCHITECTURE.md`) |
 | `infra/` | Production `docker-compose.yml`, nginx site, backup script: version of record for the VPS |
@@ -58,9 +58,9 @@ Billing. Reasons for each choice are in `docs/ARCHITECTURE.md`.
 
 ## Domains
 
-- `joinasr.com`: landing page and witness invite links (`joinasr.com/w/<code>`)
-- `api.joinasr.com`: backend
-- `noreply@joinasr.com`: transactional email
+- `joinasr.io`: landing page and witness invite links (`joinasr.io/w/<code>`)
+- `api.joinasr.io`: backend
+- `noreply@joinasr.io`: transactional email
 
 Each lives in exactly one config place (`/opt/asr/.env`, the Android build
 config, `infra/nginx/asr-api`). Changing the domain later is a config change,

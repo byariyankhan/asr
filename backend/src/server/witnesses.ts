@@ -26,7 +26,7 @@ export const witnessColumns = [
   "updated_at",
 ] as const;
 
-const SITE_URL = () => process.env.PUBLIC_SITE_URL ?? "https://joinasr.com";
+const SITE_URL = () => process.env.PUBLIC_SITE_URL ?? "https://joinasr.io";
 
 export function inviteUrl(code: string): string {
   return `${SITE_URL()}/w/${code}`;

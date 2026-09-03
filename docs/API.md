@@ -1,6 +1,6 @@
 # API
 
-Base URL `https://api.joinasr.com/v1`. JSON in, JSON out. All times are
+Base URL `https://api.joinasr.io/v1`. JSON in, JSON out. All times are
 ISO 8601 with offset. Ids are UUIDs.
 
 ## Authentication
@@ -196,7 +196,7 @@ without completion; the app learns about it on next sync.
 notifications. `201`:
 
 ```json
-{ "id": "…", "invite_code": "K7M2P9XQ4T", "relationship": "sibling", "url": "https://joinasr.com/w/K7M2P9XQ4T" }
+{ "id": "…", "invite_code": "K7M2P9XQ4T", "relationship": "sibling", "url": "https://joinasr.io/w/K7M2P9XQ4T" }
 ```
 
 If `email` is given the delivery worker also sends the link by email.

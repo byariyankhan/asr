@@ -10,7 +10,7 @@ import { newId } from "@/lib/uuid";
 // /v1 request carries it as `Authorization: Bearer <token>`. No cookies are
 // relied on; nothing is shared with Bookween's auth.
 //
-// Reset and verification links point at joinasr.com/reset/<token> and
+// Reset and verification links point at joinasr.io/reset/<token> and
 // /verify/<token>, which are Android App Links: they open the app, which
 // then calls the matching /api/auth endpoint with the token.
 export const auth = betterAuth({

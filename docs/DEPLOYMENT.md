@@ -24,8 +24,8 @@ stacks cannot be confused on the Docker side either.
 
 ### 1. DNS
 
-`A` records for `joinasr.com` and `api.joinasr.com` → `187.52.122.99`.
-Wait until `getent hosts api.joinasr.com` on the VPS returns the IP.
+`A` records for `joinasr.io` and `api.joinasr.io` → `187.52.122.99`.
+Wait until `getent hosts api.joinasr.io` on the VPS returns the IP.
 
 ### 2. Directory and checkout
 
@@ -44,10 +44,10 @@ cp /opt/asr/src/infra/backup.sh /opt/asr/backup.sh && chmod 700 /opt/asr/backup.
 PG_PASS=
 REDIS_PASS=
 BETTER_AUTH_SECRET=
-BETTER_AUTH_URL=https://api.joinasr.com
-PUBLIC_SITE_URL=https://joinasr.com
+BETTER_AUTH_URL=https://api.joinasr.io
+PUBLIC_SITE_URL=https://joinasr.io
 RESEND_API_KEY=
-EMAIL_FROM=Asr <noreply@joinasr.com>
+EMAIL_FROM=Asr <noreply@joinasr.io>
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=           # keep the \n escapes; the app unescapes them
@@ -78,11 +78,11 @@ wget -qO- http://127.0.0.1:3001/v1/health
 cp /opt/asr/src/infra/nginx/asr-api /etc/nginx/sites-available/asr-api
 ln -s /etc/nginx/sites-available/asr-api /etc/nginx/sites-enabled/asr-api
 nginx -t && systemctl reload nginx
-certbot --nginx -d api.joinasr.com
+certbot --nginx -d api.joinasr.io
 ```
 
 The landing page and the `/w/<code>` fallback are served by the same API
-container under the `joinasr.com` host; add that site the same way when the
+container under the `joinasr.io` host; add that site the same way when the
 page exists (`infra/nginx/asr-site`).
 
 ### 6. Backups

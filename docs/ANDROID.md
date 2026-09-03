@@ -100,8 +100,8 @@ is enforced locally and re-checked by the server.
 
 ## Witness invite (App Links)
 
-`https://joinasr.com/w/<code>` is declared as an Android App Link with
-`autoVerify`, backed by `/.well-known/assetlinks.json` on `joinasr.com`. If
+`https://joinasr.io/w/<code>` is declared as an Android App Link with
+`autoVerify`, backed by `/.well-known/assetlinks.json` on `joinasr.io`. If
 the app is installed, the link opens the accept screen. If not, the fallback
 web page shows the inviter's name and a Play Store button with
 `referrer=w_<code>`; the app reads the install referrer on first launch and
@@ -136,5 +136,5 @@ No location, contacts, camera, microphone, or SMS.
 
 Domain and API base URL come from `BuildConfig` fields set in
 `android/app/build.gradle.kts` per flavor (`dev` points at a local server,
-`prod` at `https://api.joinasr.com`). Nothing is hard-coded in Kotlin
+`prod` at `https://api.joinasr.io`). Nothing is hard-coded in Kotlin
 source.

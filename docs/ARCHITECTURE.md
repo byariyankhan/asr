@@ -9,7 +9,7 @@ witnesses what happened.
 
 ```
 ┌──────────────────────────────┐        ┌──────────────────────────────┐
-│ Android app (per device)     │        │ Backend (api.joinasr.com)    │
+│ Android app (per device)     │        │ Backend (api.joinasr.io)    │
 │                              │  HTTPS │                              │
 │ • reads usage (UsageStats)   │───────▶│ • accounts + sessions        │
 │ • blocks apps (overlay)      │        │ • pact ledger          │
@@ -162,7 +162,7 @@ written, and the pact continues if it has not ended. V1 rule: any
 ### Witness invite
 
 1. User creates an invite: `POST /v1/witnesses/invites` returns a code.
-2. App shares `https://joinasr.com/w/<code>` via the system share sheet.
+2. App shares `https://joinasr.io/w/<code>` via the system share sheet.
 3. The link is an Android App Link. If Asr is installed it opens the accept
    screen; otherwise it opens the Play Store listing with the code in the
    install referrer, and the app picks it up on first launch.
@@ -221,7 +221,7 @@ Because nothing is shared with Bookween, the move is:
 1. `pg_dump -Fc` the `asr` database from the current container.
 2. On the new server: copy `/opt/asr` (compose, `.env`, nginx site), restore
    the dump, start the stack.
-3. Point `api.joinasr.com` and `joinasr.com` at the new IP.
+3. Point `api.joinasr.io` and `joinasr.io` at the new IP.
 4. Redis content is disposable (rate-limit counters, watchdog marker); it
    does not need to be migrated.
 
