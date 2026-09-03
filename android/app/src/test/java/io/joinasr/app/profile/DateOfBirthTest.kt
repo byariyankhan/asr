@@ -27,7 +27,11 @@ class DateOfBirthTest {
         // text this function already formatted.
         assertEquals("29 / 02 / 2000", DateOfBirth.format("29 / 02 / 2000"))
         assertEquals("29 / 02 / 2000", DateOfBirth.format("29-02-2000"))
-        assertEquals("29 / 02 / 2000", DateOfBirth.format("abc29feb2000xyz"))
+        // Letters are dropped, so a string like "29feb2000" leaves six
+        // digits, not eight, and formats as the six it has. Worth asserting
+        // exactly that: it is what the field shows while somebody is midway
+        // through, and getting it wrong is how a caret jumps.
+        assertEquals("29 / 20 / 00", DateOfBirth.format("abc29feb2000xyz"))
     }
 
     @Test
