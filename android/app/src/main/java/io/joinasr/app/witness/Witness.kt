@@ -11,21 +11,18 @@ data class Relationship(val value: String, val label: String)
  *
  * There is no name here, because screen 08 never asks for one: it asks for a
  * relationship and then hands the invite to Android's share sheet. The name
- * arrives when the other person accepts, which is a server the app does not
- * have yet — so until then the relationship *is* the name, which is what the
- * design shows anyway ("Mom", "Relationship · Mom").
+ * arrives with the other person when they accept, so until then the
+ * relationship *is* the name — which is what the design shows anyway ("Mom",
+ * "Relationship · Mom").
  */
 @Serializable
 data class Witness(
     val id: String,
     val relationship: String,
     val invitedAtMillis: Long,
-    /**
-     * True once the other person has accepted. Nothing sets it yet: accepting
-     * needs an invite the server issues and a link that opens this app, and
-     * neither exists. It is here rather than added later so that a witness
-     * invited today is not one the app has to guess about tomorrow.
-     */
+    /** The link the server issued for this invite, so it can be shared again. */
+    val inviteUrl: String? = null,
+    /** True once the other person has opened the link and accepted. */
     val accepted: Boolean = false,
 ) {
     val label: String get() = Relationships.labelFor(relationship)
@@ -40,15 +37,22 @@ data class Witness(
  */
 object Relationships {
 
+    /**
+     * Exactly the set the server accepts, in the same spelling.
+     *
+     * The API validates `relationship` against an enum, so a client list
+     * that read "mother" and "brother" would have been refused with a 400 on
+     * the first invite anybody sent. The labels are this app's; the values
+     * are the server's, and they must stay that way.
+     */
     val all: List<Relationship> = listOf(
-        Relationship("mother", "Mother"),
-        Relationship("father", "Father"),
-        Relationship("brother", "Brother"),
-        Relationship("sister", "Sister"),
+        Relationship("parent", "Parent"),
+        Relationship("sibling", "Brother or sister"),
+        Relationship("spouse", "Husband or wife"),
         Relationship("partner", "Partner"),
         Relationship("friend", "Friend"),
-        Relationship("colleague", "Colleague"),
         Relationship("mentor", "Mentor"),
+        Relationship("colleague", "Colleague"),
         Relationship("other", "Someone else"),
     )
 
@@ -62,18 +66,17 @@ object Relationships {
     /**
      * What the share sheet sends.
      *
-     * No link in it. An invite link needs a page that accepts it, and this
-     * app has no such page: a URL that 404s in somebody's mother's messages
-     * is worse than an invitation that simply says what it is and asks them
-     * to expect one. The link goes in the moment the server can answer it.
+     * The link is the server's: it allocates the code, stores it against
+     * this account and hands back the URL that opens it. Composing one here
+     * that merely looked right would be a link nothing answers.
      */
-    fun inviteText(fromName: String, relationship: String, days: Int): String {
+    fun inviteText(fromName: String, relationship: String, days: Int, url: String): String {
         val name = fromName.trim().ifBlank { "Someone" }
         val role = labelFor(relationship).lowercase()
         return "$name is starting a $days-day challenge to cut down their screen time, " +
             "and has asked you — as their $role — to be a witness.\n\n" +
             "Being a witness means you are told if they break it. That is the whole " +
             "point: it is harder to quit when somebody knows.\n\n" +
-            "Asr will send you the link to accept once it is out."
+            url
     }
 }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -40,21 +41,24 @@ import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
 import io.joinasr.app.witness.Relationship
 import io.joinasr.app.witness.Relationships
+import io.joinasr.app.witness.ShareInvite
 import io.joinasr.app.witness.Witness
 
 /**
  * Figma 08 — Setup / Add Witnesses (node 67:25).
  *
  * The design's own answer to inviting somebody is Android's share sheet, and
- * that is why this screen works today with no server behind it: a
- * relationship is chosen, Share hands the invitation to whatever the person
- * already uses to talk to their mother, and the slot is filled.
+ * it is the right one: a relationship is chosen, the server issues an invite
+ * link for it, and Share hands the invitation to whatever the person already
+ * uses to talk to their mother.
+ *
+ * The link comes back from the server rather than being composed here. It
+ * allocates the code and stores it against the account, so what gets shared
+ * is a URL something will actually answer.
  *
  * There is no name field because the frame has none. A witness is a
- * relationship and an invitation; the name arrives when they accept, which
- * needs the server. The invitation itself carries no link for the same
- * reason — a URL that 404s in somebody's mother's messages is worse than an
- * invitation that says plainly what it is.
+ * relationship and an invitation; the name arrives with the person when they
+ * accept.
  */
 @Composable
 fun AddWitnessesScreen(
@@ -62,13 +66,36 @@ fun AddWitnessesScreen(
     challengeDays: Int,
     witnesses: List<Witness>,
     onBack: () -> Unit,
-    onAdd: (relationship: String) -> Unit,
+    onInvite: (relationship: String) -> Unit,
     onContinue: () -> Unit,
+    /** Set once the server has issued a link; cleared by [onShared]. */
+    pendingShare: ShareInvite?,
+    onShared: () -> Unit,
+    inviting: Boolean,
+    errorMessage: String?,
     modifier: Modifier = Modifier,
     /** The setup step shows its number and requires one; the tab does not. */
     showStepNumber: Boolean = true,
 ) {
     val context = LocalContext.current
+
+    // The sheet opens when the invite comes back, not when Share is pressed:
+    // there is nothing to share until the server has issued the link.
+    LaunchedEffect(pendingShare) {
+        val invite = pendingShare ?: return@LaunchedEffect
+        val text = Relationships.inviteText(
+            fromName = fromName,
+            relationship = invite.relationship,
+            days = challengeDays,
+            url = invite.url,
+        )
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        runCatching { context.startActivity(Intent.createChooser(share, "Invite a witness")) }
+        onShared()
+    }
 
     // What each empty slot has selected but not yet shared. Keyed by slot so
     // choosing a relationship in slot 2 does not disturb slot 3.
@@ -110,25 +137,19 @@ fun AddWitnessesScreen(
                 invited = invited,
                 selected = chosen[slot],
                 onSelect = { chosen[slot] = it },
+                busy = inviting,
                 onShare = {
                     val relationship = chosen[slot]?.value ?: return@WitnessSlot
-                    val text = Relationships.inviteText(fromName, relationship, challengeDays)
-                    val share = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, text)
-                    }
-                    // The slot counts as filled once the sheet has opened.
-                    // Android does not tell an app whether anything was
-                    // actually sent, and a witness who was invited and did
-                    // not reply is a real state anyway.
-                    runCatching {
-                        context.startActivity(Intent.createChooser(share, "Invite a witness"))
-                        onAdd(relationship)
-                        chosen.remove(slot)
-                    }
+                    onInvite(relationship)
+                    chosen.remove(slot)
                 },
             )
             Spacer(Modifier.height(12.dp))
+        }
+
+        errorMessage?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = AsrType.Legal, color = AsrColors.Error)
         }
 
         Spacer(Modifier.height(8.dp))
@@ -185,6 +206,7 @@ private fun WitnessSlot(
     selected: Relationship?,
     onSelect: (Relationship) -> Unit,
     onShare: () -> Unit,
+    busy: Boolean,
 ) {
     val shape = RoundedCornerShape(18.dp)
     Row(
@@ -253,13 +275,13 @@ private fun WitnessSlot(
 
         if (invited == null) {
             Spacer(Modifier.width(12.dp))
-            ShareButton(enabled = selected != null, onClick = onShare)
+            ShareButton(enabled = selected != null && !busy, busy = busy, onClick = onShare)
         }
     }
 }
 
 @Composable
-private fun ShareButton(enabled: Boolean, onClick: () -> Unit) {
+private fun ShareButton(enabled: Boolean, busy: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(21.dp)
     Box(
         modifier = Modifier
@@ -272,7 +294,7 @@ private fun ShareButton(enabled: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            "Share",
+            if (busy) "…" else "Share",
             style = AsrType.Field.copy(fontSize = 13.sp),
             color = if (enabled) AsrColors.Accent else AsrColors.TextTertiary,
         )
@@ -286,10 +308,14 @@ private fun AddWitnessesPreview() {
         AddWitnessesScreen(
             fromName = "Ariyan",
             challengeDays = 14,
-            witnesses = listOf(Witness("1", "mother", 0)),
+            witnesses = listOf(Witness("1", "parent", 0)),
             onBack = {},
-            onAdd = {},
+            onInvite = {},
             onContinue = {},
+            pendingShare = null,
+            onShared = {},
+            inviting = false,
+            errorMessage = null,
         )
     }
 }

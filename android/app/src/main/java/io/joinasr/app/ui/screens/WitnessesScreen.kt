@@ -34,13 +34,13 @@ import io.joinasr.app.ui.theme.AsrType
 /**
  * Figma 15 — Accountability / My Witnesses (node 91:2).
  *
- * Witnesses invited on Figma 08 appear here. They stay pending until the
- * other person accepts, which needs an invite the server issues and a link
- * that opens this app — so for now every one of them reads INVITED, which is
- * exactly what it is.
+ * Witnesses invited on Figma 08 appear here, with the status the server
+ * holds: INVITED until the other person opens the link and accepts, ACTIVE
+ * afterwards.
  *
- * The reaction badge the frame draws over each avatar is not here. A
- * reaction is something a witness sends, and nothing can reach them yet.
+ * The reaction badge the frame draws over each avatar is not here yet. The
+ * endpoint exists; nothing in this app reads it, and an empty badge on every
+ * row would be three pixels of decoration pretending to be data.
  */
 @Composable
 fun WitnessesScreen(
@@ -231,8 +231,8 @@ private fun EmptyState() {
         Spacer(Modifier.height(8.dp))
         Text(
             "A witness is somebody who is told when you break your pact. " +
-                "Add one and Asr hands the invitation to whatever you already " +
-                "use to talk to them.",
+                "Add one and Asr issues an invite link, then hands it to " +
+                "whatever you already use to talk to them.",
             style = AsrType.Legal,
             color = AsrColors.TextSecondary,
         )

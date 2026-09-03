@@ -18,11 +18,10 @@ private val Context.witnessStore: DataStore<Preferences> by
 /**
  * The witnesses invited for the current challenge, on this phone.
  *
- * On the phone because that is where they are made: screen 08 collects a
- * relationship and hands the invite to Android's share sheet, and none of
- * that touches a server. When the server can issue and accept invites, this
- * becomes the local half of it rather than something to throw away — the
- * acceptance flag is already in the model for exactly that.
+ * A copy, not the truth: the server issues the invite code and owns the
+ * status. This is here so the list is on screen before the first request
+ * comes back and still there after one fails, which is the difference
+ * between a screen that is briefly empty and one that is briefly wrong.
  *
  * One JSON value under one key, for the same reason the pact is: a list read
  * back half-written is not a state anything downstream should have to think
@@ -36,16 +35,27 @@ class WitnessStore(context: Context) {
 
     suspend fun current(): List<Witness> = witnesses.first()
 
-    suspend fun add(relationship: String, nowMillis: Long = System.currentTimeMillis()) {
+    suspend fun add(
+        id: String,
+        relationship: String,
+        inviteUrl: String?,
+        nowMillis: Long = System.currentTimeMillis(),
+    ) {
         val witness = Witness(
-            id = "${nowMillis}-${relationship}",
+            id = id,
             relationship = relationship,
             invitedAtMillis = nowMillis,
+            inviteUrl = inviteUrl,
         )
         store.edit { preferences ->
-            val existing = decode(preferences[KEY])
+            val existing = decode(preferences[KEY]).filterNot { it.id == id }
             preferences[KEY] = json.encodeToString(existing + witness)
         }
+    }
+
+    /** The server's list, wholesale. Used after a successful refresh. */
+    suspend fun replace(witnesses: List<Witness>) {
+        store.edit { it[KEY] = json.encodeToString(witnesses) }
     }
 
     suspend fun remove(id: String) {

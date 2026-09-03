@@ -108,6 +108,9 @@ fun AsrApp(
     val session by viewModel.session.collectAsStateWithLifecycle()
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
     val witnesses by witnessViewModel.witnesses.collectAsStateWithLifecycle()
+    val pendingShare by witnessViewModel.pendingShare.collectAsStateWithLifecycle()
+    val inviting by witnessViewModel.inviting.collectAsStateWithLifecycle()
+    val witnessError by witnessViewModel.error.collectAsStateWithLifecycle()
     val submitting by viewModel.submitting.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
@@ -230,8 +233,12 @@ fun AsrApp(
                         challengeDays = chosenDays,
                         witnesses = witnesses,
                         onBack = { setupStep = SetupStep.DailyLimits },
-                        onAdd = witnessViewModel::add,
+                        onInvite = witnessViewModel::invite,
                         onContinue = { setupStep = SetupStep.Protection },
+                        pendingShare = pendingShare,
+                        onShared = witnessViewModel::shared,
+                        inviting = inviting,
+                        errorMessage = witnessError,
                     )
 
                     SetupStep.Protection -> ProtectionScreen(
@@ -302,8 +309,12 @@ fun AsrApp(
                                     challengeDays = activePact.durationDays,
                                     witnesses = witnesses,
                                     onBack = { addingWitness = false },
-                                    onAdd = witnessViewModel::add,
+                                    onInvite = witnessViewModel::invite,
                                     onContinue = { addingWitness = false },
+                                    pendingShare = pendingShare,
+                                    onShared = witnessViewModel::shared,
+                                    inviting = inviting,
+                                    errorMessage = witnessError,
                                     // Not a setup step here: the eyebrow
                                     // would be counting a flow the person is
                                     // not in.

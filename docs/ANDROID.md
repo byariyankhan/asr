@@ -32,12 +32,21 @@ whether protection is actually on — the "PROTECTED" pill reads the real
 permission state rather than always saying yes. Setup ends when the pact is
 committed, not on a flag, so the pact existing *is* what "set up" means.
 
-What does not exist yet: the witness half of the product (Figma 08, 15–18),
-earning extra time (21–24), the review screen (11), the started screen (12),
-the notification inbox (19), the "protection lost" screen (27), the profile
-and progress tabs, and any usage history or outbox on the phone. The bottom
-navigation bar is not drawn because three of its four tabs have nowhere to
-go. Nothing is sent to a server about usage at all.
+All four tabs exist — dashboard (13), progress (14), witnesses (15) and
+profile (28) — with the bar from Figma 12 drawn once around them. Setup runs
+all six of its steps, ends on the review screen (11) where the pact is
+committed, and passes through the started screen (12). Personal details
+(29), the privacy policy (36) and the terms (37) are built.
+
+Witness invites are real: the app asks the server for an invite link and
+hands it to Android's share sheet. Acceptance is the other person's half and
+is not built here.
+
+What does not exist yet: earning extra time (Figma 21–24), the two-way
+witness screens (16–18), the notification inbox (19), the breach and
+protection-lost screens (25–27), email and password (30), delete account
+(31), and password reset (33–35). Nothing about usage is sent to the server
+yet: the pact lives only on the phone, and `POST /v1/pacts` is unused.
 
 Storage is DataStore, not Room. The pact is one small immutable value read
 at service start and written once; Room earns its place with the usage
