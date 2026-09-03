@@ -35,15 +35,6 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # What the pinned versions in gradle/libs.versions.toml are being
-      # measured against. They were chosen in an environment that cannot see
-      # this list, so it is printed on every run and bumped from evidence.
-      - name: Newest published Android Gradle Plugin
-        run: |
-          curl -sSL --max-time 60 https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/maven-metadata.xml \
-            | grep -o "<version>[0-9][^<]*</version>" | tail -5
-          echo "pinned here: $(grep '^agp' gradle/libs.versions.toml)"
-
       - name: Android SDK on this runner
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
@@ -62,3 +53,16 @@ jobs:
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      # Deliberately the last step. The versions in gradle/libs.versions.toml
+      # were pinned in an environment that cannot reach this list at all, so
+      # they should be bumped from evidence rather than memory — and the only
+      # way that evidence gets read is if it lands at the end of the log,
+      # where the tail is.
+      - name: Newest published Android Gradle Plugin
+        if: always()
+        run: |
+          echo "pinned here: $(grep "^agp" gradle/libs.versions.toml)"
+          echo "newest published:"
+          curl -sSL --max-time 60 https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/maven-metadata.xml \
+            | grep -o "<version>[0-9][^<]*</version>" | tail -5

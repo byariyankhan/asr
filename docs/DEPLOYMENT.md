@@ -34,6 +34,7 @@ Add four repository secrets (Settings → Secrets and variables → Actions):
 | `VPS_HOST` | `187.52.122.99` |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | the whole Admin SDK JSON, pasted as-is |
 | `CERTBOT_EMAIL` | optional; set it and TLS is issued unattended |
+| `RESEND_API_KEY` | optional; set it and the bootstrap writes it into `.env` |
 
 Then run **Actions → Bootstrap the VPS → Run workflow**. It ships the source
 to `/opt/asr/src`, hands the Firebase key over on stdin (never on a command
@@ -56,6 +57,15 @@ The script it runs is idempotent and refuses to overwrite an existing
    `RESEND_API_KEY` and the `PLAY_*` values are left empty, which is a
    working state: email is logged instead of sent, and
    `/v1/subscription/verify` answers 503.
+
+   The script writes `.env` once and never touches it again — it must not be
+   able to clobber live credentials — so a secret added later needs another
+   way in. That is the workflow's **Fill in RESEND_API_KEY** step: it
+   rewrites that one line, leaves the rest of the file byte for byte, then
+   recreates `api` and proves the running container has the value (its
+   length, never the value) and still answers `/v1/health`. It refuses a
+   value that is not key-shaped, because a stray quote or newline in `.env`
+   silently corrupts every variable after it.
 4. **Builds** `api` then `migrate` (sequentially — see the deploy job's
    comment for why), **migrates**, and **starts** the stack.
 5. **Waits for `/v1/health`** to actually answer before going on, so

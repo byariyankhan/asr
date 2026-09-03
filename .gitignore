@@ -23,7 +23,13 @@ android/captures/
 *.aab
 *.keystore
 *.jks
+# Firebase's Android client config is not a secret — Google publishes it as a
+# file that ships inside every APK, and the key in it is restricted to this
+# package name plus the signing certificate. CI cannot build an FCM-enabled
+# build without it, and this repository is private, so the app's copy is
+# tracked. Any other copy that turns up stays ignored.
 google-services.json
+!android/app/google-services.json
 
 # Editors / OS
 .vscode/

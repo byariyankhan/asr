@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "164519550606",
+    "project_id": "joinasr-app",
+    "storage_bucket": "joinasr-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:164519550606:android:44bd3d013d889e891833df",
+        "android_client_info": {
+          "package_name": "io.joinasr.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6_rlxF4aiM6PKR4dfhAesmALSEvoWjK4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
