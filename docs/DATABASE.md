@@ -68,8 +68,8 @@ create index device_heartbeat_idx on device (last_heartbeat_at);
 create table commitment (
   id            uuid primary key,
   user_id       text not null references "user"(id) on delete cascade,
-  device_id     uuid not null references device(id),
-  duration_days integer not null check (duration_days in (1, 3, 7, 14, 30)),
+  device_id     uuid references device(id) on delete set null,
+  duration_days integer not null check (duration_days between 1 and 90),  -- presets are a UI concern
   timezone      text not null,                -- copied from user at lock time
   starts_at     timestamptz not null default now(),
   ends_at       timestamptz not null,         -- set by the server: starts_at + duration_days days
@@ -113,7 +113,7 @@ here.
 create table commitment_event (
   id              uuid primary key,             -- generated on the device; doubles as idempotency key
   commitment_id   uuid not null references commitment(id) on delete cascade,
-  device_id       uuid references device(id),   -- null for server-generated events
+  device_id       uuid references device(id) on delete set null,   -- null for server-generated events
   type            text not null check (type in (
                     'started', 'completed', 'broken',
                     'protection_lost', 'uninstalled', 'restored',

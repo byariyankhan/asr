@@ -4,7 +4,7 @@
 
 Asr is an Android app for people who want to use certain apps less and cannot
 do it alone. You pick the apps, set daily limits, lock them behind a
-commitment (1 to 30 days), and name one or more **witnesses**. If you break the
+commitment (7, 14, 21 or 30 days, or a custom length), and name one or more **witnesses**. If you break the
 commitment, disable protection, or uninstall the app, your witnesses are told.
 If you keep it, they are told that too.
 
@@ -39,7 +39,7 @@ who hold you to it.
 
 ## Scope of V1
 
-In: app limits, custom reset time, commitments (1/3/7/14/30 days) that lock
+In: app limits, custom reset time, commitments (presets plus custom, 1 to 90 days) that lock
 limits and app lists, "earn your time" challenges (steps, focus session,
 waiting period), witnesses with invite links and notification preferences
 including roast mode, protection-loss and uninstall detection, streaks and
