@@ -5,7 +5,12 @@ RUN corepack enable
 
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+# pnpm 11 keeps settings in pnpm-workspace.yaml, not package.json. Ours lists
+# the four dependencies whose install scripts are approved to run (esbuild
+# fetches its platform binary, unrs-resolver builds a native binding); without
+# that file pnpm refuses to silently skip them and exits 1, which is exactly
+# how this stage failed the first time it ran on the VPS.
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # `builder` is also the image for the one-off `migrate` service: it has the
