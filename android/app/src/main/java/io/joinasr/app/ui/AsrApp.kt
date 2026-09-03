@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.joinasr.app.apps.AppEntry
+import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.enforcement.PactViewModel
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.ui.screens.AboutYouScreen
@@ -83,6 +84,19 @@ fun AsrApp(
     // Seeded from the live state so somebody who already granted both never
     // sees the setup screens again.
     var setupDone by remember { mutableStateOf(PermissionState.read(context).requiredGranted) }
+
+    // The one place the loop is started from inside the app. Keyed on the
+    // pact so committing one starts it immediately, and on setupDone so
+    // granting usage access on the way through starts it too -- the service
+    // refuses to start without that permission, and would otherwise wait
+    // until the next launch.
+    //
+    // Starting an already-running service costs one onStartCommand, and the
+    // service stops itself when there is no pact, so there is nothing to
+    // guard here.
+    LaunchedEffect(pact, setupDone) {
+        if (pact != null) EnforcementService.start(context)
+    }
 
     // Moving between the forms drops whatever the last one was refused for.
     // An error about a password left standing over a different screen reads

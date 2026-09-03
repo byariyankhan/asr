@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The notification icon. White on transparent and nothing else: Android
+  reduces a status bar icon to its alpha channel, so anything with colour in
+  it arrives as a white blob.
+
+  A shield with a keyhole, which is the same idea as the padlock badge on the
+  block screen rather than a second unrelated symbol.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2 L4,5.2 L4,11.1 C4,16.2 7.4,20.9 12,22 C16.6,20.9 20,16.2 20,11.1 L20,5.2 L12,2 Z M12,4.15 L18,6.55 L18,11.1 C18,15.1 15.5,18.9 12,19.9 C8.5,18.9 6,15.1 6,11.1 L6,6.55 L12,4.15 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,8.2 C10.9,8.2 10,9.1 10,10.2 C10,11 10.45,11.7 11.1,12.05 L10.6,15 L13.4,15 L12.9,12.05 C13.55,11.7 14,11 14,10.2 C14,9.1 13.1,8.2 12,8.2 Z" />
+</vector>

@@ -37,6 +37,17 @@ object AsrColors {
      */
     val SurfaceSelected = Color(0xFF121513)
 
+    /**
+     * A card that sits *below* the ground rather than above it: the reset
+     * note and the close button on the block screen. The block screen is
+     * covering somebody's app against their wishes, and everything on it is
+     * quieter than the rest of the app on purpose.
+     */
+    val SurfaceSunken = Color(0xFF0B0D0C)
+
+    /** The unfilled part of a progress bar. */
+    val Track = Color(0xFF17201D)
+
     /** Text inputs sit slightly darker than the panel they are inside. */
     val Field = Color(0xFF0E0E0E)
     val FieldBorder = Color(0xFF212926)

@@ -16,19 +16,20 @@ phone's real launchable apps, minus the ones that must never be blockable —
 the launcher, Settings, the dialer, the SMS app, Asr itself — and Set Daily
 Limits gives each chosen app a limit from a fixed ladder.
 
-The pact — the chosen apps, their limits and when it started — is committed
-at the end of the limits screen and stored on the phone, so it survives the
-app being killed. `ForegroundAccumulator` measures how long each app has
-actually been in front of the person today, by walking Android's usage
-events rather than trusting `totalTimeInForeground`, and `Enforcement`
-decides from a pact and a reading whether the app in front should be
-blocked. Both are covered by tests.
+**The enforcement loop works.** The pact — the chosen apps, their limits and
+when it started — is committed at the end of the limits screen and stored on
+the phone. `EnforcementService` runs as a foreground service, reads how long
+each app has been in front of the person today, and draws the block screen
+(Figma 20) over any app that has run out of time. It comes back after a
+reboot and after an app update. `ForegroundAccumulator` does the measuring
+by walking Android's usage events rather than trusting
+`totalTimeInForeground`, `Enforcement` makes the decision, and both are
+covered by tests.
 
-What does not exist yet is the part that acts on that decision: no
-foreground service running the loop, no block screen, nothing sent to a
-witness, and no database on the phone. Until the service exists, a limit is
-recorded and measured but never enforced, and the placeholder screen at the
-end of setup says so.
+What does not exist yet: the dashboard (Figma 13), the witness half of the
+product, earning extra time (Figma 21–24), the "protection lost" screen
+(27), and any usage history or outbox on the phone. Nothing is sent to a
+server about usage at all.
 
 Storage is DataStore, not Room. The pact is one small immutable value read
 at service start and written once; Room earns its place with the usage

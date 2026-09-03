@@ -19,6 +19,16 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- The enforcement loop runs as a foreground service. SPECIAL_USE is the
+         type Android 14 requires for it: the other types describe things this
+         is not (no media, no location, no sync), and the whole point is that
+         the service must keep running while the person uses other apps.
+         RECEIVE_BOOT_COMPLETED brings it back after a restart, without which
+         rebooting the phone would be the way out of a commitment. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- From Android 11 an app sees almost nothing of what else is installed
          unless it says what it is looking for. The blunt answer,
          QUERY_ALL_PACKAGES, is a restricted permission Play grants by
@@ -63,5 +73,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".enforcement.EnforcementService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Enforces the daily app time limits the user set for themselves. The service must run while other apps are in the foreground, because that is precisely when a limit can be reached." />
+        </service>
+
+        <receiver
+            android:name=".enforcement.BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

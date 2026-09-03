@@ -36,8 +36,8 @@ import io.joinasr.app.ui.theme.AsrType
  * out of storage rather than passed down from the screen that set them, so
  * seeing them here is proof the pact was actually committed.
  *
- * The note below says plainly that nothing enforces them yet. A placeholder
- * that implied otherwise would be worse than no screen at all.
+ * The note below says what is and is not real. A placeholder that overstated
+ * either would be worse than no screen at all.
  */
 @Composable
 fun SignedInScreen(
@@ -91,9 +91,10 @@ fun SignedInScreen(
             text = if (pact == null) {
                 "Setting up a challenge is the next thing to do here."
             } else {
-                "These limits are saved on this phone. Nothing enforces them " +
-                    "yet: the service that watches app usage and shows the block " +
-                    "screen is the next part being built."
+                "These limits are saved on this phone and enforced now: open " +
+                    "one of these apps past its limit and the block screen " +
+                    "appears over it. The dashboard, the witnesses and earning " +
+                    "extra time are the parts still being built."
             },
             style = AsrType.Legal,
             color = AsrColors.TextTertiary,

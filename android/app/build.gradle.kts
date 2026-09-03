@@ -51,6 +51,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    // Both only for the block-screen overlay: a ComposeView in a window the
+    // system owns has to be given the lifecycle, ViewModel store and
+    // saved-state registry it would otherwise inherit from an activity.
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.savedstate.ktx)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.exifinterface)
     implementation(libs.okhttp)

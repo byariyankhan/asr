@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">Asr</string>
+
+    <!-- The permanent notification while the enforcement service runs. It is
+         not a formality: it is how a person can tell at a glance that
+         something is watching which apps they open. -->
+    <string name="protection_channel_name">Protection</string>
+    <string name="protection_channel_description">Shows that your daily limits are being enforced.</string>
+    <string name="protection_running">Protection is on</string>
+    <plurals name="protection_apps_limited">
+        <item quantity="one">%d app limited today</item>
+        <item quantity="other">%d apps limited today</item>
+    </plurals>
+
+    <!-- On the block screen, under "AVAILABLE AGAIN". The time comes from the
+         phone's own clock format, so this must not assume a 12-hour one. -->
+    <string name="block_available_again">Tomorrow at %1$s</string>
 </resources>
