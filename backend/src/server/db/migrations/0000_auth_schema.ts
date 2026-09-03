@@ -34,6 +34,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       "id" text not null primary key,
       "accountId" text not null,
       "providerId" text not null,
+      -- Better Auth 1.7 keys credentials on (issuer, accountId); issuer is the
+      -- OAuth/credential provider host, equal to providerId for email+password.
+      "issuer" text not null,
       "userId" text not null references "user" ("id") on delete cascade,
       "accessToken" text,
       "refreshToken" text,
@@ -60,6 +63,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 
   await sql`create index "session_userId_idx" on "session" ("userId")`.execute(db);
   await sql`create index "account_userId_idx" on "account" ("userId")`.execute(db);
+  await sql`create unique index "account_issuer_accountId_idx" on "account" ("issuer", "accountId")`.execute(db);
   await sql`create index "verification_identifier_idx" on "verification" ("identifier")`.execute(db);
 }
 

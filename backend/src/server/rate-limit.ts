@@ -106,4 +106,6 @@ export const RATE_LIMITS = {
   invites: { name: "invites", limit: 20, windowSeconds: 86_400 },
   /** public invite lookup, per IP */
   invitePeek: { name: "invite-peek", limit: 60, windowSeconds: 60 },
+  /** full account export, per user */
+  export: { name: "export", limit: 5, windowSeconds: 86_400 },
 } as const satisfies Record<string, RateLimitPolicy>;

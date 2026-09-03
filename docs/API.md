@@ -328,22 +328,36 @@ Reactions witnesses left on my events, newest first:
 
 ### `GET /me/notifications?cursor=&limit=`
 
-Inbox of notifications sent to me (as a witness or about my own account).
+Inbox of notifications sent to me (as a witness or about my own account),
+newest first, cursor on `(created_at, id)`:
+
+```json
+{ "items": [ { "id": "…", "about_user_id": "…", "event_id": "…", "kind": "pact_broken",
+               "title": "…", "body": "…", "deep_link": "/witness/…", "status": "sent",
+               "sent_at": "…", "read_at": null, "created_at": "…" } ],
+  "next_cursor": null, "unread_count": 3 }
+```
 
 ### `POST /me/notifications/read`
 
-`{ "ids": [...] }` or `{ "all": true }`. `204`.
+`{ "ids": [...] }` (up to 200) or `{ "all": true }`. `204`.
 
-### `POST /me/export`
+### `GET /me/export`
 
-`202`. Generates a JSON export of the user's ledger and emails a download
-link valid for 24 hours.
+The whole ledger as one JSON document, served directly with a
+`content-disposition` attachment header: profile, devices, pacts, events,
+activities, witness links (both directions), reactions, notifications and
+daily summaries. Limited to 5 per day. Nothing is stored or emailed, so
+there is no link to expire.
 
 ### `DELETE /me`
 
-`{ "password": "…" }`. Schedules hard deletion in 7 days, revokes all
-sessions, notifies witnesses that the relationship ended. `204`. Logging in
-again within 7 days cancels the deletion.
+`{ "password": "…" }`. The password is verified through Better Auth. On
+success: the account is marked deleted, every session is revoked, push
+tokens are cleared, witness links in both directions end (the other side is
+told), and the row is hard-deleted by the watchdog 7 days later. Signing in
+again inside those 7 days cancels the deletion. `200` with
+`{ "deletes_at": "…" }`. `403 invalid_password` otherwise.
 
 ## Subscription
 
@@ -365,16 +379,40 @@ Pub/Sub JWT) to keep the row current without the app polling.
 `{ "ok": true, "db": true, "redis": true, "watchdog_stale": false }`. Used by
 the container healthcheck and uptime monitoring. No auth, no details.
 
+### `POST /internal/watchdog`
+
+Runs the watchdog once, out of band. Guarded by an `x-internal-secret`
+header compared against `INTERNAL_SECRET` in constant time; without a match
+the route answers `404`, so its existence is not advertised. Returns the run
+report, or `{ "skipped": … }` when another run holds the lock. For ops and
+as a cron fallback if the in-process loop is ever replaced.
+
 ### Watchdog
 
-Not an endpoint. A loop started by the API process on boot runs every
-15 minutes (single-flight via a Redis lock, so a second replica is safe):
+Not an endpoint. A loop started by the API process on boot
+(`src/instrumentation.ts`) runs every 15 minutes. A Redis lock with a
+10-minute TTL makes it single-flight, so a second replica is safe. Every
+step is idempotent and scoped by state: running it twice, or after a crash
+mid-run, changes nothing the second time.
 
-1. Mark `protection_lost` for active pacts whose device has been silent
-   for 24 h.
-2. Mark `activity_failed` for pending activities past their deadline.
+1. Mark `protection_lost` and break the pact for active pacts whose device
+   has been silent for 24 h (reason `heartbeat_timeout`). A pact started
+   less than 24 h ago is never touched.
+2. Mark `activity_failed` for pending activities past their deadline, and
+   write the ledger event if the pact is still active.
 3. Mark `completed` for active pacts past `ends_at` with no break.
-4. Drain the notification queue (push via FCM, email via Resend), recording
-   `UNREGISTERED` tokens on the device and writing an `uninstalled` event
-   when that happens during an active pact.
-5. Write its finish time to Redis for `/health`.
+4. Purge accounts whose 7-day deletion grace window has passed.
+5. Expire rows past their retention (notifications 90 days, daily summaries
+   400 days, dead devices 180 days).
+6. Drain the notification queue via FCM, up to 200 rows per run, sending to
+   every live device of the recipient. A token FCM reports as
+   `UNREGISTERED` marks that device invalid; if it was the phone running an
+   active pact and the user has no other live device, that is an uninstall:
+   an `uninstalled` event is written (reason `fcm_unregistered`) and the
+   pact breaks. Because that is discovered mid-drain, one extra delivery
+   pass follows so the witnesses hear about it in the same run.
+7. Write its finish time to Redis, which is what `/health` reads to report
+   `watchdog_stale`.
+
+A recipient with `notify_push` off, or with no live device, has the row
+marked `failed` / `unregistered` rather than retried forever.

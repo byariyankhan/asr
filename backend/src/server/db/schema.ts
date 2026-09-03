@@ -41,6 +41,7 @@ export interface AccountTable {
   id: string;
   accountId: string;
   providerId: string;
+  issuer: string;
   userId: string;
   accessToken: string | null;
   refreshToken: string | null;

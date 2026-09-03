@@ -209,3 +209,10 @@ export const summaryCreate = z.object({
     .max(100),
 });
 export type SummaryCreate = z.infer<typeof summaryCreate>;
+
+export const notificationsRead = z.union([
+  z.object({ ids: z.array(uuid).min(1).max(200) }),
+  z.object({ all: z.literal(true) }),
+]);
+
+export const accountDelete = z.object({ password: z.string().min(1).max(256) });

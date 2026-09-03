@@ -1,4 +1,5 @@
 import { db, isUniqueViolation } from "./db/client";
+import { inviteEmail, sendEmail } from "./email";
 import { queueNotification } from "./notifications";
 import { conflict, forbidden, notFound } from "@/lib/http";
 import { generateInviteCode, isInviteCode } from "@/lib/invite-code";
@@ -49,7 +50,15 @@ export async function createInvite(userId: string, input: WitnessInvite) {
         })
         .returning(["id", "invite_code", "relationship", "invite_email", "invited_at"])
         .executeTakeFirstOrThrow();
-      return { ...row, url: inviteUrl(row.invite_code) };
+      const url = inviteUrl(row.invite_code);
+      if (input.email) {
+        const inviter = await db.selectFrom("user").select("name").where("id", "=", userId).executeTakeFirstOrThrow();
+        const mail = inviteEmail(inviter.name, input.relationship, url);
+        // Best effort: a failed email must not fail the invite; the code is
+        // still shareable from the app.
+        sendEmail(input.email, mail.subject, mail.text).catch((e) => console.error("[invite email]", e));
+      }
+      return { ...row, url };
     } catch (error) {
       if (!isUniqueViolation(error, "witness_invite_code_key")) throw error;
     }

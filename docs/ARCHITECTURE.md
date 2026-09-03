@@ -128,8 +128,9 @@ Nothing references Bookween.
 ### Detecting silence (protection lost or uninstalled)
 
 The device sends `POST /v1/devices/{id}/heartbeat` roughly every 6 hours via
-WorkManager, plus on every app open and after every event. A server job runs
-every 15 minutes:
+WorkManager, plus on every app open and after every event. The watchdog
+(`server/watchdog.ts`, started by `instrumentation.ts`, single-flight via a
+Redis lock) runs every 15 minutes:
 
 ```
 for each active pact:

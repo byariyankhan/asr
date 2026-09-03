@@ -4,14 +4,15 @@ import { newId } from "@/lib/uuid";
 
 type Db = Transaction<Database> | Kysely<Database>;
 
-export type WitnessKind = "pact_started" | "pact_completed" | "pact_broken" | "protection_lost";
-export type NotificationKind = WitnessKind | "witness_accepted" | "reaction" | "activity_failed";
+export type WitnessKind = "pact_started" | "pact_completed" | "pact_broken" | "protection_lost" | "uninstalled";
+export type NotificationKind = WitnessKind | "witness_accepted" | "witness_removed" | "reaction" | "activity_failed";
 
 const PREF_FOR_KIND: Record<WitnessKind, "notify_start" | "notify_success" | "notify_failure"> = {
   pact_started: "notify_start",
   pact_completed: "notify_success",
   pact_broken: "notify_failure",
   protection_lost: "notify_failure",
+  uninstalled: "notify_failure",
 };
 
 // One queued push per accepted witness who asked for this kind. Delivery
@@ -87,6 +88,10 @@ export function witnessCopy(kind: WitnessKind, name: string, roast: boolean): { 
       return roast
         ? { title: `${name} folded`, body: `${name} broke their pact. You know what to do.` }
         : { title: `${name} broke their pact`, body: `${name} didn't make it this time. A word from you might help.` };
+    case "uninstalled":
+      return roast
+        ? { title: `${name} deleted the app`, body: `${name} removed Asr mid-pact. Bold move.` }
+        : { title: `${name} removed Asr`, body: `${name} uninstalled the app during their pact, so it ended as broken.` };
     case "protection_lost":
       return roast
         ? { title: `${name} went dark`, body: `${name}'s protection has been off for a day. Suspicious.` }
