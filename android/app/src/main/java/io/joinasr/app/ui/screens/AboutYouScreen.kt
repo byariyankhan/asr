@@ -41,9 +41,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.joinasr.app.profile.Choice
 import io.joinasr.app.profile.Countries
 import io.joinasr.app.profile.DateOfBirth
-import io.joinasr.app.profile.Gender
+import io.joinasr.app.profile.Genders
 import io.joinasr.app.profile.ImageForUpload
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.components.AsrSelectField
@@ -78,8 +79,8 @@ fun AboutYouScreen(
 
     var name by remember { mutableStateOf(initialName) }
     var dob by remember { mutableStateOf("") }
-    var country by remember { mutableStateOf<Countries.Country?>(null) }
-    var gender by remember { mutableStateOf<Gender?>(null) }
+    var country by remember { mutableStateOf<Choice?>(null) }
+    var gender by remember { mutableStateOf<Choice?>(null) }
     var preview by remember { mutableStateOf<ByteArray?>(null) }
     var photoError by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<Uri?>(null) }
@@ -222,7 +223,7 @@ fun AboutYouScreen(
             selected = country,
             placeholder = "Select country",
             options = Countries.all,
-            optionLabel = { it.name },
+            optionLabel = { it.label },
             onSelect = { country = it },
             searchPlaceholder = "Search countries",
             filter = { Countries.search(it) },
@@ -233,7 +234,7 @@ fun AboutYouScreen(
             label = "Gender",
             selected = gender,
             placeholder = "Select gender",
-            options = Gender.entries.toList(),
+            options = Genders.all,
             optionLabel = { it.label },
             onSelect = { gender = it },
         )
@@ -251,7 +252,7 @@ fun AboutYouScreen(
                 val iso = (dobResult as? DateOfBirth.Result.Valid)?.iso ?: return@AsrPrimaryButton
                 val chosenCountry = country ?: return@AsrPrimaryButton
                 val chosenGender = gender ?: return@AsrPrimaryButton
-                onSubmit(name.trim(), iso, chosenCountry.code, chosenGender.wire)
+                onSubmit(name.trim(), iso, chosenCountry.value, chosenGender.value)
             },
             enabled = ready && !submitting,
         )
