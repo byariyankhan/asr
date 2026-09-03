@@ -60,18 +60,33 @@ backend/
 
 ## Android
 
-Requirements: Android Studio (current stable), JDK 17, an Android 13+ device
-or emulator (the usage-access permission flow is hard to test on old
-emulators).
+Requirements: Android Studio (current stable), JDK 17, and a device or
+emulator on API 26+ — the usage-access permission flow is hard to exercise
+on an old emulator, so prefer a recent image or a real phone.
+
+**Open `android/`, not the repository root.** The Gradle project lives in
+that subdirectory. Opening the repository root gives you a file tree with
+no app module, no Gradle sync, and a toolbar that says "Add Configuration"
+instead of "app" — which looks like a broken project and is really just
+the wrong folder. This has already cost someone an evening.
 
 ```bash
 cd android
-./gradlew :app:assembleDevDebug
-./gradlew :app:testDevDebugUnitTest
+./gradlew :app:assembleDebug
+./gradlew :app:test
 ```
 
-The `dev` flavor points at `http://10.0.2.2:3001` (emulator → host). Set a
-LAN IP in `local.properties` (`asr.devApiUrl`) for a physical device.
+`API_BASE_URL` is a `BuildConfig` field, set per build type in
+`app/build.gradle.kts`, so it is never a literal in Kotlin. Both build
+types currently point at production (`https://api.joinasr.io`); a `dev`
+flavor aimed at a local server is worth adding when someone actually runs
+the backend locally, and does not exist yet.
+
+Note that some environments used on this project cannot build the app at
+all — no Android SDK, and Google's Maven unreachable — so
+`.github/workflows/android.yml` is the build of record. If you cannot
+compile locally, push a branch and read the CI run; it also uploads an
+installable debug APK.
 
 ## Infra
 
