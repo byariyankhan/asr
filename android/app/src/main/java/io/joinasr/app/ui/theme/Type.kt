@@ -61,6 +61,12 @@ object AsrType {
     /** The small label above a field, and inline links. */
     val Label = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp)
 
+    /** A card's own heading, as on the permission cards. */
+    val CardTitle = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+
+    /** A row's heading inside a list of them. */
+    val RowTitle = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+
     val Button = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Bold, fontSize = 16.sp)
 
     val Legal = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Normal, fontSize = 11.sp)

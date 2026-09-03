@@ -18,6 +18,17 @@ object AsrColors {
     val Surface = Color(0xFF0E1110)
     val SurfaceBorder = Color(0xFF1F2925)
 
+    /**
+     * A card that is *about* something the app does, rather than a container
+     * for input. Figma uses it for the permission cards and notes: a hair
+     * greener than Surface, which is what makes a stack of them read as
+     * grouped rather than as one long panel.
+     */
+    val SurfaceRaised = Color(0xFF0C1210)
+
+    /** The filled background behind an accent-coloured pill. */
+    val AccentMuted = Color(0xFF071A13)
+
     /** Text inputs sit slightly darker than the panel they are inside. */
     val Field = Color(0xFF0E0E0E)
     val FieldBorder = Color(0xFF212926)

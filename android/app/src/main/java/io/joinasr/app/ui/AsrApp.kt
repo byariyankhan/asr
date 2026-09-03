@@ -15,10 +15,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.joinasr.app.permissions.PermissionState
+import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.ui.screens.AboutYouScreen
 import io.joinasr.app.ui.screens.LogInScreen
 import io.joinasr.app.ui.screens.SignUpScreen
+import io.joinasr.app.ui.screens.ProtectionScreen
 import io.joinasr.app.ui.screens.SignedInScreen
+import io.joinasr.app.ui.screens.UsageAccessScreen
 import io.joinasr.app.ui.screens.WelcomeScreen
 import io.joinasr.app.ui.theme.AsrColors
 
@@ -34,14 +38,24 @@ private sealed interface Destination {
     data object LogIn : Destination
 }
 
+/** The setup steps that come after an account exists. */
+private sealed interface SetupStep {
+    data object UsageAccess : SetupStep
+    data object Protection : SetupStep
+}
+
 @Composable
 fun AsrApp(viewModel: SessionViewModel = viewModel()) {
     val session by viewModel.session.collectAsStateWithLifecycle()
     val submitting by viewModel.submitting.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
-    var destination by remember { mutableStateOf<Destination>(Destination.Welcome) }
     val context = LocalContext.current
+    var destination by remember { mutableStateOf<Destination>(Destination.Welcome) }
+    var setupStep by remember { mutableStateOf<SetupStep>(SetupStep.UsageAccess) }
+    // Seeded from the live state so somebody who already granted both never
+    // sees the setup screens again.
+    var setupDone by remember { mutableStateOf(PermissionState.read(context).requiredGranted) }
 
     // Moving between the forms drops whatever the last one was refused for.
     // An error about a password left standing over a different screen reads
@@ -75,6 +89,38 @@ fun AsrApp(viewModel: SessionViewModel = viewModel()) {
                     submitting = submitting,
                     errorMessage = error,
                 )
+            } else if (!setupDone) {
+                // Figma 05 and 09. Whether setup is needed is read from the
+                // system, not from a flag: these grants can be revoked in
+                // Settings at any time, and an app that remembers "already
+                // done" would carry on promising protection it cannot give.
+                when (setupStep) {
+                    SetupStep.UsageAccess -> UsageAccessScreen(
+                        // The only "up" from the first setup step. Harsh, but
+                        // a chevron that does nothing is worse, and there is
+                        // no screen behind this one to return to.
+                        onBack = {
+                            destination = Destination.Welcome
+                            viewModel.signOut()
+                        },
+                        onGranted = { setupStep = SetupStep.Protection },
+                    )
+
+                    SetupStep.Protection -> ProtectionScreen(
+                        onBack = { setupStep = SetupStep.UsageAccess },
+                        // Overlay is what draws the block screen over another
+                        // app. Figma 10 explains an Accessibility-based
+                        // mechanism instead; which of the two this app ships
+                        // is still open, so this goes to the permission the
+                        // current design in docs/ANDROID.md actually needs.
+                        onReviewBlocking = {
+                            runCatching {
+                                context.startActivity(Permissions.overlayIntent(context))
+                            }
+                        },
+                        onContinue = { setupDone = true },
+                    )
+                }
             } else {
                 SignedInScreen(
                     me = current.me,

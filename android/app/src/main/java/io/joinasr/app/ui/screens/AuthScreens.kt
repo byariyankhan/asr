@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.joinasr.app.ui.components.AsrBackChevron
 import io.joinasr.app.ui.components.AsrInlineLink
 import io.joinasr.app.ui.components.AsrPanel
 import io.joinasr.app.ui.components.AsrPrimaryButton
@@ -68,7 +69,7 @@ private fun AuthScaffold(
             .padding(horizontal = 24.dp),
     ) {
         Spacer(Modifier.height(30.dp))
-        BackChevron(onBack)
+        AsrBackChevron(onBack)
 
         Spacer(Modifier.height(52.dp))
         Text(eyebrow, style = AsrType.Eyebrow, color = AsrColors.Accent)
@@ -83,24 +84,6 @@ private fun AuthScaffold(
         panel()
         footer()
         Spacer(Modifier.height(32.dp))
-    }
-}
-
-/**
- * The chevron is drawn as text rather than shipped as an icon: the design
- * uses the character U+2039, and a 48dp touch target is added around it
- * because the glyph itself is far below the minimum a thumb can hit.
- */
-@Composable
-private fun BackChevron(onBack: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .clickable(role = Role.Button, onClick = onBack),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("‹", style = AsrType.display(30), color = AsrColors.TextPrimary)
     }
 }
 

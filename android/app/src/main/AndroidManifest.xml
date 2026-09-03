@@ -1,15 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- The app talks to api.joinasr.io and nothing else. cleartext is not
          permitted (the default from API 28 up), so a misconfigured base URL
          fails loudly instead of sending a password over plain HTTP. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- The enforcement permissions (PACKAGE_USAGE_STATS, SYSTEM_ALERT_WINDOW,
-         POST_NOTIFICATIONS, the special-use foreground service) are declared
-         when the service that needs them lands, not before: an APK that asks
-         for usage access while doing nothing with it is what Play rejects. -->
+    <!-- Declared now that the setup screens ask for them and the enforcement
+         loop is next. Usage access and overlay are special access: the
+         manifest entry only makes the app eligible, and the person grants
+         each one in a Settings screen. tools:ignore because the linter
+         flags PACKAGE_USAGE_STATS as system-only, which is exactly why it
+         is granted the way it is. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
 
     <application
         android:name=".AsrApplication"
