@@ -34,7 +34,11 @@ import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ChooseAppsScreen
 import io.joinasr.app.ui.screens.DailyLimitsScreen
 import io.joinasr.app.ui.screens.DashboardScreen
+import io.joinasr.app.legal.LegalTexts
+import io.joinasr.app.ui.screens.LegalScreen
 import io.joinasr.app.ui.screens.LogInScreen
+import io.joinasr.app.ui.screens.PersonalDetailsScreen
+import io.joinasr.app.ui.screens.ProfileDestination
 import io.joinasr.app.ui.screens.ProfileScreen
 import io.joinasr.app.ui.screens.ProgressScreen
 import io.joinasr.app.ui.screens.ProtectionScreen
@@ -80,6 +84,16 @@ private sealed interface SetupStep {
     data object BlockingDisclosure : SetupStep
 }
 
+/**
+ * The rows on the profile screen that lead somewhere. The rest are drawn and
+ * not pressable, which somebody can see before they press rather than after.
+ */
+private val ProfileRoutes = setOf(
+    ProfileDestination.PersonalDetails,
+    ProfileDestination.PrivacyPolicy,
+    ProfileDestination.TermsOfService,
+)
+
 @Composable
 fun AsrApp(
     viewModel: SessionViewModel = viewModel(),
@@ -94,6 +108,11 @@ fun AsrApp(
     var destination by remember { mutableStateOf<Destination>(Destination.Welcome) }
     var setupStep by remember { mutableStateOf<SetupStep>(SetupStep.Duration) }
     var tab by remember { mutableStateOf(AsrTab.Home) }
+    // Where the Profile tab is: null is its own overview, anything else is a
+    // screen stacked on top of it. One nullable value rather than a back
+    // stack, for the same reason Destination is: three destinations do not
+    // need a navigation library.
+    var profileRoute by remember { mutableStateOf<ProfileDestination?>(null) }
 
     // Held here and nowhere else, for the length of the setup flow only. A
     // half-made challenge is not something the app should remember: it is
@@ -121,7 +140,9 @@ fun AsrApp(
 
     // Back from any other tab returns to Home rather than leaving the app,
     // which is what a bottom bar implies and what every app with one does.
-    BackHandler(enabled = tab != AsrTab.Home) { tab = AsrTab.Home }
+    BackHandler(enabled = tab != AsrTab.Home || profileRoute != null) {
+        if (profileRoute != null) profileRoute = null else tab = AsrTab.Home
+    }
 
     when (val current = session) {
         // Between launch and the answer from /v1/me. Blank rather than a
@@ -238,15 +259,60 @@ fun AsrApp(
                                 addEnabled = false,
                             )
 
-                            AsrTab.Profile -> ProfileScreen(
-                                me = current.me,
-                                onOpen = {},
-                                // Every row leads to a screen that is not
-                                // built yet except the permission count,
-                                // which is live and needs no screen.
-                                available = emptySet(),
-                                onSignOut = signOut,
-                            )
+                            AsrTab.Profile -> when (profileRoute) {
+                                null -> ProfileScreen(
+                                    me = current.me,
+                                    onOpen = { profileRoute = it },
+                                    available = ProfileRoutes,
+                                    onSignOut = signOut,
+                                )
+
+                                // Figma 29.
+                                ProfileDestination.PersonalDetails -> PersonalDetailsScreen(
+                                    me = current.me,
+                                    onBack = { profileRoute = null },
+                                    onSave = { name, country, gender ->
+                                        // The date of birth goes back
+                                        // unchanged: it is the field the
+                                        // thirteen-or-older rule rests on and
+                                        // the screen does not let anybody
+                                        // edit it.
+                                        viewModel.saveProfile(
+                                            name,
+                                            current.me.dateOfBirth.orEmpty(),
+                                            country,
+                                            gender,
+                                        )
+                                    },
+                                    onPhotoPicked = viewModel::uploadPhoto,
+                                    onDeleteAccount = {},
+                                    // Figma 31, which needs an endpoint that
+                                    // does not exist yet.
+                                    deleteAvailable = false,
+                                    submitting = submitting,
+                                    errorMessage = error,
+                                )
+
+                                // Figma 36 and 37.
+                                ProfileDestination.PrivacyPolicy -> LegalScreen(
+                                    document = LegalTexts.privacy,
+                                    onBack = { profileRoute = null },
+                                )
+
+                                ProfileDestination.TermsOfService -> LegalScreen(
+                                    document = LegalTexts.terms,
+                                    onBack = { profileRoute = null },
+                                )
+
+                                // Not built. Unreachable: ProfileRoutes is
+                                // what the profile screen lets anybody press.
+                                else -> ProfileScreen(
+                                    me = current.me,
+                                    onOpen = { profileRoute = it },
+                                    available = ProfileRoutes,
+                                    onSignOut = signOut,
+                                )
+                            }
                         }
                     }
                     AsrBottomNav(
