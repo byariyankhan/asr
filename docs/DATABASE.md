@@ -181,6 +181,7 @@ create table witness (
   witness_user_id   text references "user"(id) on delete cascade,  -- null until the invite is accepted
   invite_code       text not null unique,       -- 10 chars, base32 without ambiguous letters
   invite_email      text,                       -- optional, for the email fallback
+  relationship      text check (relationship in ('parent', 'sibling', 'spouse', 'partner', 'friend', 'mentor', 'colleague', 'other')),
   status            text not null default 'invited'
                     check (status in ('invited', 'accepted', 'declined', 'removed')),
   notify_start      boolean not null default true,
@@ -198,6 +199,25 @@ create index witness_user_idx on witness (user_id, status);
 create index witness_witness_idx on witness (witness_user_id, status);
 create unique index witness_pair_idx on witness (user_id, witness_user_id)
   where witness_user_id is not null and status = 'accepted';
+```
+
+### reaction
+
+A witness's one reaction per event: the tomato / shoe / laugh on a breach,
+the clap on a completion. Upserted, so changing your mind is an update. The
+user sees them on their Witnesses screen.
+
+```sql
+create table reaction (
+  id          uuid primary key,
+  witness_id  uuid not null references witness(id) on delete cascade,
+  event_id    uuid not null references pact_event(id) on delete cascade,
+  emoji       text not null check (emoji in ('laugh', 'haha', 'shoe', 'tomato', 'clap')),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (witness_id, event_id)
+);
+create index reaction_event_idx on reaction (event_id);
 ```
 
 ### notification

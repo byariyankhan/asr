@@ -141,3 +141,71 @@ export const meUpdate = z
   })
   .refine((o) => Object.keys(o).length > 0, "nothing to update");
 export type MeUpdate = z.infer<typeof meUpdate>;
+
+const isoDateTime = z.iso.datetime({ offset: true });
+const nonEmpty = (o: object) => Object.keys(o).length > 0;
+
+// --- witnesses ---
+export const RELATIONSHIPS = ["parent", "sibling", "spouse", "partner", "friend", "mentor", "colleague", "other"] as const;
+
+export const witnessInvite = z.object({
+  relationship: z.enum(RELATIONSHIPS),
+  email: z.email().max(254).optional(),
+});
+export type WitnessInvite = z.infer<typeof witnessInvite>;
+
+// The witness edits how they are notified; the user edits what the witness
+// may see and how they are labelled. Ownership is checked in the server.
+export const witnessPatch = z
+  .object({
+    notify_start: z.boolean(),
+    notify_success: z.boolean(),
+    notify_failure: z.boolean(),
+    notify_digest: z.boolean(),
+    roast_mode: z.boolean(),
+    views_progress: z.boolean(),
+    relationship: z.enum(RELATIONSHIPS),
+  })
+  .partial()
+  .refine(nonEmpty, "nothing to update");
+export type WitnessPatch = z.infer<typeof witnessPatch>;
+
+export const EMOJIS = ["laugh", "haha", "shoe", "tomato", "clap"] as const;
+export const reactionCreate = z.object({ event_id: uuid, emoji: z.enum(EMOJIS) });
+export const reactionDelete = z.object({ event_id: uuid });
+
+// --- activities (earn your time) ---
+export const ACTIVITY_TYPES = ["walk_steps", "focus_session", "waiting_period"] as const;
+
+export const activityCreate = z
+  .object({
+    id: uuid,
+    type: z.enum(ACTIVITY_TYPES),
+    started_at: isoDateTime,
+    deadline_at: isoDateTime,
+  })
+  .refine((a) => new Date(a.deadline_at) > new Date(a.started_at), {
+    message: "deadline must be after start",
+    path: ["deadline_at"],
+  });
+export type ActivityCreate = z.infer<typeof activityCreate>;
+
+export const activityComplete = z.object({ event_id: uuid, occurred_at: isoDateTime });
+export type ActivityComplete = z.infer<typeof activityComplete>;
+
+// --- daily summary ---
+export const summaryCreate = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD"),
+  apps: z
+    .array(
+      z.object({
+        package: packageName,
+        minutes_used: z.number().int().min(0).max(1440),
+        limit_min: z.number().int().min(0).max(1440),
+        earned_min: z.number().int().min(0).max(600).default(0),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+export type SummaryCreate = z.infer<typeof summaryCreate>;

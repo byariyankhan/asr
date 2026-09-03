@@ -108,6 +108,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       witness_user_id   text references "user"(id) on delete cascade,
       invite_code       text not null unique,
       invite_email      text,
+      relationship      text check (relationship in (
+                          'parent', 'sibling', 'spouse', 'partner', 'friend', 'mentor', 'colleague', 'other'
+                        )),
       status            text not null default 'invited'
                         check (status in ('invited', 'accepted', 'declined', 'removed')),
       notify_start      boolean not null default true,
@@ -156,6 +159,21 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       where event_id is not null
   `.execute(db);
 
+  // A witness's one reaction per event (the 🍅 / 👞 / 👏 on the design's
+  // "React" screen). Upserted, so changing your mind is an update.
+  await sql`
+    create table reaction (
+      id          uuid primary key,
+      witness_id  uuid not null references witness(id) on delete cascade,
+      event_id    uuid not null references pact_event(id) on delete cascade,
+      emoji       text not null check (emoji in ('laugh', 'haha', 'shoe', 'tomato', 'clap')),
+      created_at  timestamptz not null default now(),
+      updated_at  timestamptz not null default now(),
+      unique (witness_id, event_id)
+    )
+  `.execute(db);
+  await sql`create index reaction_event_idx on reaction (event_id)`.execute(db);
+
   await sql`
     create table subscription (
       id               uuid primary key,
@@ -190,6 +208,7 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   for (const table of [
     "daily_summary",
     "subscription",
+    "reaction",
     "notification",
     "witness",
     "activity",

@@ -28,3 +28,20 @@ export function isValidCountry(code: string): boolean {
     return false;
   }
 }
+
+// Calendar day (YYYY-MM-DD) of an instant in an IANA zone. en-CA formats as
+// ISO order; no library needed.
+export function dayInZone(at: Date, zone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(at);
+}
+
+// 1-based day number inside a pact, capped at its length.
+export function dayNumber(startsAt: Date, durationDays: number, now = new Date()): number {
+  const elapsed = Math.floor((now.getTime() - startsAt.getTime()) / DAY_MS) + 1;
+  return Math.max(1, Math.min(durationDays, elapsed));
+}

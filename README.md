@@ -41,8 +41,8 @@ who hold you to it.
 
 In: app limits, custom reset time, pacts (presets plus custom, 1 to 90 days) that lock
 limits and app lists, "earn your time" activities (steps, focus session,
-waiting period), witnesses with invite links and notification preferences
-including roast mode, protection-loss and uninstall detection, streaks and
+waiting period), witnesses with invite links, relationship labels, notification preferences
+including roast mode, emoji reactions, protection-loss and uninstall detection, streaks and
 history, onboarding, dark/light theme, offline handling, account deletion and
 data export.
 

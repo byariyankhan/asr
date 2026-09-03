@@ -91,6 +91,7 @@ Definitions and DDL are in `DATABASE.md`.
 | `pact_event` | Ledger rows: `completed`, `broken`, `protection_lost`, `uninstalled`, `restored`, ... with reason code, device time, and server receive time |
 | `activity` | One earn-your-time attempt: type, target, reward minutes, deadline, outcome |
 | `witness` | Directed relationship user → witness, status, per-witness notification settings, invite code |
+| `reaction` | A witness's one emoji per event (tomato, shoe, clap...) shown back to the user |
 | `notification` | Every message sent to anyone, with delivery result |
 | `subscription` | Play Billing state |
 | `daily_summary` | Optional per-day minutes per controlled app, for the witness view |

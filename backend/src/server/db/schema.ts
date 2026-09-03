@@ -152,6 +152,7 @@ export interface WitnessTable {
   witness_user_id: string | null;
   invite_code: string;
   invite_email: string | null;
+  relationship: Relationship | null;
   status: Generated<"invited" | "accepted" | "declined" | "removed">;
   notify_start: Generated<boolean>;
   notify_success: Generated<boolean>;
@@ -161,6 +162,18 @@ export interface WitnessTable {
   views_progress: Generated<boolean>;
   invited_at: GeneratedTimestamp;
   responded_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export type Relationship = "parent" | "sibling" | "spouse" | "partner" | "friend" | "mentor" | "colleague" | "other";
+export type Emoji = "laugh" | "haha" | "shoe" | "tomato" | "clap";
+
+export interface ReactionTable {
+  id: string;
+  witness_id: string;
+  event_id: string;
+  emoji: Emoji;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -217,6 +230,7 @@ export interface Database {
   activity: ActivityTable;
   witness: WitnessTable;
   notification: NotificationTable;
+  reaction: ReactionTable;
   subscription: SubscriptionTable;
   daily_summary: DailySummaryTable;
 }

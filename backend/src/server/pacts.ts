@@ -1,6 +1,8 @@
 import { sql } from "kysely";
 import { db, isUniqueViolation } from "./db/client";
 import { requireOwnedDevice } from "./devices";
+import { queueWitnessNotifications } from "./notifications";
+import { canViewUser } from "./witnesses";
 import { conflict, notFound } from "@/lib/http";
 import type { PactCreate } from "@/lib/schemas";
 import { addDays } from "@/lib/time";
@@ -21,9 +23,9 @@ export const pactColumns = [
   "updated_at",
 ] as const;
 
-// Lock a pact. The partial unique index pact_one_active_idx is
-// the real guard against two active pacts; the pre-check only makes
-// the common case a clean 409 without a failed insert.
+// Lock a pact. The partial unique index pact_one_active_idx is the real
+// guard against two active pacts; the resulting 409 is the API's answer.
+// Witnesses who opted in hear that it started.
 export async function createPact(userId: string, input: PactCreate) {
   await requireOwnedDevice(userId, input.device_id);
 
@@ -46,10 +48,11 @@ export async function createPact(userId: string, input: PactCreate) {
         .returning(pactColumns)
         .executeTakeFirstOrThrow();
 
+      const eventId = newId();
       await trx
         .insertInto("pact_event")
         .values({
-          id: newId(),
+          id: eventId,
           pact_id: id,
           device_id: input.device_id,
           type: "started",
@@ -61,6 +64,7 @@ export async function createPact(userId: string, input: PactCreate) {
         })
         .execute();
 
+      await queueWitnessNotifications(trx, { userId, eventId, kind: "pact_started", pactId: id });
       return pact;
     });
   } catch (error) {
@@ -80,7 +84,6 @@ export async function getCurrentPact(userId: string) {
     .executeTakeFirst();
 }
 
-// Owner-only for now; witness access is added with the witness routes.
 export async function requireOwnedPact(userId: string, pactId: string) {
   if (!isUuidLike(pactId)) throw notFound("Pact");
   const pact = await db
@@ -93,8 +96,11 @@ export async function requireOwnedPact(userId: string, pactId: string) {
   return pact;
 }
 
-export async function getPactWithEvents(userId: string, pactId: string) {
-  const pact = await requireOwnedPact(userId, pactId);
+// Owner, or an accepted witness the owner lets see progress.
+export async function getPactWithEvents(callerId: string, pactId: string) {
+  if (!isUuidLike(pactId)) throw notFound("Pact");
+  const pact = await db.selectFrom("pact").select(pactColumns).where("id", "=", pactId).executeTakeFirst();
+  if (!pact || !(await canViewUser(callerId, pact.user_id))) throw notFound("Pact");
   const events = await db
     .selectFrom("pact_event")
     .select(["id", "type", "reason", "app_package", "minutes", "occurred_at", "received_at", "source"])
@@ -102,7 +108,13 @@ export async function getPactWithEvents(userId: string, pactId: string) {
     .orderBy("received_at", "desc")
     .orderBy("id", "desc")
     .execute();
-  return { ...pact, events };
+  const activities = await db
+    .selectFrom("activity")
+    .select(["id", "type", "target", "reward_min", "started_at", "deadline_at", "status", "ended_at"])
+    .where("pact_id", "=", pactId)
+    .orderBy("started_at", "desc")
+    .execute();
+  return { ...pact, events, activities };
 }
 
 // Newest first, cursor = id of the last row seen. The (created_at, id) tuple

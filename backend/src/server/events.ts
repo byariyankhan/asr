@@ -1,12 +1,12 @@
+import type { Transaction } from "kysely";
 import { db, isUniqueViolation } from "./db/client";
 import type { Database } from "./db/schema";
+import { queueWitnessNotifications } from "./notifications";
 import { requireOwnedPact } from "./pacts";
 import { conflict } from "@/lib/http";
 import type { EventCreate } from "@/lib/schemas";
-import { newId } from "@/lib/uuid";
-import type { Kysely, Transaction } from "kysely";
 
-const eventColumns = [
+export const eventColumns = [
   "id",
   "pact_id",
   "device_id",
@@ -19,18 +19,13 @@ const eventColumns = [
   "source",
 ] as const;
 
-export type RecordedEvent = {
-  event: { id: string; type: string };
-  created: boolean;
-};
-
 const CLOSING: ReadonlySet<string> = new Set(["broken", "completed"]);
 
 // A device reports an outcome. The event id was generated on the phone and is
 // the primary key, so a retried POST after a lost response returns the row
 // that already exists instead of double-reporting a break. A closing event
-// also closes the pact; every other type on a closed pact is
-// refused so a late limit_hit cannot resurrect anything.
+// also closes the pact; every other type on a closed pact is refused so a
+// late limit_hit cannot resurrect anything.
 export async function recordDeviceEvent(userId: string, pactId: string, input: EventCreate) {
   const pact = await requireOwnedPact(userId, pactId);
 
@@ -93,7 +88,7 @@ export async function recordDeviceEvent(userId: string, pactId: string, input: E
   }
 }
 
-async function closePact(
+export async function closePact(
   trx: Transaction<Database>,
   pactId: string,
   status: "broken" | "completed",
@@ -107,69 +102,5 @@ async function closePact(
     .executeTakeFirst();
   if (result.numUpdatedRows === 0n) {
     throw conflict("pact_closed", "This pact was closed by an earlier event.");
-  }
-}
-
-// One queued notification per accepted witness who asked for this kind, per
-// channel. Delivery (FCM / Resend) is the watchdog's job; this only writes
-// the ledger rows, and the partial unique index makes a retry harmless.
-export async function queueWitnessNotifications(
-  trx: Transaction<Database> | Kysely<Database>,
-  args: { userId: string; eventId: string; kind: "pact_broken" | "pact_completed" | "pact_started"; pactId: string },
-): Promise<number> {
-  const prefColumn =
-    args.kind === "pact_broken"
-      ? "notify_failure"
-      : args.kind === "pact_completed"
-        ? "notify_success"
-        : "notify_start";
-
-  const witnesses = await trx
-    .selectFrom("witness")
-    .innerJoin("user as u", "u.id", "witness.user_id")
-    .select(["witness.witness_user_id", "witness.roast_mode", "u.name as user_name"])
-    .where("witness.user_id", "=", args.userId)
-    .where("witness.status", "=", "accepted")
-    .where(`witness.${prefColumn}`, "=", true)
-    .execute();
-
-  let queued = 0;
-  for (const w of witnesses) {
-    if (!w.witness_user_id) continue;
-    const copy = notificationCopy(args.kind, w.user_name, w.roast_mode);
-    const result = await trx
-      .insertInto("notification")
-      .values({
-        id: newId(),
-        recipient_id: w.witness_user_id,
-        about_user_id: args.userId,
-        event_id: args.eventId,
-        channel: "push",
-        kind: args.kind,
-        title: copy.title,
-        body: copy.body,
-        deep_link: `/witness/${args.userId}/pacts/${args.pactId}`,
-      })
-      .onConflict((oc) => oc.doNothing())
-      .executeTakeFirst();
-    if (result.numInsertedOrUpdatedRows === 1n) queued += 1;
-  }
-  return queued;
-}
-
-export function notificationCopy(
-  kind: "pact_broken" | "pact_completed" | "pact_started",
-  name: string,
-  roast: boolean,
-): { title: string; body: string } {
-  switch (kind) {
-    case "pact_started":
-      return { title: `${name} made a promise`, body: `${name} started a new pact and named you as a witness.` };
-    case "pact_completed":
-      return { title: `${name} kept their word`, body: `${name} finished their pact. Tell them you noticed.` };
-    case "pact_broken":
-      return roast
-        ? { title: `${name} folded`, body: `${name} broke their pact. You know what to do.` }
-        : { title: `${name} broke their pact`, body: `${name} didn't make it this time. A word from you might help.` };
   }
 }

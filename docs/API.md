@@ -48,6 +48,7 @@ Per user (or per IP before auth), enforced in Redis:
 |---|---|
 | sign up / sign in / password reset | 10 per 15 min per IP |
 | invite creation | 20 per day |
+| public invite lookup | 60 per minute per IP |
 | event ingestion | 120 per hour per device |
 | everything else | 300 per minute |
 
@@ -103,7 +104,7 @@ History, newest first, cursor pagination on `(created_at, id)`.
 
 ### `GET /pacts/{id}`  **witness**
 
-Pact with its events and activities.
+Pact with its events and activities (activities: id, type, target, reward, status).
 
 ### `POST /pacts/{id}/events`
 
@@ -140,19 +141,29 @@ Daily aggregate, sent once per day per app while active.
 { "day": "2026-09-03", "apps": [ { "package": "…", "minutes_used": 27, "limit_min": 30, "earned_min": 10 } ] }
 ```
 
-`204`. Upserts `daily_summary`.
+`204`. Upserts `daily_summary`. `409 day_out_of_range` outside the pact's
+days (in its timezone), `409 app_not_in_pact` for a package not in the
+snapshot.
 
-## Activities
+## Activities (earn your time)
 
 ### `POST /pacts/{id}/activities`
 
 ```json
-{ "id": "<uuidv7>", "type": "walk_steps", "target": 3000, "reward_min": 10, "started_at": "…", "deadline_at": "…" }
+{ "id": "<uuidv7>", "type": "walk_steps", "started_at": "…", "deadline_at": "…" }
 ```
 
-`201`. The server checks the type and reward against the pact
-snapshot's activity rules and the daily cap; `409 daily_cap_reached` if
-exhausted.
+`201` with the activity. Target and reward minutes come from the pact
+snapshot's activity rules, never from the request. `409
+activity_not_allowed` if the pact has no rule for that type, `409
+daily_cap_reached` if pending plus completed activities of that type already
+reach the day's cap (in the pact's timezone), `409 deadline_too_far` if the
+deadline is more than 24 h after the start. `200` with the existing row when
+the id was seen before.
+
+### `GET /pacts/{id}/activities`
+
+`{ "items": [...] }`, newest first.
 
 ### `POST /activities/{id}/complete`
 
@@ -160,12 +171,14 @@ exhausted.
 { "event_id": "<uuidv7>", "occurred_at": "…" }
 ```
 
-`200` with the activity. Writes a `activity_completed` event carrying the
-reward minutes.
+`201` with `{ activity, event }`; the event is `activity_completed` carrying
+the reward minutes. `200` with the same pair on a retry of the same
+`event_id`. `409 activity_closed` if it was already completed or cancelled.
 
 ### `POST /activities/{id}/cancel`
 
-`204`. No penalty; used when the user abandons a waiting period.
+`204`. No penalty; used when the user abandons a waiting period. Frees its
+share of the daily cap.
 
 Failed activities are set by the server watchdog when `deadline_at` passes
 without completion; the app learns about it on next sync.
@@ -175,26 +188,31 @@ without completion; the app learns about it on next sync.
 ### `POST /witnesses/invites`
 
 ```json
-{ "email": "optional@example.com" }
+{ "relationship": "sibling", "email": "optional@example.com" }
 ```
 
-`201`:
+`relationship` is one of `parent`, `sibling`, `spouse`, `partner`, `friend`,
+`mentor`, `colleague`, `other`; it personalises invite copy and
+notifications. `201`:
 
 ```json
-{ "id": "…", "invite_code": "K7M2P9XQ4T", "url": "https://joinasr.com/w/K7M2P9XQ4T" }
+{ "id": "…", "invite_code": "K7M2P9XQ4T", "relationship": "sibling", "url": "https://joinasr.com/w/K7M2P9XQ4T" }
 ```
 
-If `email` is given the server also sends the link by email.
+If `email` is given the delivery worker also sends the link by email.
 
 ### `GET /witnesses/invites/{code}`
 
-Public (no auth). Returns the inviter's display name so the accept screen can
-say "Ariyan wants you as a witness". Never returns anything else.
+Public (no auth, per-IP limit). Returns `{ "inviter_name", "relationship" }`
+so the accept screen can say "Ariyan wants you as a witness". `404` once the
+invite is answered. Never returns anything else.
 
 ### `POST /witnesses/invites/{code}/accept`
 
-Authenticated as the witness. `200` with the `witness` row. `409 invite_used`
-if already accepted or declined.
+Authenticated as the witness. `200` with the `witness` row. `409
+invite_used` if already answered, `409 own_invite` for your own code, `409
+already_witness` if you already witness this person. The inviter gets a
+`witness_accepted` notification.
 
 ### `POST /witnesses/invites/{code}/decline`
 
@@ -202,20 +220,29 @@ if already accepted or declined.
 
 ### `GET /witnesses`
 
-Two lists: people witnessing me, people I witness.
+Two lists: people witnessing me (pending and accepted), people I witness
+(accepted). `mutual` is true when the two of you witness each other.
 
 ```json
-{ "my_witnesses": [ { "id": "…", "user": { "id": "…", "name": "…" }, "status": "accepted", "notify_failure": true, "roast_mode": false } ],
-  "i_witness":    [ { "id": "…", "user": { "id": "…", "name": "…" }, "status": "accepted", "views_progress": true } ] }
+{
+  "my_witnesses": [ { "id": "…", "status": "accepted", "relationship": "sibling", "user": { "id": "…", "name": "…" },
+                      "invite_code": null, "invite_url": null, "notify_failure": true, "roast_mode": false,
+                      "views_progress": true, "mutual": true, "invited_at": "…", "responded_at": "…" } ],
+  "i_witness":    [ { "id": "…", "relationship": "friend", "user": { "id": "…", "name": "…" },
+                      "notify_failure": true, "roast_mode": true, "views_progress": true, "mutual": false } ]
+}
 ```
+
+Pending invites in `my_witnesses` carry `invite_code` and `invite_url` so the
+user can re-share them.
 
 ### `PATCH /witnesses/{id}`
 
-Either side edits the fields that belong to them:
+Each side edits only its own fields; asking for the other side's is `403`.
 
 - The witness edits `notify_start`, `notify_success`, `notify_failure`,
   `notify_digest`, `roast_mode`.
-- The user edits `views_progress`.
+- The user edits `views_progress`, `relationship`.
 
 `200` with the row.
 
@@ -225,21 +252,24 @@ Either side. Sets `status = removed`. `204`.
 
 ### `GET /witnesses/{id}/progress`  **witness**
 
-What the witness dashboard shows about the user:
+What the witness dashboard shows about the user; same shape as
+`GET /me/progress`. `403` unless `status = accepted` and
+`views_progress = true`.
+
+### `POST /witnesses/{id}/reactions`  **witness**
 
 ```json
-{
-  "user": { "id": "…", "name": "…" },
-  "current": { "pact_id": "…", "day": 3, "of": 7, "status": "active", "apps": [ { "label": "Instagram", "limit_min": 30 } ] },
-  "streak_days": 12,
-  "longest_streak_days": 21,
-  "completed": 4,
-  "broken": 1,
-  "recent_events": [ { "type": "activity_completed", "minutes": 10, "received_at": "…" } ]
-}
+{ "event_id": "…", "emoji": "tomato" }
 ```
 
-`403` unless `status = accepted` and `views_progress = true`.
+One reaction per witness per event; sending again replaces it. `emoji` is
+one of `laugh`, `haha`, `shoe`, `tomato`, `clap`. The event must belong to
+the witnessed user. `200` with the reaction; the user gets a `reaction`
+notification.
+
+### `DELETE /witnesses/{id}/reactions`
+
+`{ "event_id": "…" }`. `204`.
 
 ## Me
 
@@ -266,8 +296,35 @@ The "About You" screen after sign-up is one `PATCH`.
 
 ### `GET /me/progress`
 
-Same shape as the witness progress view, for the user's own screens
-(the app computes this locally too; this is the reconciliation source).
+```json
+{
+  "user": { "id": "…", "name": "…" },
+  "current": {
+    "pact_id": "…", "day": 3, "of": 7, "status": "active", "starts_at": "…", "ends_at": "…",
+    "apps": [ { "label": "Instagram", "package": "com.instagram.android", "limit_min": 30 } ],
+    "apps_within_limits_today": { "within": 2, "total": 3 }
+  },
+  "streak_days": 3,
+  "longest_streak_days": 21,
+  "completed": 4,
+  "broken": 1,
+  "recent_events": [ { "id": "…", "pact_id": "…", "type": "activity_completed", "minutes": 10, "received_at": "…" } ]
+}
+```
+
+`current` is `null` with no active pact. `streak_days` is the day number of
+the active pact; `longest_streak_days` the most days any pact survived.
+`apps_within_limits_today` comes from today's daily summary if the phone
+sent one, otherwise from today's `limit_hit` events.
+
+### `GET /me/reactions?limit=`
+
+Reactions witnesses left on my events, newest first:
+
+```json
+{ "items": [ { "id": "…", "emoji": "shoe", "reacted_at": "…", "witness_id": "…", "relationship": "sibling",
+               "witness_user_id": "…", "witness_name": "Bob", "event_id": "…", "event_type": "broken", "event_at": "…", "pact_id": "…" } ] }
+```
 
 ### `GET /me/notifications?cursor=&limit=`
 
