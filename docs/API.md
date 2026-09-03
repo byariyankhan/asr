@@ -304,6 +304,60 @@ Any subset of `name`, `timezone`, `notify_email`, `notify_push`,
 fields accept `null` to clear them. `200` with the same shape as `GET /me`.
 The "About You" screen after sign-up is one `PATCH`.
 
+### `POST /me/avatar`
+
+Raw JPEG bytes as the whole body, not multipart: there is one field, and
+multipart would mean parsing a format with its own boundary handling to
+carry a single blob. `content-type` is ignored; the bytes are checked.
+
+The photo is optional. Figma 03 marks it required; it is not, because
+forcing a photo before someone has used the app costs sign-ups and nothing
+in the product needs a face to work.
+
+Limits: 1MB, 1024px on the longest side, JPEG only. The client downscales to
+512px and re-encodes before uploading, so anything larger did not come from
+our client. `400 unsupported_image` for anything that is not a JPEG,
+`413 image_too_large` past either limit, `503 storage_not_configured` when
+the R2 credentials are absent.
+
+Every APP1-APP15 and comment segment is removed before the object is
+stored. That is where EXIF lives, and EXIF on a phone photo routinely
+carries the GPS coordinates of where it was taken; a photo is shown to the
+witnesses a person invited, and handing them the location of someone's
+bedroom along with their face is not a trade anybody agreed to. Stripping
+EXIF also removes the orientation tag, so the client must upload upright
+bytes — the server does not decode and cannot rotate.
+
+`200` with `{ "image": "/v1/media/avatars/<user-id>/<random>.jpg" }`.
+Replacing a photo mints a new key and deletes the old object, so a URL
+somebody kept stops working.
+
+### `DELETE /me/avatar`
+
+`200` with `{ "image": null }`. The object is deleted.
+
+### `GET /media/{key}`
+
+The stored object, for a caller entitled to see it. Three checks, in order:
+the key must name a real owner (the owner's id is *in* the key, so this
+needs no lookup), the caller must be the owner or be linked to them by an
+accepted witness relationship **in either direction**, and the key must be
+that owner's current photo.
+
+The direction rule matters: My Witnesses (Figma 15) shows a person the faces
+of the witnesses they chose, and a one-directional rule would leave it
+blank. It is deliberately *not* gated on `views_progress` — that governs
+seeing somebody's habits day by day, and a witness who turned it off has not
+asked to stop seeing the face of the person who invited them.
+
+`403` for anyone else, `404` for a stale key, a deleted account, or a key
+that is not shaped like one. Answers with
+`Cache-Control: private, max-age=604800, immutable` (the key never changes
+contents) and `X-Content-Type-Options: nosniff`.
+
+The bucket itself is private, with no public access and no custom domain:
+there is no URL for a face that works without a session.
+
 ### `GET /me/progress`
 
 ```json

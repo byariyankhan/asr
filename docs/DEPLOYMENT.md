@@ -35,6 +35,7 @@ Add four repository secrets (Settings → Secrets and variables → Actions):
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | the whole Admin SDK JSON, pasted as-is |
 | `CERTBOT_EMAIL` | optional; set it and TLS is issued unattended |
 | `RESEND_API_KEY` | optional; set it and the bootstrap writes it into `.env` |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | optional; Cloudflare R2 for profile photos. Without them `POST /v1/me/avatar` answers 503 |
 
 Then run **Actions → Bootstrap the VPS → Run workflow**. It ships the source
 to `/opt/asr/src`, hands the Firebase key over on stdin (never on a command

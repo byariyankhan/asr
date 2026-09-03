@@ -91,58 +91,97 @@ jobs:
       #
       # Skipped entirely when the secret is unset, because empty is a working
       # state — the app logs emails instead of sending them.
-      - name: Fill in RESEND_API_KEY
+      # first-time-setup.sh writes .env once and then never touches it again,
+      # which is right -- it must not be able to clobber live credentials. The
+      # consequence is that a secret added after the first bootstrap has no way
+      # in. This is that way in: it rewrites exactly the named lines and leaves
+      # the rest of the file byte for byte alone.
+      #
+      # One step for all of them rather than one per secret. The first version
+      # of this handled RESEND_API_KEY alone and would have been copied four
+      # times over for R2, which is four places for the shredding or the
+      # verification to be forgotten in.
+      #
+      # A secret that is not set is skipped, not blanked: empty is a working
+      # state everywhere here (email is logged instead of sent, photo uploads
+      # answer 503), and a blank overwrite would silently switch a live
+      # feature off.
+      - name: Fill in the optional secrets
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          # The emptiness test lives here rather than in an `if:` because a
-          # secret read from a step condition is not dependable; read as an
-          # environment variable it always is.
-          if [ -z "${RESEND_API_KEY:-}" ]; then
-            echo "no RESEND_API_KEY secret; .env left alone (the app logs email instead of sending it)"
+          # Built with python rather than shell string-building so a value
+          # containing a quote cannot end up as shell syntax, and passed on
+          # stdin so none of it appears in a command line where ps would show
+          # it.
+          payload=$(python3 - <<'PY'
+          import json, os
+          names = [
+              "RESEND_API_KEY",
+              "R2_ACCOUNT_ID",
+              "R2_ACCESS_KEY_ID",
+              "R2_SECRET_ACCESS_KEY",
+              "R2_BUCKET",
+          ]
+          print(json.dumps({n: os.environ[n] for n in names if os.environ.get(n)}))
+          PY
+          )
+          count=$(printf %s "$payload" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+          if [ "$count" = "0" ]; then
+            echo "no optional secrets set; .env left alone"
             exit 0
           fi
-          # On stdin, like the Firebase key: a command line is visible in ps.
-          printf %s "$RESEND_API_KEY" | ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" \
-            "umask 077 && cat > /root/.asr-resend && echo received"
+          echo "$count secret(s) to write"
+
+          printf %s "$payload" | ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" \
+            "umask 077 && cat > /root/.asr-secrets && echo received"
+
           ssh -i ~/.ssh/deploy_key -o ServerAliveInterval=30 root@"$VPS_HOST" bash -s <<'REMOTE'
           set -euo pipefail
           cd /opt/asr
           python3 - <<'PY'
-          import os, re, sys, tempfile
-          key = open("/root/.asr-resend").read().strip()
+          import json, os, re, sys, tempfile
+          values = json.load(open("/root/.asr-secrets"))
           # Compose reads .env as plain text. A value with a quote or a newline
-          # in it would silently corrupt every variable after it, so refuse
-          # anything that is not the shape a Resend key actually has.
-          if not re.fullmatch(r"[A-Za-z0-9_-]{16,200}", key):
-              sys.exit("that does not look like a Resend API key; refusing to write it into .env")
+          # in it would silently corrupt every variable after it, so anything
+          # that is not a plain token is refused rather than written.
+          for name, value in values.items():
+              if not re.fullmatch(r"[A-Za-z0-9_.:/+=-]{1,500}", value):
+                  sys.exit(f"{name} has characters that cannot go in .env; refusing")
           path = "/opt/asr/.env"
           lines = open(path).read().splitlines()
-          out, seen = [], False
+          out, seen = [], set()
           for line in lines:
-              if line.startswith("RESEND_API_KEY="):
-                  out.append("RESEND_API_KEY=" + key)
-                  seen = True
+              name = line.split("=", 1)[0] if "=" in line else None
+              if name in values:
+                  out.append(f"{name}={values[name]}")
+                  seen.add(name)
               else:
                   out.append(line)
-          if not seen:
-              out.append("RESEND_API_KEY=" + key)
+          for name, value in values.items():
+              if name not in seen:
+                  out.append(f"{name}={value}")
           fd, tmp = tempfile.mkstemp(dir="/opt/asr")
           os.write(fd, ("\n".join(out) + "\n").encode())
           os.close(fd)
           os.chmod(tmp, 0o600)
           os.replace(tmp, path)
-          print("RESEND_API_KEY set (%d characters), %d other lines untouched" % (len(key), len(lines) - 1))
+          print("set: " + ", ".join(f"{n} ({len(v)} chars)" for n, v in sorted(values.items())))
           PY
-          shred -u /root/.asr-resend 2>/dev/null || rm -f /root/.asr-resend
+          shred -u /root/.asr-secrets 2>/dev/null || rm -f /root/.asr-secrets
           docker compose config -q
           docker compose up -d api --force-recreate
           # </dev/null or compose exec swallows the rest of this heredoc as its
-          # own stdin. Prints a length, never the value.
-          n=$(docker compose exec -T api printenv RESEND_API_KEY </dev/null | tr -d "\n" | wc -c)
-          test "$n" -gt 0 || { echo "the container still has no RESEND_API_KEY"; exit 1; }
-          echo "the running api has it too ($n characters)"
+          # own stdin. Prints lengths, never values.
+          for name in RESEND_API_KEY R2_ACCOUNT_ID R2_BUCKET; do
+            n=$(docker compose exec -T api printenv "$name" </dev/null | tr -d "\n" | wc -c)
+            echo "  container $name: $n characters"
+          done
           for _ in $(seq 1 10); do
             body=$(wget -qO- --content-on-error --timeout=5 http://127.0.0.1:3001/v1/health 2>/dev/null || true)
             case "$body" in *'"ok":true'*) echo "healthy after restart"; exit 0 ;; esac
@@ -160,7 +199,7 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
           ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" \
-            "shred -u /root/asr-firebase-key.json /root/.asr-resend 2>/dev/null || rm -f /root/asr-firebase-key.json /root/.asr-resend; echo removed" || true
+            "shred -u /root/asr-firebase-key.json /root/.asr-secrets 2>/dev/null || rm -f /root/asr-firebase-key.json /root/.asr-secrets; echo removed" || true
 
       # From the public internet this time, not from inside the box: this is
       # what the Android app will actually talk to.

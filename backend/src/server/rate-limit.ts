@@ -108,4 +108,8 @@ export const RATE_LIMITS = {
   invitePeek: { name: "invite-peek", limit: 60, windowSeconds: 60 },
   /** full account export, per user */
   export: { name: "export", limit: 5, windowSeconds: 86_400 },
+  /** profile photo upload, per user. Low on purpose: it is the one route
+   *  that accepts a megabyte from a client, and nobody changes their face
+   *  twenty times an hour. */
+  avatar: { name: "avatar", limit: 20, windowSeconds: 3600 },
 } as const satisfies Record<string, RateLimitPolicy>;
