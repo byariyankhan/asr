@@ -21,6 +21,26 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // A fixed debug key, tracked in the repository. Without it every CI run
+    // generates its own, every APK is signed by a different certificate, and
+    // installing a new build over the last one fails with
+    // INSTALL_FAILED_UPDATE_INCOMPATIBLE -- which means uninstalling the app,
+    // and losing the pact, before every single test.
+    //
+    // Committing it is safe and is what the well-known Android debug
+    // password is for: it signs debug builds only, Play refuses an APK
+    // signed with it, and it grants nothing to anybody who takes it. The
+    // release key is a different key that is not in this repository and never
+    // will be.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     // The API base URL is a BuildConfig field, never a literal in Kotlin, so
     // a debug build can be pointed at a laptop without editing source.
     buildTypes {

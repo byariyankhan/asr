@@ -23,6 +23,11 @@ android/captures/
 *.aab
 *.keystore
 *.jks
+# ...except the debug key, which is deliberately fixed so every build
+# installs over the last one. It signs debug builds only, Play rejects it,
+# and the password is Android's own public one. The release key is a
+# different key and is not in this repository.
+!android/app/debug.keystore
 # Firebase's Android client config is not a secret — Google publishes it as a
 # file that ships inside every APK, and the key in it is restricted to this
 # package name plus the signing certificate. CI cannot build an FCM-enabled
