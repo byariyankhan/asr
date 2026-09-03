@@ -29,7 +29,13 @@ obvious from inside one folder is exactly the kind that breaks another.
    somebody else has open.
 3. **Nothing merges until CI is green.** For `android/` that is not a
    formality: the app cannot be compiled in some of the environments used
-   here at all, so GitHub Actions is the only proof the code builds.
+   here at all, so GitHub Actions is the only proof the code builds. Before
+   pushing anything under `android/`, run `./android/tools/preflight.sh`. It
+   catches the faults that stop the build *before* the compiler runs and so
+   never appear as Kotlin errors — a duplicate key in the version catalog, a
+   `--` inside an XML comment — each of which has already cost a round trip
+   through CI. It cannot tell you whether the Kotlin compiles; nothing here
+   can.
 4. **Never commit a secret.** `.env` is not in git and never will be. Keys,
    tokens and passwords live in `/opt/asr/.env` on the server and in GitHub
    repository secrets. `android/app/google-services.json` is the one

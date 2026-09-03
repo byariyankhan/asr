@@ -29,7 +29,7 @@
          look at: apps with a launcher entry, which is the same set a
          launcher shows and what a person means by "my apps"; the home app
          and the settings app, which are looked up so they can be kept *out*
-         of the picker -- a person who can block Settings cannot revoke the
+         of the picker: a person who can block Settings cannot revoke the
          permissions Asr runs on, and one who can block their launcher cannot
          reach any app at all. -->
     <queries>
