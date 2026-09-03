@@ -45,7 +45,6 @@ import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.ui.DashboardViewModel
 import io.joinasr.app.ui.components.AsrPill
-import io.joinasr.app.ui.components.AsrTextLink
 import io.joinasr.app.ui.greetingFor
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -74,13 +73,12 @@ import java.time.ZoneId
  * usage access has been switched off needs to learn it here rather than by
  * noticing that nothing was ever blocked.
  *
- * Sign out sits at the bottom until the Profile tab (Figma 28) exists. It is
- * the one thing a person must always be able to do.
+ * The bottom navigation bar is drawn by the shell around this screen, not
+ * here, so the four tabs share one bar rather than four that have to agree.
  */
 @Composable
 fun DashboardScreen(
     pact: Pact,
-    onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = viewModel(),
 ) {
@@ -197,13 +195,7 @@ fun DashboardScreen(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
-        AsrTextLink(
-            text = "Sign out",
-            onClick = onSignOut,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-        )
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(24.dp))
     }
 }
 

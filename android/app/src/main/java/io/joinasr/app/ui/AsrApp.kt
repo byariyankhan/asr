@@ -4,7 +4,11 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -21,6 +26,8 @@ import io.joinasr.app.challenge.ChallengeDuration
 import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.enforcement.PactState
 import io.joinasr.app.enforcement.PactViewModel
+import io.joinasr.app.ui.components.AsrBottomNav
+import io.joinasr.app.ui.components.AsrTab
 import io.joinasr.app.ui.screens.AboutYouScreen
 import io.joinasr.app.ui.screens.BlockingDisclosureScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
@@ -28,10 +35,13 @@ import io.joinasr.app.ui.screens.ChooseAppsScreen
 import io.joinasr.app.ui.screens.DailyLimitsScreen
 import io.joinasr.app.ui.screens.DashboardScreen
 import io.joinasr.app.ui.screens.LogInScreen
+import io.joinasr.app.ui.screens.ProfileScreen
+import io.joinasr.app.ui.screens.ProgressScreen
 import io.joinasr.app.ui.screens.ProtectionScreen
 import io.joinasr.app.ui.screens.SignUpScreen
 import io.joinasr.app.ui.screens.UsageAccessScreen
 import io.joinasr.app.ui.screens.WelcomeScreen
+import io.joinasr.app.ui.screens.WitnessesScreen
 import io.joinasr.app.ui.theme.AsrColors
 
 /**
@@ -83,6 +93,7 @@ fun AsrApp(
     val context = LocalContext.current
     var destination by remember { mutableStateOf<Destination>(Destination.Welcome) }
     var setupStep by remember { mutableStateOf<SetupStep>(SetupStep.Duration) }
+    var tab by remember { mutableStateOf(AsrTab.Home) }
 
     // Held here and nowhere else, for the length of the setup flow only. A
     // half-made challenge is not something the app should remember: it is
@@ -107,6 +118,10 @@ fun AsrApp(
     BackHandler(enabled = destination != Destination.Welcome) {
         destination = Destination.Welcome
     }
+
+    // Back from any other tab returns to Home rather than leaving the app,
+    // which is what a bottom bar implies and what every app with one does.
+    BackHandler(enabled = tab != AsrTab.Home) { tab = AsrTab.Home }
 
     when (val current = session) {
         // Between launch and the answer from /v1/me. Blank rather than a
@@ -196,14 +211,51 @@ fun AsrApp(
                     )
                 }
             } else {
-                // Figma 13.
-                DashboardScreen(
-                    pact = (pactState as PactState.Active).pact,
-                    onSignOut = {
-                        destination = Destination.Welcome
-                        viewModel.signOut()
-                    },
-                )
+                val activePact = (pactState as PactState.Active).pact
+                val signOut = {
+                    destination = Destination.Welcome
+                    tab = AsrTab.Home
+                    viewModel.signOut()
+                }
+                Column(Modifier.fillMaxSize().background(AsrColors.Background)) {
+                    Box(Modifier.weight(1f)) {
+                        when (tab) {
+                            // Figma 13, 14, 15 and 28. One bar around four
+                            // screens rather than a bar inside each of them:
+                            // four copies would be four things to keep in
+                            // agreement about which tab is selected.
+                            AsrTab.Home -> DashboardScreen(pact = activePact)
+
+                            AsrTab.Progress -> ProgressScreen(pact = activePact)
+
+                            AsrTab.Witnesses -> WitnessesScreen(
+                                witnesses = emptyList(),
+                                onAdd = {},
+                                // Inviting somebody needs a link the server
+                                // issues and a way to tell them a pact broke.
+                                // Until that exists the button is visibly not
+                                // pressable, rather than pressable and inert.
+                                addEnabled = false,
+                            )
+
+                            AsrTab.Profile -> ProfileScreen(
+                                me = current.me,
+                                onOpen = {},
+                                // Every row leads to a screen that is not
+                                // built yet except the permission count,
+                                // which is live and needs no screen.
+                                available = emptySet(),
+                                onSignOut = signOut,
+                            )
+                        }
+                    }
+                    AsrBottomNav(
+                        selected = tab,
+                        onSelect = { tab = it },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
             }
 
         Session.SignedOut -> when (destination) {
