@@ -1,9 +1,28 @@
 # Android
 
+## What exists today
+
+Read this first, because everything after it is a plan.
+
+In the repository right now: a Gradle project (`minSdk 26`, `targetSdk 35`),
+the design system taken from Figma (`docs/DESIGN.md`), and three screens —
+Welcome, Sign Up, Log In — that navigate between each other and nothing
+more. No network, no database, no service, no permissions declared.
+
+None of Hilt, Room, WorkManager, Retrofit or Play Billing is a dependency
+yet. They are named below because that is what this document is: the design
+of the app to be built, written before it was built. Anything phrased as
+though it already works describes an intention, not code, until it appears
+in the section above.
+
+`docs/FIGMA_SCREENS.md` has the node id of every screen and the order they
+are being built in.
+
+## Planned stack
+
 Kotlin, Jetpack Compose, single-activity, MVVM with a repository layer, Hilt
 for DI, Room for local persistence, WorkManager for background work, Retrofit
-+ OkHttp for the API, Google Play Billing for subscriptions. `minSdk 26`
-(Android 8), `targetSdk` current.
++ OkHttp for the API, Google Play Billing for subscriptions.
 
 ## Enforcement loop
 
@@ -22,7 +41,7 @@ comfortable with and keep the other as a fallback that is off by default.
    resumes that app's local usage counter.
 3. When the counter reaches the limit, the service shows a full-screen
    overlay (`SYSTEM_ALERT_WINDOW`, also granted in settings) on top of the
-   blocked app. The overlay offers: go back, start a activity to earn
+   blocked app. The overlay offers: go back, start an activity to earn
    minutes, or (during a pact) "I give up", which records a break.
 4. Pressing home or back returns the user to the launcher; the overlay
    re-appears the moment the blocked app is foregrounded again.
@@ -134,7 +153,12 @@ No location, contacts, camera, microphone, or SMS.
 
 ## Build configuration
 
-Domain and API base URL come from `BuildConfig` fields set in
-`android/app/build.gradle.kts` per flavor (`dev` points at a local server,
-`prod` at `https://api.joinasr.io`). Nothing is hard-coded in Kotlin
-source.
+The API base URL is a `BuildConfig` field set in
+`android/app/build.gradle.kts`, never a literal in Kotlin source. Both build
+types currently point at `https://api.joinasr.io`. A `dev` flavor aimed at a
+local server is worth adding when someone actually runs the backend locally,
+and does not exist yet.
+
+The app cannot be built in every environment this project is worked in — see
+`docs/DEVELOPMENT.md`. `.github/workflows/android.yml` is the build of
+record and uploads an installable debug APK on every run.

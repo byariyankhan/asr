@@ -18,7 +18,7 @@ who hold you to it.
 | Path | Contents |
 |---|---|
 | `backend/` | Next.js API (`api.joinasr.io`): accounts, pact ledger, witnesses, notifications |
-| `android/` | Kotlin + Jetpack Compose app: enforcement, usage tracking, UI |
+| `android/` | Kotlin + Jetpack Compose app. Design system and the auth screens exist; enforcement, usage tracking and the rest are planned — see `docs/ANDROID.md` |
 | `docs/` | Design and operations documents (start with `ARCHITECTURE.md`) |
 | `infra/` | Production `docker-compose.yml`, nginx site, backup script: version of record for the VPS |
 
@@ -30,6 +30,9 @@ who hold you to it.
 4. [`docs/ANDROID.md`](docs/ANDROID.md): enforcement loop, permissions, Play policy, offline queue.
 5. [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md): how it runs on the VPS next to Bookween without touching Bookween, and how it moves to its own server later.
 6. [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md): local setup and conventions.
+7. [`docs/DESIGN.md`](docs/DESIGN.md): the colours, type and measures, read out of
+   Figma. Anything that needs a colour uses these and invents nothing.
+8. [`docs/FIGMA_SCREENS.md`](docs/FIGMA_SCREENS.md): every screen's node id, in build order.
 
 ## The three rules
 
