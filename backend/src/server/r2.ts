@@ -10,9 +10,12 @@ import { createHash, createHmac } from "node:crypto";
  * project has twice lost a deploy to a dependency's files not surviving a
  * Next standalone build. node:crypto is already there.
  *
- * The bucket is private. Nothing here ever makes an object public, and no
- * public URL exists to leak: an avatar is a person's face, shown to the
- * witnesses they invited, and /v1/media checks that on every request.
+ * The bucket has no public access and nothing here grants any: objects are
+ * streamed by /v1/media instead. The photos themselves are public -- that is
+ * what a profile picture is, and the invite preview needs one before the
+ * viewer has an account -- so this is not a privacy measure. It is so that
+ * no URL is ever stored, only a key, and a CDN or a media domain can go in
+ * front later without touching a single stored value.
  */
 
 export type R2Config = {
