@@ -1,28 +1,37 @@
 package io.joinasr.app.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
 
-// Placeholder scheme. The real tokens come from the Figma file with screen 01;
-// deliberately not invented here, because a colour that is nearly right is
-// harder to notice and fix than one that is obviously absent.
-private val Amber = Color(0xFFE8B44A)
-private val Ink = Color(0xFF0B0E14)
-
-private val DarkScheme = darkColorScheme(primary = Amber, background = Ink, surface = Ink)
-private val LightScheme = lightColorScheme(primary = Amber)
-
+/**
+ * One theme, always dark. The design has no light variant, and a screen whose
+ * job is to sit on top of another app has to be predictable — following the
+ * system theme would give a reader two different block screens depending on
+ * a setting they set months ago.
+ *
+ * Material's scheme is filled in so that any Material component pulled in
+ * later is already the right colour; the app's own components read AsrColors
+ * directly, which keeps a screen's intent readable at the call site.
+ */
 @Composable
-fun AsrTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit,
-) {
+fun AsrTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkScheme else LightScheme,
+        colorScheme = darkColorScheme(
+            primary = AsrColors.Accent,
+            onPrimary = AsrColors.OnAccent,
+            background = AsrColors.Background,
+            onBackground = AsrColors.TextPrimary,
+            surface = AsrColors.Surface,
+            onSurface = AsrColors.TextPrimary,
+            outline = AsrColors.SurfaceBorder,
+        ),
+        typography = Typography(
+            bodyLarge = AsrType.Body,
+            bodyMedium = AsrType.Field,
+            labelLarge = AsrType.Label,
+        ),
         content = content,
     )
 }

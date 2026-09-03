@@ -4,45 +4,35 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import io.joinasr.app.ui.AsrApp
+import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Edge to edge, then the app's own background painted behind the
+        // status and navigation bars — without it they stay the system's
+        // default and the black screen ends in two grey stripes.
         enableEdgeToEdge()
         setContent {
             AsrTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-                    Placeholder(Modifier.padding(padding))
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(AsrColors.Background)
+                        .windowInsetsPadding(WindowInsets.systemBars),
+                ) {
+                    AsrApp()
                 }
             }
         }
-    }
-}
-
-// Deliberately a placeholder and named one: the real first screen is 01
-// Authentication, built from the Figma file. This exists so the toolchain
-// can be proven end to end — compile, unit tests, installable APK — before
-// any screen is written against it.
-@Composable
-private fun Placeholder(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("Asr", style = MaterialTheme.typography.headlineLarge)
-        Text(BuildConfig.API_BASE_URL, style = MaterialTheme.typography.bodySmall)
     }
 }
