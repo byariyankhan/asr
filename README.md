@@ -1,205 +1,67 @@
-# Asr - Screen Time Protection Platform
+# Asr
 
-**Asr** is a commitment-based screen time management app inspired by Surah Al-Asr (The Time) from the Quran. The app helps users protect their time, maintain focus, and stay accountable to themselves and their partners.
+**Protect your time. Keep your word.**
 
-## Tagline
-**Protect Your Time. Earn Your Focus.**
+Asr is an Android app for people who want to use certain apps less and cannot
+do it alone. You pick the apps, set daily limits, lock them behind a
+commitment (1 to 30 days), and name one or more **witnesses**. If you break the
+commitment, disable protection, or uninstall the app, your witnesses are told.
+If you keep it, they are told that too.
 
-## Core Philosophy
+The name comes from Surah Al-Asr (Quran 103), a short chapter about time
+running out and people saving each other from loss by reminding one another of
+truth and patience. That is the whole product: a promise, a limit, and people
+who hold you to it.
 
-Time is finite and precious. Asr empowers users to:
-- **Set limits** on distracting apps
-- **Lock their commitment** to maintain discipline
-- **Earn more time** through focus challenges
-- **Stay accountable** through partner oversight
+## What this repository is
 
-## Target Market
+| Path | Contents |
+|---|---|
+| `backend/` | Next.js API (`api.joinasr.com`): accounts, commitment ledger, witnesses, notifications |
+| `android/` | Kotlin + Jetpack Compose app: enforcement, usage tracking, UI |
+| `docs/` | Design and operations documents (start with `ARCHITECTURE.md`) |
+| `infra/` | Production `docker-compose.yml`, nginx site, backup script: version of record for the VPS |
 
-- Primary: India (Android-first)
-- Secondary: Global expansion (iOS later)
-- Demographics: College students, young professionals, anyone struggling with screen addiction
+## Read this before writing code
 
-## Product Vision
+1. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): what runs on the phone, what runs on the server, and why. The **data boundary** section is the most important decision in the project.
+2. [`docs/DATABASE.md`](docs/DATABASE.md): the server tables and the migration convention.
+3. [`docs/API.md`](docs/API.md): every endpoint the Android app calls.
+4. [`docs/ANDROID.md`](docs/ANDROID.md): enforcement loop, permissions, Play policy, offline queue.
+5. [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md): how it runs on the VPS next to Bookween without touching Bookween, and how it moves to its own server later.
+6. [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md): local setup and conventions.
 
-### For Users
-A spiritual + practical tool to reclaim their time. Not punishment, but empowerment through accountability and meaningful challenges.
+## The three rules
 
-### For Partners/Accountability
-Enable others to genuinely support their friends' digital wellness journey without intrusion or judgment.
+- **The phone is the source of truth for enforcement and usage.** Raw usage never leaves the device. The server is a ledger of promises and outcomes, plus the people to notify.
+- **Asr shares nothing with Bookween except the machine.** Separate repo, database, Redis, compose file, domain, and auth. Moving Asr to its own server is a folder copy and a DNS change.
+- **Production V1, not MVP.** No throwaway code, no fake data, no planned rewrite. Scope is small on purpose; everything in scope is finished.
 
-## Core Features
+## Scope of V1
 
-### Set Your Limits
-- Select which apps to control
-- Set daily time limits
-- Custom reset times (not just midnight)
+In: app limits, custom reset time, commitments (1/3/7/14/30 days) that lock
+limits and app lists, "earn your time" challenges (steps, focus session,
+waiting period), witnesses with invite links and notification preferences
+including roast mode, protection-loss and uninstall detection, streaks and
+history, onboarding, dark/light theme, offline handling, account deletion and
+data export.
 
-### Lock Your Commitment
-- Choose commitment duration: 24h, 3d, 7d, 14d, 30d
-- During commitment: limits cannot be increased, controlled apps cannot be removed
-- Early break = failure recorded (no judgment, just visibility)
+Out (deliberately, not "later if we get to it"): iOS, desktop, watch,
+AI coach, public feed, leaderboards, parental controls.
 
-### Earn Your Time
-- Walk steps → earn minutes
-- Focus sessions → earn minutes
-- Waiting periods → earn minutes
-- Daily reward limits
-- Challenge rules lock when commitment starts
+## Stack
 
-### Accountability Partners
-- Invite partners via link
-- Deep linking: app install / account creation
-- Multiple partners support
-- Partner dashboard: see user's progress
-- Notifications: success celebrations + gentle roasts on failure
-- Notification preferences: customizable alerts
+Backend: Next.js 16, TypeScript, PostgreSQL 17, Kysely, Better Auth (bearer
+sessions), ioredis, Firebase Admin (FCM), Resend, Zod, Vitest. Android:
+Kotlin, Jetpack Compose, Hilt, Room, WorkManager, Retrofit, Google Play
+Billing. Reasons for each choice are in `docs/ARCHITECTURE.md`.
 
-### Protection Verification
-- Usage events = proof of life
-- Blocking events = proof of life
-- Manual app opens = proof of life
-- Scheduled verification checks
-- Multiple missed verification = protection lost detection
-- FCM + device state as supporting signals
+## Domains
 
-### Progress Tracking
-- Current streak
-- Longest streak
-- Successful commitment days
-- Broken commitments
-- Screen time saved (calculated)
-- Earned minutes (accumulated)
-- Challenge history
-- Weekly/monthly trends
+- `joinasr.com`: landing page and witness invite links (`joinasr.com/w/<code>`)
+- `api.joinasr.com`: backend
+- `noreply@joinasr.com`: transactional email
 
-### Production Polish
-- Smooth onboarding
-- Permission education
-- Dark/light UI
-- Smooth animations
-- Empty/error/offline states
-- Notification center
-- Settings
-- Account deletion
-- Privacy/export controls
-
-## Technical Stack
-
-### Backend
-- **Framework**: Next.js (API routes)
-- **Database**: PostgreSQL (separate from bookween)
-- **Cache**: Redis (isolated namespace: `asr:*`)
-- **Authentication**: Better Auth
-- **Notifications**: Firebase Cloud Messaging (FCM)
-- **Storage**: Optional file uploads to R2
-
-### Android
-- **Language**: Kotlin
-- **UI Framework**: Jetpack Compose
-- **Usage Stats**: UsageStatsManager (for app monitoring)
-- **Accessibility Service**: For real-time app blocking
-- **Local Storage**: Encrypted datastore
-- **Background**: WorkManager for scheduled verification
-
-### iOS (Future - V1.1+)
-- **Language**: Swift
-- **UI Framework**: SwiftUI
-- **Screen Time API**: Limited access (Apple's restrictions)
-- **Equivalent**: Notification-based approach for time tracking
-
-## Development Phases
-
-### Phase 1: Backend Foundation (Week 1-2)
-- [ ] Database schema
-- [ ] Authentication system
-- [ ] Basic CRUD APIs
-- [ ] Notification infrastructure
-
-### Phase 2: Core Features (Week 3-4)
-- [ ] App control system
-- [ ] Commitment logic
-- [ ] Usage tracking
-- [ ] Accountability partners
-
-### Phase 3: Advanced Features (Week 5-6)
-- [ ] Earn your time challenges
-- [ ] Progress analytics
-- [ ] Partner dashboard
-- [ ] Protection verification
-
-### Phase 4: Android App (Week 7-10)
-- [ ] Project setup
-- [ ] UI implementation
-- [ ] UsageStatsManager integration
-- [ ] Real-time blocking
-
-### Phase 5: Polish & Launch (Week 11-12)
-- [ ] Testing & QA
-- [ ] Performance optimization
-- [ ] App store submission
-- [ ] Production deployment
-
-## Important Notes
-
-### Production V1 Standards
-- **No throwaway code** - everything production-ready from day 1
-- **No fake data** - real user data from launch
-- **No planned rewrites** - architecture solid for V1.1, V2 evolution
-- **Future-proof** - architecture supports iOS, multiple platforms, advanced features
-
-### Architecture Decisions
-- **Separate Database**: Asr database completely independent (can move to separate server anytime)
-- **Isolated Redis**: All Asr keys namespaced `asr:*` (no dependencies on bookween)
-- **API-First**: Future bookween ↔ Asr integration via HTTP APIs only
-- **Stateless Services**: Can scale horizontally independently
-
-### Privacy First
-- **Minimal Data Collection**: Only usage counts (not content)
-- **No Content Scanning**: App names and usage times only
-- **User Control**: Export/delete data anytime
-- **Transparent**: Clear privacy policy from day 1
-
-## Deployment
-
-### Infrastructure
-- **VPS**: Same server as bookween (initially)
-- **Port**: 3001
-- **Domain**: api.myasr.me
-- **SSL**: Let's Encrypt
-- **Monitoring**: Health checks, error tracking
-
-### Future Scaling
-- Move to separate VPS when traffic demands
-- Add caching layer (Redis optimization)
-- Database replication for HA
-- Multi-region deployment (later)
-
-## Getting Started
-
-See [DEVELOPMENT.md](./docs/DEVELOPMENT.md) for local setup.
-
-## API Documentation
-
-See [API.md](./docs/API.md) for complete endpoint documentation.
-
-## Database Schema
-
-See [DATABASE.md](./docs/DATABASE.md) for schema details.
-
-## Architecture
-
-See [ARCHITECTURE.md](./docs/ARCHITECTURE.md) for system design.
-
-## Contributing
-
-See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for contribution guidelines.
-
-## License
-
-Proprietary - Ariyan Khan Productions
-
-## Contact
-
-- Founder: Ariyan Khan
-- Email: hi@ariyankhan.com
-- Website: https://ariyankhan.com
+Each lives in exactly one config place (`/opt/asr/.env`, the Android build
+config, `infra/nginx/asr-api`). Changing the domain later is a config change,
+not a code change.

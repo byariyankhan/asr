@@ -1,1069 +1,310 @@
-# Asr API Documentation
+# API
 
-## Base URL
-```
-https://api.myasr.me/api/v1
-```
+Base URL `https://api.joinasr.com/v1`. JSON in, JSON out. All times are
+ISO 8601 with offset. Ids are UUIDs.
 
 ## Authentication
-All endpoints (except auth) require:
+
+Better Auth with the bearer plugin. The Android app calls the Better Auth
+routes under `/api/auth/*` (sign up, sign in, verify email, reset password,
+sign out) and receives a session token in the `set-auth-token` response
+header. Every `/v1/*` call sends it:
+
 ```
-Authorization: Bearer <JWT_TOKEN>
+Authorization: Bearer <session token>
 ```
 
-## Response Format
+Tokens are stored in Android `EncryptedSharedPreferences`. Sessions expire
+after 30 days of inactivity and are refreshed automatically by Better Auth
+on use.
 
-### Success Response (2xx)
+Routes marked **witness** may be called by an accepted witness of the user in
+the path; everything else is owner-only.
+
+## Envelope
+
+Success: `200`/`201` with the resource, or `204` with no body.
+
+Error:
+
+```json
+{ "error": "commitment_active", "message": "You already have an active commitment." }
+```
+
+| Status | Meaning |
+|---|---|
+| 400 | Body failed validation (`error: "invalid_body"`, `issues: [...]`) |
+| 401 | Missing or expired token |
+| 403 | Not your resource, or witness access not granted |
+| 404 | Not found |
+| 409 | State conflict (`commitment_active`, `locked_by_commitment`, `invite_used`, `daily_cap_reached`) |
+| 429 | Rate limited; `Retry-After` header set |
+
+## Rate limits
+
+Per user (or per IP before auth), enforced in Redis:
+
+| Scope | Limit |
+|---|---|
+| sign up / sign in / password reset | 10 per 15 min per IP |
+| invite creation | 20 per day |
+| event ingestion | 120 per hour per device |
+| everything else | 300 per minute |
+
+## Devices
+
+### `POST /devices`
+
+Register or update this install. Called on every app start after login.
+
+```json
+{ "install_id": "…", "model": "Pixel 8", "os_version": "15", "app_version": "1.0.0", "fcm_token": "…" }
+```
+
+Returns the `device` row. Idempotent on `(user, install_id)`.
+
+### `POST /devices/{id}/heartbeat`
+
+```json
+{ "protection_enabled": true, "app_version": "1.0.0", "fcm_token": "…" }
+```
+
+`204`. Updates `last_heartbeat_at`, `protection_enabled`, and the token if it
+changed. Called every ~6 h by WorkManager, on app open, and after every event
+post.
+
+### `DELETE /devices/{id}`
+
+Logout from this device. `204`.
+
+## Commitments
+
+### `POST /commitments`
+
 ```json
 {
-  "status": "success",
-  "data": { /* endpoint-specific data */ },
-  "message": "Optional message"
+  "device_id": "…",
+  "duration_days": 7,
+  "timezone": "Asia/Dhaka",
+  "snapshot": { "apps": [...], "reset_time": "04:00", "challenges": {...} }
 }
 ```
 
-### Error Response (4xx, 5xx)
+`201` with the commitment. `409 commitment_active` if one exists. Writes a
+`started` event and notifies witnesses with `notify_start`.
+
+### `GET /commitments/current`
+
+The active commitment or `404`.
+
+### `GET /commitments?cursor=&limit=`  **witness**
+
+History, newest first, cursor pagination on `(created_at, id)`.
+
+### `GET /commitments/{id}`  **witness**
+
+Commitment with its events and challenges.
+
+### `POST /commitments/{id}/events`
+
+Device reports an outcome.
+
 ```json
 {
-  "status": "error",
-  "error": "error_code",
-  "message": "Human readable message",
-  "details": { /* optional error details */ }
+  "id": "0192f1c2-…",
+  "type": "broken",
+  "reason": "limit_exceeded",
+  "app_package": "com.instagram.android",
+  "occurred_at": "2026-09-03T14:02:11+06:00"
 }
 ```
 
-## Rate Limiting
-- Authenticated: 100 req/min per user
-- Public: 10 req/min per IP
-- Response headers:
-  ```
-  X-RateLimit-Limit: 100
-  X-RateLimit-Remaining: 87
-  X-RateLimit-Reset: 1630000000
-  ```
+`id` is a UUIDv7 generated on the device and is the idempotency key. `201`
+with the event, or `200` with the existing event if the id was seen before.
+Allowed device types: `broken`, `completed`, `limit_hit`,
+`challenge_completed`, `restored`. A `broken` or `completed` event closes the
+commitment and triggers witness notifications. Anything else on a closed
+commitment returns `409`.
 
----
+### `POST /commitments/{id}/give-up`
 
-## Authentication Endpoints
+Shortcut for a deliberate early exit from the app's own UI. Body
+`{ "id": "<uuidv7>" }`. Same as posting a `broken` event with reason
+`user_gave_up`.
 
-### POST /auth/signup
-Register new user
+### `POST /commitments/{id}/summary`
 
-**Request:**
+Daily aggregate, sent once per day per app while active.
+
+```json
+{ "day": "2026-09-03", "apps": [ { "package": "…", "minutes_used": 27, "limit_min": 30, "earned_min": 10 } ] }
+```
+
+`204`. Upserts `daily_summary`.
+
+## Challenges
+
+### `POST /commitments/{id}/challenges`
+
+```json
+{ "id": "<uuidv7>", "type": "walk_steps", "target": 3000, "reward_min": 10, "started_at": "…", "deadline_at": "…" }
+```
+
+`201`. The server checks the type and reward against the commitment
+snapshot's challenge rules and the daily cap; `409 daily_cap_reached` if
+exhausted.
+
+### `POST /challenges/{id}/complete`
+
+```json
+{ "event_id": "<uuidv7>", "occurred_at": "…" }
+```
+
+`200` with the challenge. Writes a `challenge_completed` event carrying the
+reward minutes.
+
+### `POST /challenges/{id}/cancel`
+
+`204`. No penalty; used when the user abandons a waiting period.
+
+Failed challenges are set by the server watchdog when `deadline_at` passes
+without completion; the app learns about it on next sync.
+
+## Witnesses
+
+### `POST /witnesses/invites`
+
+```json
+{ "email": "optional@example.com" }
+```
+
+`201`:
+
+```json
+{ "id": "…", "invite_code": "K7M2P9XQ4T", "url": "https://joinasr.com/w/K7M2P9XQ4T" }
+```
+
+If `email` is given the server also sends the link by email.
+
+### `GET /witnesses/invites/{code}`
+
+Public (no auth). Returns the inviter's display name so the accept screen can
+say "Ariyan wants you as a witness". Never returns anything else.
+
+### `POST /witnesses/invites/{code}/accept`
+
+Authenticated as the witness. `200` with the `witness` row. `409 invite_used`
+if already accepted or declined.
+
+### `POST /witnesses/invites/{code}/decline`
+
+`204`.
+
+### `GET /witnesses`
+
+Two lists: people witnessing me, people I witness.
+
+```json
+{ "my_witnesses": [ { "id": "…", "user": { "id": "…", "name": "…" }, "status": "accepted", "notify_failure": true, "roast_mode": false } ],
+  "i_witness":    [ { "id": "…", "user": { "id": "…", "name": "…" }, "status": "accepted", "views_progress": true } ] }
+```
+
+### `PATCH /witnesses/{id}`
+
+Either side edits the fields that belong to them:
+
+- The witness edits `notify_start`, `notify_success`, `notify_failure`,
+  `notify_digest`, `roast_mode`.
+- The user edits `views_progress`.
+
+`200` with the row.
+
+### `DELETE /witnesses/{id}`
+
+Either side. Sets `status = removed`. `204`.
+
+### `GET /witnesses/{id}/progress`  **witness**
+
+What the witness dashboard shows about the user:
+
 ```json
 {
-  "email": "user@example.com",
-  "password": "securePassword123!",
-  "firstName": "John",
-  "lastName": "Doe"
+  "user": { "id": "…", "name": "…" },
+  "current": { "commitment_id": "…", "day": 3, "of": 7, "status": "active", "apps": [ { "label": "Instagram", "limit_min": 30 } ] },
+  "streak_days": 12,
+  "longest_streak_days": 21,
+  "completed": 4,
+  "broken": 1,
+  "recent_events": [ { "type": "challenge_completed", "minutes": 10, "received_at": "…" } ]
 }
 ```
 
-**Response (201):**
+`403` unless `status = accepted` and `views_progress = true`.
+
+## Me
+
+### `GET /me`
+
+Profile, timezone, notification flags, subscription status, device count.
+
+### `PATCH /me`
+
+`{ "name", "timezone", "notify_email", "notify_push" }`.
+
+### `GET /me/progress`
+
+Same shape as the witness progress view, for the user's own screens
+(the app computes this locally too; this is the reconciliation source).
+
+### `GET /me/notifications?cursor=&limit=`
+
+Inbox of notifications sent to me (as a witness or about my own account).
+
+### `POST /me/notifications/read`
+
+`{ "ids": [...] }` or `{ "all": true }`. `204`.
+
+### `POST /me/export`
+
+`202`. Generates a JSON export of the user's ledger and emails a download
+link valid for 24 hours.
+
+### `DELETE /me`
+
+`{ "password": "…" }`. Schedules hard deletion in 7 days, revokes all
+sessions, notifies witnesses that the relationship ended. `204`. Logging in
+again within 7 days cancels the deletion.
+
+## Subscription
+
+### `POST /subscription/verify`
+
 ```json
-{
-  "status": "success",
-  "data": {
-    "user": {
-      "id": "uuid",
-      "email": "user@example.com",
-      "firstName": "John",
-      "lastName": "Doe",
-      "createdAt": "2024-09-03T10:00:00Z"
-    },
-    "token": "eyJhbGciOiJIUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
-  }
-}
+{ "product_id": "asr_plus_monthly", "purchase_token": "…" }
 ```
 
-**Errors:**
-- 409: Email already exists
-- 400: Invalid email or password format
-
----
-
-### POST /auth/login
-Authenticate user
-
-**Request:**
-```json
-{
-  "email": "user@example.com",
-  "password": "securePassword123!"
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "user": { /* user object */ },
-    "token": "eyJhbGciOiJIUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
-  }
-}
-```
-
-**Errors:**
-- 401: Invalid credentials
-- 404: User not found
-
----
-
-### POST /auth/logout
-Revoke tokens (optional backend support)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "message": "Logged out successfully"
-}
-```
-
----
-
-### POST /auth/refresh
-Refresh JWT token
-
-**Request:**
-```json
-{
-  "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
-  }
-}
-```
-
----
-
-### POST /auth/forgot-password
-Request password reset
-
-**Request:**
-```json
-{
-  "email": "user@example.com"
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "message": "Password reset email sent"
-}
-```
-
----
-
-### POST /auth/reset-password
-Reset password with token
-
-**Request:**
-```json
-{
-  "token": "reset_token_from_email",
-  "newPassword": "newPassword123!"
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "message": "Password reset successfully"
-}
-```
-
----
-
-## Device Endpoints
-
-### POST /devices/register
-Register device (on app launch)
-
-**Request:**
-```json
-{
-  "deviceId": "android_device_id",
-  "deviceName": "Pixel 6",
-  "osVersion": "13",
-  "appVersion": "1.0.0",
-  "fcmToken": "firebase_messaging_token"
-}
-```
-
-**Response (201):**
-```json
-{
-  "status": "success",
-  "data": {
-    "device": {
-      "id": "uuid",
-      "deviceId": "android_device_id",
-      "deviceName": "Pixel 6",
-      "fcmToken": "firebase_messaging_token",
-      "createdAt": "2024-09-03T10:00:00Z"
-    }
-  }
-}
-```
-
----
-
-### PUT /devices/{deviceId}/fcm-token
-Update FCM token (when it changes)
-
-**Request:**
-```json
-{
-  "fcmToken": "new_firebase_token"
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "device": { /* updated device */ }
-  }
-}
-```
-
----
-
-### GET /devices
-List user's devices
-
-**Query Parameters:**
-- `limit`: 10 (default)
-- `offset`: 0 (default)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "devices": [ /* array of devices */ ],
-    "total": 2,
-    "limit": 10,
-    "offset": 0
-  }
-}
-```
-
----
-
-## App Management Endpoints
-
-### GET /apps/installed
-List installed apps on device
-
-**Query Parameters:**
-- `deviceId`: uuid (required)
-- `limit`: 50 (default)
-- `offset`: 0 (default)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "apps": [
-      {
-        "id": "uuid",
-        "appPackage": "com.instagram.android",
-        "appName": "Instagram",
-        "appIcon": "base64_or_url",
-        "isSystem": false,
-        "category": "social",
-        "lastUsedAt": "2024-09-03T09:30:00Z"
-      }
-    ],
-    "total": 45,
-    "limit": 50,
-    "offset": 0
-  }
-}
-```
-
----
-
-### POST /apps/controlled
-Add app to control list
-
-**Request:**
-```json
-{
-  "appPackage": "com.instagram.android",
-  "appName": "Instagram",
-  "dailyLimitMinutes": 60,
-  "resetTime": "00:00:00"
-}
-```
-
-**Response (201):**
-```json
-{
-  "status": "success",
-  "data": {
-    "app": {
-      "id": "uuid",
-      "appPackage": "com.instagram.android",
-      "appName": "Instagram",
-      "dailyLimitMinutes": 60,
-      "resetTime": "00:00:00",
-      "isBlocked": false,
-      "earnedMinutes": 0,
-      "createdAt": "2024-09-03T10:00:00Z"
-    }
-  }
-}
-```
-
-**Errors:**
-- 409: App already controlled
-- 400: Cannot add during active commitment (if limit increase blocked)
-
----
-
-### GET /apps/controlled
-List controlled apps
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "apps": [ /* array of controlled apps */ ],
-    "total": 5
-  }
-}
-```
-
----
-
-### PUT /apps/controlled/{appId}
-Update app limits
-
-**Request:**
-```json
-{
-  "dailyLimitMinutes": 45,
-  "resetTime": "06:00:00"
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "app": { /* updated app */ }
-  }
-}
-```
-
-**Errors:**
-- 400: Cannot increase limit during commitment
-- 404: App not found
-
----
-
-### DELETE /apps/controlled/{appId}
-Remove app from control
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "message": "App removed from control"
-}
-```
-
-**Errors:**
-- 400: Cannot remove app during commitment
-- 404: App not found
-
----
-
-## Commitment Endpoints
-
-### POST /commitments
-Start a new commitment
-
-**Request:**
-```json
-{
-  "durationDays": 7,
-  "controlledAppIds": ["uuid1", "uuid2"]
-}
-```
-
-**Response (201):**
-```json
-{
-  "status": "success",
-  "data": {
-    "commitment": {
-      "id": "uuid",
-      "durationDays": 7,
-      "startedAt": "2024-09-03T10:00:00Z",
-      "endsAt": "2024-09-10T10:00:00Z",
-      "status": "active",
-      "canIncreaseLimit": false,
-      "canRemoveApps": false,
-      "rules": [
-        {
-          "appId": "uuid1",
-          "appName": "Instagram",
-          "limitAtStart": 60
-        }
-      ]
-    }
-  }
-}
-```
-
-**Errors:**
-- 400: Already in active commitment
-- 400: No apps selected
-
----
-
-### GET /commitments/current
-Get active commitment
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "commitment": { /* commitment object */ }
-  }
-}
-```
-
-**Errors:**
-- 404: No active commitment
-
----
-
-### GET /commitments
-Get commitment history
-
-**Query Parameters:**
-- `status`: active|completed|broken (optional)
-- `limit`: 20 (default)
-- `offset`: 0 (default)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "commitments": [ /* array of commitments */ ],
-    "total": 12,
-    "limit": 20,
-    "offset": 0
-  }
-}
-```
-
----
-
-### POST /commitments/{commitmentId}/break
-Break an active commitment
-
-**Request:**
-```json
-{
-  "reason": "Couldn't resist",
-  "skipNotification": false
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "commitment": {
-      "id": "uuid",
-      "status": "broken",
-      "brokenAt": "2024-09-03T11:30:00Z",
-      "breakReason": "Couldn't resist"
-    }
-  },
-  "notification_sent_to": ["partner_id_1", "partner_id_2"]
-}
-```
-
-**Errors:**
-- 404: Commitment not found or not active
-- 409: Commitment already completed
-
----
-
-## Challenge Endpoints
-
-### GET /challenges
-List available challenges
-
-**Query Parameters:**
-- `type`: walk_steps|focus_session|waiting_period (optional)
-- `limit`: 10 (default)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "challenges": [
-      {
-        "id": "uuid",
-        "type": "walk_steps",
-        "targetValue": 5000,
-        "rewardMinutes": 15,
-        "currentValue": 2340,
-        "isCompleted": false,
-        "dailyLimitMinutes": 30,
-        "todayEarnedMinutes": 0,
-        "startsAt": "2024-09-03T00:00:00Z"
-      }
-    ]
-  }
-}
-```
-
----
-
-### POST /challenges/{challengeId}/complete
-Mark challenge complete and claim reward
-
-**Request:**
-```json
-{
-  "proofData": { /* optional proof object */ }
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "challenge": {
-      "id": "uuid",
-      "isCompleted": true,
-      "completedAt": "2024-09-03T15:30:00Z"
-    },
-    "reward": {
-      "id": "uuid",
-      "minutesEarned": 15,
-      "awardedAt": "2024-09-03T15:30:00Z",
-      "todayEarnedMinutes": 15
-    }
-  }
-}
-```
-
-**Errors:**
-- 400: Challenge already completed
-- 400: Daily limit exceeded for this type
-- 404: Challenge not found
-
----
-
-### GET /challenges/history
-Get completed challenges
-
-**Query Parameters:**
-- `limit`: 20 (default)
-- `offset`: 0 (default)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "challenges": [ /* completed challenges */ ],
-    "totalEarnedMinutes": 245,
-    "total": 16
-  }
-}
-```
-
----
-
-## Partner Endpoints
-
-### POST /partners/invite
-Send accountability partner invitation
-
-**Request:**
-```json
-{
-  "email": "friend@example.com"
-}
-```
-
-**Response (201):**
-```json
-{
-  "status": "success",
-  "data": {
-    "relationship": {
-      "id": "uuid",
-      "partnerId": "uuid",
-      "partnerEmail": "friend@example.com",
-      "status": "pending",
-      "invitedAt": "2024-09-03T10:00:00Z",
-      "inviteLink": "https://myasr.me/join/partner/abc123"
-    }
-  }
-}
-```
-
----
-
-### POST /partners/accept/{relationshipId}
-Accept partner invitation
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "relationship": {
-      "id": "uuid",
-      "status": "accepted",
-      "acceptedAt": "2024-09-03T11:00:00Z"
-    }
-  }
-}
-```
-
----
-
-### GET /partners
-List user's partners
-
-**Query Parameters:**
-- `status`: pending|accepted|declined (optional)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "partners": [
-      {
-        "id": "uuid",
-        "userId": "uuid",
-        "partner": {
-          "id": "uuid",
-          "firstName": "Jane",
-          "lastName": "Doe",
-          "avatar": "url"
-        },
-        "status": "accepted",
-        "notifyOnSuccess": true,
-        "notifyOnFailure": true,
-        "viewsProgress": true
-      }
-    ],
-    "total": 3
-  }
-}
-```
-
----
-
-### GET /partners/{partnerId}/progress
-View partner's progress (only if they've granted access)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "progress": {
-      "partner": {
-        "id": "uuid",
-        "firstName": "Jane",
-        "lastName": "Doe"
-      },
-      "currentStreak": 5,
-      "longestStreak": 12,
-      "successfulCommitments": 8,
-      "brokenCommitments": 2,
-      "totalScreenTimeSaved": 1200, /* minutes */
-      "totalMinutesEarned": 345,
-      "currentCommitment": { /* if active */ }
-    }
-  }
-}
-```
-
-**Errors:**
-- 404: Partner not found or access denied
-- 403: Partner hasn't granted progress access
-
----
-
-### PUT /partners/{relationshipId}
-Update partner notification preferences
-
-**Request:**
-```json
-{
-  "notifyOnSuccess": true,
-  "notifyOnFailure": true,
-  "viewsProgress": true,
-  "canRoast": true
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "relationship": { /* updated relationship */ }
-  }
-}
-```
-
----
-
-### DELETE /partners/{relationshipId}
-Remove partner
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "message": "Partner removed"
-}
-```
-
----
-
-## Protection Endpoints
-
-### POST /protection/events
-Report protection event (from device)
-
-**Request:**
-```json
-{
-  "eventType": "usage",
-  "appPackage": "com.instagram.android",
-  "eventTimestamp": "2024-09-03T10:15:00Z",
-  "details": {
-    "durationSeconds": 300,
-    "foreground": true
-  }
-}
-```
-
-**Response (201):**
-```json
-{
-  "status": "success",
-  "data": {
-    "event": {
-      "id": "uuid",
-      "eventType": "usage",
-      "appPackage": "com.instagram.android",
-      "createdAt": "2024-09-03T10:15:01Z"
-    }
-  }
-}
-```
-
----
-
-### GET /protection/status
-Get current protection status
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "isProtectionActive": true,
-    "lastEventAt": "2024-09-03T10:30:00Z",
-    "missedVerifications": 0,
-    "protectionLost": false,
-    "recommendations": []
-  }
-}
-```
-
----
-
-### GET /protection/events
-Get protection event history
-
-**Query Parameters:**
-- `limit`: 50 (default)
-- `cursor`: timestamp_id (for pagination)
-- `eventType`: optional filter
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "events": [
-      {
-        "id": "uuid",
-        "eventType": "usage",
-        "appPackage": "com.instagram.android",
-        "eventTimestamp": "2024-09-03T10:15:00Z",
-        "createdAt": "2024-09-03T10:15:01Z"
-      }
-    ],
-    "total": 245,
-    "cursor": "2024-09-03T09:00:00Z_uuid"
-  }
-}
-```
-
----
-
-## Notification Endpoints
-
-### GET /notifications
-Get user notifications
-
-**Query Parameters:**
-- `unreadOnly`: false (default)
-- `limit`: 20 (default)
-- `offset`: 0 (default)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "notifications": [
-      {
-        "id": "uuid",
-        "type": "success",
-        "title": "Commitment completed!",
-        "body": "You've completed your 7-day commitment. Well done!",
-        "deepLink": "/commitment/abc123",
-        "isRead": false,
-        "sentAt": "2024-09-03T10:00:00Z"
-      }
-    ],
-    "unreadCount": 3,
-    "total": 24
-  }
-}
-```
-
----
-
-### PUT /notifications/{notificationId}/read
-Mark notification as read
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "notification": {
-      "id": "uuid",
-      "isRead": true,
-      "readAt": "2024-09-03T11:00:00Z"
-    }
-  }
-}
-```
-
----
-
-### PUT /notifications/read-all
-Mark all notifications as read
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "message": "All notifications marked as read"
-}
-```
-
----
-
-## Progress Endpoints
-
-### GET /progress
-Get user progress summary
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "progress": {
-      "currentStreak": 5,
-      "longestStreak": 12,
-      "totalSuccessfulCommitments": 8,
-      "totalBrokenCommitments": 2,
-      "screenTimeSavedMinutes": 1260,
-      "totalMinutesEarned": 345,
-      "currentCommitment": {
-        "id": "uuid",
-        "daysRemaining": 3,
-        "status": "active"
-      }
-    }
-  }
-}
-```
-
----
-
-### GET /progress/weekly
-Get weekly progress report
-
-**Query Parameters:**
-- `week`: optional (current week by default)
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "week": "2024-09-03",
-    "stats": {
-      "totalScreenTimeMinutes": 420,
-      "controlledAppUsageMinutes": 240,
-      "successDays": 5,
-      "failureDays": 0,
-      "challengesCompleted": 8,
-      "minutesEarned": 120
-    }
-  }
-}
-```
-
----
-
-## User Endpoints
-
-### GET /user/profile
-Get user profile
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "user": {
-      "id": "uuid",
-      "email": "user@example.com",
-      "firstName": "John",
-      "lastName": "Doe",
-      "avatar": "url",
-      "timezone": "UTC",
-      "createdAt": "2024-09-03T10:00:00Z"
-    }
-  }
-}
-```
-
----
-
-### PUT /user/profile
-Update user profile
-
-**Request:**
-```json
-{
-  "firstName": "John",
-  "lastName": "Doe",
-  "timezone": "America/New_York",
-  "avatar": "base64_or_url"
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "user": { /* updated user */ }
-  }
-}
-```
-
----
-
-### DELETE /user
-Delete user account (soft delete)
-
-**Request:**
-```json
-{
-  "password": "user_password",
-  "reason": "optional reason"
-}
-```
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "message": "Account deleted successfully. Your data will be permanently removed after 30 days."
-}
-```
-
----
-
-## Error Codes
-
-| Code | Status | Meaning |
-|------|--------|---------|
-| `invalid_input` | 400 | Invalid request parameters |
-| `unauthorized` | 401 | Missing or invalid authentication |
-| `forbidden` | 403 | Insufficient permissions |
-| `not_found` | 404 | Resource not found |
-| `conflict` | 409 | Resource already exists or conflicts |
-| `rate_limit_exceeded` | 429 | Too many requests |
-| `internal_error` | 500 | Server error |
-
----
-
-## Pagination
-
-### Offset-based
-```
-GET /endpoint?limit=20&offset=40
-```
-
-### Cursor-based (for large datasets)
-```
-GET /endpoint?limit=20&cursor=2024-09-03T10:00:00Z_uuid
-```
-
-Response includes `nextCursor` if more data available.
-
+Server verifies with the Google Play Developer API, upserts `subscription`,
+returns `{ "status": "active", "expires_at": "…" }`. Play Real-time Developer
+Notifications hit `POST /webhooks/play` (Pub/Sub push, verified by the
+Pub/Sub JWT) to keep the row current without the app polling.
+
+## Internal
+
+### `GET /health`
+
+`{ "ok": true, "db": true, "redis": true, "watchdog_stale": false }`. Used by
+the container healthcheck and uptime monitoring. No auth, no details.
+
+### Watchdog
+
+Not an endpoint. A loop started by the API process on boot runs every
+15 minutes (single-flight via a Redis lock, so a second replica is safe):
+
+1. Mark `protection_lost` for active commitments whose device has been silent
+   for 24 h.
+2. Mark `challenge_failed` for pending challenges past their deadline.
+3. Mark `completed` for active commitments past `ends_at` with no break.
+4. Drain the notification queue (push via FCM, email via Resend), recording
+   `UNREGISTERED` tokens on the device and writing an `uninstalled` event
+   when that happens during an active commitment.
+5. Write its finish time to Redis for `/health`.

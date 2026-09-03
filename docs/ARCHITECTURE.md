@@ -1,554 +1,226 @@
-# Asr Architecture
+# Architecture
 
-## System Overview
+## One sentence
+
+The phone enforces and measures; the server remembers promises and tells
+witnesses what happened.
+
+## Responsibilities
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Users (Android)                           │
-│                      [Asr Mobile App]                            │
-└────────────────────┬────────────────────────────────────────────┘
-                     │
-                     │ HTTPS (REST API)
-                     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Load Balancer (Nginx)                         │
-│                  api.myasr.me → :3001                            │
-└────────────────────┬────────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   Backend (Next.js)                              │
-│              /api/v1/* routes                                    │
-│              [Authentication, Business Logic]                    │
-└────────────────────┬────────────────────────────────────────────┘
-                     │
-          ┌──────────┴──────────┬────────────────┐
-          ▼                     ▼                ▼
-      ┌─────────┐         ┌─────────┐      ┌──────────┐
-      │PostgreSQL          │ Redis   │      │   FCM    │
-      │   (asr db)         │ (asr:*) │      │(Push)    │
-      └─────────┘         └─────────┘      └──────────┘
-          ▲                     ▲
-          └─────────────────────┘
-       (Same VPS as bookween,
-        but completely isolated)
+┌──────────────────────────────┐        ┌──────────────────────────────┐
+│ Android app (per device)     │        │ Backend (api.joinasr.com)    │
+│                              │  HTTPS │                              │
+│ • reads usage (UsageStats)   │───────▶│ • accounts + sessions        │
+│ • blocks apps (overlay)      │        │ • commitment ledger          │
+│ • keeps limits, reset times  │        │ • outcome events             │
+│ • runs challenges            │        │ • witness graph              │
+│ • computes streaks locally   │◀───────│ • heartbeat watchdog         │
+│ • sends: heartbeats, events, │  FCM   │ • notifications (FCM/email)  │
+│   daily summary              │        │ • Play Billing verification  │
+└──────────────────────────────┘        └──────────────────────────────┘
+                                                      │
+                                       ┌──────────────┴──────────────┐
+                                       │ PostgreSQL (asr)  Redis     │
+                                       │ own containers, own volumes │
+                                       └─────────────────────────────┘
 ```
 
-## Architectural Principles
+### The phone owns
 
-### 1. Complete Isolation
-- **Database**: Separate `asr` database (no foreign keys to bookween)
-- **Redis**: Namespaced `asr:*` keys (no shared state)
-- **Code**: Separate codebase (/opt/asr/src)
-- **Deployment**: Independent docker compose service
+- Which apps are controlled, their limits, reset times (also mirrored to the
+  server inside the commitment snapshot, so a reinstall can restore them).
+- Real-time foreground detection and blocking.
+- Per-app usage counters and their daily reset.
+- Challenge progress (steps, focus timer, waiting period).
+- Deciding that a rule was broken, and reporting it as an event.
+- Streak and history screens (computed from the local event log; the server
+  copy exists only so witnesses can see the same numbers).
 
-### 2. Future Scalability
-- **Vertical**: Scale within current VPS (memory/CPU upgrade)
-- **Horizontal**: Move to separate VPS (copy database + Redis keys)
-- **Migration**: Zero code changes when moving servers
+### The server owns
 
-### 3. API-First Integration
-- If bookween ↔ Asr communication needed: HTTP API calls only
-- No shared internal protocols
-- No database-level dependencies
-- Enables independent versioning
+- Identity: accounts, sessions, devices, FCM tokens.
+- The commitment ledger: what was promised, when, for how long, with which
+  apps and limits, and how it ended.
+- Outcome events reported by the device, deduplicated by idempotency key.
+- Detecting silence: no heartbeat during an active commitment means
+  protection was lost or the app was removed.
+- Witness relationships and their notification preferences.
+- Sending notifications and remembering that they were sent.
+- Subscription state, verified against Google Play.
 
-### 4. Security by Design
-- Separate authentication per service
-- No JWT/session sharing with bookween
-- Rate limiting per endpoint
-- Data encryption at rest (TBD)
+## The data boundary
 
-## Core Domain Models
+This is the decision that shapes everything else.
 
-### User
-```
-User (Asr-specific)
-  ├── id (UUID)
-  ├── email (unique)
-  ├── passwordHash
-  ├── phoneNumber (optional)
-  ├── profile
-  │   ├── firstName
-  │   ├── lastName
-  │   ├── avatar
-  │   └── timezone
-  ├── settings
-  │   ├── notificationPreferences
-  │   ├── privacyLevel
-  │   └── dataExportPreference
-  ├── createdAt
-  ├── updatedAt
-  └── deletedAt (soft delete)
-```
+**Raw usage does not leave the device.** No per-session app usage rows, no
+list of installed apps, no app icons, no event details JSON. The server stores
+only what a witness is allowed to see and what is needed to notice that a
+user went quiet:
 
-### Device
-```
-Device (tied to User)
-  ├── id (UUID)
-  ├── userId
-  ├── deviceId (from Android)
-  ├── deviceName
-  ├── osVersion
-  ├── appVersion
-  ├── fcmToken (for push notifications)
-  ├── isActive
-  ├── lastSyncedAt
-  ├── createdAt
-  └── updatedAt
-```
+| Leaves the device | Does not |
+|---|---|
+| Commitment snapshot (package names + limits) | Installed app list |
+| `broken` / `completed` events with a reason code | Per-session start/end times |
+| Challenge completed / failed | Step counts, locations |
+| Daily summary: minutes per controlled app per day (optional) | Which app was opened when |
+| Heartbeat (device alive, protection on, app version) | Anything about apps not under a commitment |
 
-### InstalledApp
-```
-InstalledApp (apps on user's device)
-  ├── id (UUID)
-  ├── deviceId
-  ├── appPackage (e.g., "com.instagram.android")
-  ├── appName
-  ├── appIcon (URL or base64)
-  ├── isSystem
-  ├── installDate
-  └── createdAt
-```
+Why:
 
-### ControlledApp
-```
-ControlledApp (apps user wants to limit)
-  ├── id (UUID)
-  ├── userId
-  ├── appPackage
-  ├── appName
-  ├── dailyLimitMinutes
-  ├── isBlocked (current state)
-  ├── resetTime (e.g., "00:00")
-  ├── createdAt
-  └── updatedAt
-```
+- It is what the product promised ("usage counts, never content").
+- Play Store review for `PACKAGE_USAGE_STATS` is far easier when the
+  declaration can say "usage data is processed on-device".
+- Server load and storage stay tiny. A user generates a handful of rows per
+  day, not thousands.
+- There is nothing sensitive to leak.
 
-### Commitment
-```
-Commitment (user's commitment promise)
-  ├── id (UUID)
-  ├── userId
-  ├── durationDays (1, 3, 7, 14, 30)
-  ├── startedAt
-  ├── endsAt
-  ├── status (active, completed, broken)
-  ├── breakReason (if broken)
-  ├── canIncreaseLimit (false during commitment)
-  ├── canRemoveApps (false during commitment)
-  ├── createdAt
-  └── updatedAt
-```
+If a future feature needs more (for example a weekly per-app chart on the
+witness dashboard), it is added as a new, explicit, opt-in aggregate, never
+by uploading raw events.
 
-### CommitmentRule
+## Server entities
+
+Definitions and DDL are in `DATABASE.md`.
+
+| Table | Purpose |
+|---|---|
+| `user` | Account, timezone, notification preferences (Better Auth also owns `session`, `account`, `verification`) |
+| `device` | Android install: FCM token, app version, `last_heartbeat_at`, protection flag |
+| `commitment` | One promise: duration, start/end, status, JSON snapshot of controlled apps and limits at lock time |
+| `commitment_event` | Ledger rows: `completed`, `broken`, `protection_lost`, `uninstalled`, `restored`, ... with reason code, device time, and server receive time |
+| `challenge` | One earn-your-time attempt: type, target, reward minutes, deadline, outcome |
+| `witness` | Directed relationship user → witness, status, per-witness notification settings, invite code |
+| `notification` | Every message sent to anyone, with delivery result |
+| `subscription` | Play Billing state |
+| `daily_summary` | Optional per-day minutes per controlled app, for the witness view |
+
+Nothing references Bookween.
+
+## Key flows
+
+### Locking a commitment
+
+1. User picks apps and limits on the phone, chooses a duration, confirms.
+2. App `POST /v1/commitments` with the snapshot. Server refuses if another
+   commitment is active.
+3. Server returns the commitment id. From now until `ends_at` the app refuses
+   to raise limits or remove controlled apps; the server refuses the same on
+   its side if an API call tries.
+4. Witnesses get "X started a 7-day commitment" (if they opted in).
+
+### Breaking a commitment
+
+1. The phone detects a breach: limit exceeded and the user chose to continue,
+   a controlled app was removed, protection was turned off in settings, or
+   the usage permission was revoked.
+2. The phone writes the event to its local outbox with a fresh UUIDv7 as
+   idempotency key, then `POST /v1/commitments/{id}/events`.
+3. Server inserts the event (primary key is the device-generated id, so
+   retries are harmless), marks the commitment `broken`, and enqueues witness
+   notifications.
+4. If the phone was offline, the outbox drains on next connectivity. The
+   event carries `occurred_at` from the device clock; the server also stores
+   `received_at`. Witness messages use `received_at` for "when we found out"
+   and show the device time as "reported time".
+
+### Detecting silence (protection lost or uninstalled)
+
+The device sends `POST /v1/devices/{id}/heartbeat` roughly every 6 hours via
+WorkManager, plus on every app open and after every event. A server job runs
+every 15 minutes:
+
 ```
-CommitmentRule (apps covered in commitment)
-  ├── id (UUID)
-  ├── commitmentId
-  ├── controlledAppId
-  ├── limitAtCommitmentStart
-  └── createdAt
+for each active commitment:
+  if latest heartbeat older than 24h:
+     insert commitment_event(type='protection_lost') if not already present
+     notify witnesses
 ```
 
-### Challenge
-```
-Challenge (earn your time)
-  ├── id (UUID)
-  ├── userId
-  ├── commitmentId (can be null for general challenges)
-  ├── type (walk_steps, focus_session, waiting_period)
-  ├── targetValue (e.g., 5000 steps)
-  ├── rewardMinutes
-  ├── startedAt
-  ├── completedAt (null if pending)
-  ├── dailyLimit (e.g., max 30 min/day)
-  ├── createdAt
-  └── updatedAt
-```
+Uninstall is detected two ways, either of which is enough:
 
-### ChallengeReward
-```
-ChallengeReward (track earned time)
-  ├── id (UUID)
-  ├── userId
-  ├── challengeId
-  ├── minutesEarned
-  ├── awardedAt
-  ├── expiresAt (if time-limited)
-  └── usedAt (if burned on extension)
-```
+- FCM returns `UNREGISTERED` for the device token when we try to send
+  anything. That is a definitive signal from Google that the app is gone.
+- Heartbeats stop and the user has no other active device.
 
-### PartnerRelationship
-```
-PartnerRelationship (accountability)
-  ├── id (UUID)
-  ├── userId (person being held accountable)
-  ├── partnerId (accountability partner)
-  ├── status (pending, accepted, declined, blocked)
-  ├── invitedAt
-  ├── acceptedAt
-  ├── settings
-  │   ├── notifyOnSuccess
-  │   ├── notifyOnFailure
-  │   ├── viewsProgress
-  │   └── canRoast (humor)
-  ├── createdAt
-  └── updatedAt
-```
+On reinstall and login the device registers again, a `restored` event is
+written, and the commitment continues if it has not ended. V1 rule: any
+`protection_lost` during an active commitment counts as a break.
 
-### ProtectionEvent
-```
-ProtectionEvent (proof of life tracking)
-  ├── id (UUID)
-  ├── deviceId
-  ├── eventType (usage, blocking, app_open, verification_check)
-  ├── appPackage (if relevant)
-  ├── timestamp
-  └── createdAt (indexed for pagination)
-```
+### Challenges
 
-### UsageEvent
-```
-UsageEvent (screen time data)
-  ├── id (UUID)
-  ├── deviceId
-  ├── appPackage
-  ├── startTime
-  ├── endTime
-  ├── durationSeconds
-  ├── foreground (true if actively used)
-  ├── createdAt (batch inserted)
-  └── updatedAt
-```
+1. Challenge rules (which types, reward minutes, daily cap) are part of the
+   commitment snapshot, so they cannot be changed mid-commitment.
+2. The phone runs the challenge and reports `completed` with the earned
+   minutes, or the server marks `failed` when the deadline passes with no
+   completion event (same 15-minute job).
+3. Earned minutes are applied on the phone immediately and recorded on the
+   server for the witness view.
 
-### Notification
-```
-Notification (user notifications)
-  ├── id (UUID)
-  ├── userId
-  ├── type (success, roast, warning, reminder)
-  ├── title
-  ├── body
-  ├── deepLink (e.g., "/commitment/123")
-  ├── isRead
-  ├── sentAt
-  └── createdAt
-```
+### Witness invite
 
-### Streak
-```
-Streak (progress tracking)
-  ├── id (UUID)
-  ├── userId
-  ├── type (current, longest)
-  ├── count (days)
-  ├── startedAt
-  ├── lastExtendedAt
-  ├── brokenAt (if broken)
-  └── createdAt
-```
+1. User creates an invite: `POST /v1/witnesses/invites` returns a code.
+2. App shares `https://joinasr.com/w/<code>` via the system share sheet.
+3. The link is an Android App Link. If Asr is installed it opens the accept
+   screen; otherwise it opens the Play Store listing with the code in the
+   install referrer, and the app picks it up on first launch.
+4. Witness accepts: `POST /v1/witnesses/invites/{code}/accept`. The witness
+   needs an account but does not need to run any commitment themselves.
+5. Witnesses choose what they want to hear about: start, success, failure,
+   daily digest, roast mode (harsher copy on failure). Preferences live on the
+   `witness` row, not on the user.
 
-### Subscription
-```
-Subscription (payment tracking)
-  ├── id (UUID)
-  ├── userId
-  ├── plan (free, pro, premium)
-  ├── status (active, canceled, expired)
-  ├── startedAt
-  ├── endsAt
-  ├── renewsAt
-  ├── paddleCustomerId
-  ├── paddleSubscriptionId
-  └── createdAt
-```
+## Stack and why
 
-## Database Schema Design
+| Choice | Reason |
+|---|---|
+| **Next.js 16 API routes** | Same as Bookween. One framework to know. API-only here; no pages except the `/w/<code>` fallback and the landing page. |
+| **Kysely + hand-written migrations** | Same as Bookween. Reuse the migration runner, rate limiter, UUID helper and test patterns. Two ORMs across two products is not worth it. |
+| **PostgreSQL 17** | Same as Bookween, own container. |
+| **Better Auth with the bearer plugin** | Same library as Bookween, but the app authenticates with a bearer session token stored in Android EncryptedSharedPreferences. No cookies, no separate JWT scheme. |
+| **ioredis** | Rate limiting, the watchdog's lock and last-run marker, notification dedupe. Own container. |
+| **Firebase Admin SDK** | FCM push to devices. The `UNREGISTERED` error doubles as uninstall detection. |
+| **Resend** | Email verification, password reset, and witness notifications for witnesses who turn off push. |
+| **Zod** | Every request body validated at the edge. |
+| **UUIDv7** | Time-ordered primary keys, generated in the app (`uuidv7` package) so the device can pre-assign ids for idempotency. |
+| **Google Play Billing** | Mandatory for in-app subscriptions on Android. The server verifies purchase tokens with the Play Developer API. Not Paddle. |
 
-### Key Principles
-- **Isolation**: No foreign keys to bookween
-- **Performance**: Proper indexing for common queries
-- **Audit**: Created/updated timestamps on everything
-- **Soft Delete**: Support user data deletion requests
-- **Pagination**: timestamp + id cursor support
+Android choices are in `ANDROID.md`.
 
-### Indexes
-```sql
--- User authentication
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_devices_fcmToken ON devices(fcmToken);
+## Time
 
--- App control
-CREATE INDEX idx_controlled_apps_userId ON controlled_apps(userId);
-CREATE INDEX idx_usage_events_deviceId_timestamp ON usage_events(deviceId, createdAt DESC);
+- Every timestamp column is `timestamptz`.
+- The user's IANA timezone is stored on `user` and copied into every
+  commitment so daily reset and "day N of 7" are computed the way the user
+  experiences them, DST included.
+- Device clocks are untrusted. The server stores `received_at` alongside any
+  device-supplied `occurred_at` and uses server time for deadlines.
 
--- Commitment tracking
-CREATE INDEX idx_commitments_userId_status ON commitments(userId, status);
-CREATE INDEX idx_commitment_rules_commitmentId ON commitment_rules(commitmentId);
+## Security
 
--- Challenges
-CREATE INDEX idx_challenges_userId_type ON challenges(userId, type);
-CREATE INDEX idx_challenge_rewards_userId_awardedAt ON challenge_rewards(userId, awardedAt DESC);
+- Passwords hashed by Better Auth (scrypt). Session tokens are random, stored
+  hashed, rotated on privilege changes.
+- Rate limits per route via Redis (signup, login, invite creation, event
+  ingestion). Same helper as Bookween.
+- All device-originated writes are scoped to the authenticated user's own
+  devices and commitments; ids in the path are checked against ownership
+  before any read.
+- Witness reads are scoped by the `witness` row's `status = accepted` and the
+  user's `views_progress` flag.
+- No secrets in the repo. `infra/docker-compose.yml` uses `${VAR}`
+  interpolation from `/opt/asr/.env`.
+- Account deletion is a hard delete after a 7-day grace window; data export is
+  a JSON of the user's ledger.
 
--- Partners
-CREATE INDEX idx_partner_relationships_userId ON partner_relationships(userId);
-CREATE INDEX idx_partner_relationships_partnerId ON partner_relationships(partnerId);
+## Moving to a separate server
 
--- Protection events (critical for verification)
-CREATE INDEX idx_protection_events_deviceId_timestamp ON protection_events(deviceId, createdAt DESC);
+Because nothing is shared with Bookween, the move is:
 
--- Notifications
-CREATE INDEX idx_notifications_userId_isRead ON notifications(userId, isRead);
+1. `pg_dump -Fc` the `asr` database from the current container.
+2. On the new server: copy `/opt/asr` (compose, `.env`, nginx site), restore
+   the dump, start the stack.
+3. Point `api.joinasr.com` and `joinasr.com` at the new IP.
+4. Redis content is disposable (rate-limit counters, watchdog marker); it
+   does not need to be migrated.
 
--- Search
-CREATE INDEX idx_installed_apps_deviceId_package ON installed_apps(deviceId, appPackage);
-```
-
-## API Architecture
-
-### Base URL
-`https://api.myasr.me`
-
-### API Versioning
-`/api/v1/*` - All endpoints versioned for future compatibility
-
-### Authentication
-- Bearer token (JWT)
-- Issued at login/signup
-- Refreshable
-- Stored in app secure storage (not shared with bookween)
-
-### Rate Limiting
-```
-Authenticated: 100 req/min per user
-Public: 10 req/min per IP
-Push events: 1000 req/min (internal only)
-```
-
-## Backend Services
-
-### 1. Authentication Service
-- User signup/login/logout
-- Email verification
-- Password reset
-- Device registration
-- JWT token management
-
-### 2. App Control Service
-- List installed apps
-- Create/update/delete controlled apps
-- Check if app is blocked
-- Calculate screen time
-
-### 3. Commitment Service
-- Start commitment
-- Check commitment rules
-- Prevent rule violations
-- Record commitment completion/failure
-
-### 4. Challenge Service
-- List available challenges
-- Track progress
-- Award minutes
-- Apply daily limits
-
-### 5. Partner Service
-- Send invitations
-- Accept/decline partnerships
-- Get partner progress
-- Manage partner notifications
-
-### 6. Protection Service
-- Track device protection status
-- Verify protection is active
-- Detect protection loss
-- Schedule verification checks
-
-### 7. Notification Service
-- Send FCM messages
-- Queue notifications
-- Track delivery
-- Manage user preferences
-
-### 8. Analytics Service (Future)
-- Track user behavior
-- Measure feature adoption
-- Monitor health metrics
-- Generate reports
-
-## Data Flow
-
-### User Signup
-```
-1. User opens app
-2. Signup → POST /api/v1/auth/signup
-3. Backend creates User, Device
-4. Returns JWT + FCM token endpoint
-5. App stores JWT in secure storage
-6. App registers FCM token
-```
-
-### Setting Limits
-```
-1. User selects apps → POST /api/v1/apps/controlled
-2. Backend creates ControlledApp records
-3. Sends verification challenge to device
-4. Device acknowledges via UsageStatsManager
-```
-
-### Commitment Flow
-```
-1. User starts commitment → POST /api/v1/commitments
-2. Backend validates no active commitment
-3. Creates Commitment + CommitmentRules (locking apps/limits)
-4. App receives commitment_active notification
-5. Device enforces blocks locally
-6. Backend tracks via ProtectionEvents
-```
-
-### Earn Your Time
-```
-1. User walks 5000 steps → App detects via Step Sensor
-2. Challenge completion → POST /api/v1/challenges/{id}/complete
-3. Backend verifies user in active commitment
-4. Awards ChallengeReward (minutes)
-5. Sends success notification to partners
-```
-
-### Partner Accountability
-```
-1. User sends invite → POST /api/v1/partners/invite
-2. Partner joins via deep link
-3. Both accept relationship
-4. Backend subscribes partner to user's events
-5. On commitment complete/break → notify partner
-6. Partner can view progress dashboard
-```
-
-## Deployment Architecture
-
-### Current Setup (Same VPS)
-```
-/opt/asr/
-├── src/                    # Git repository
-├── docker-compose.yml      # Service definition
-└── .env                    # Environment variables
-
-Services:
-├── asr-web (port 3001)
-├── postgres (port 5432, shared with bookween)
-└── redis (port 6379, shared with bookween)
-
-Nginx: api.myasr.me → :3001
-```
-
-### Future Separate Server
-```
-/opt/asr/
-├── src/                    # Same git repo
-├── docker-compose.yml      # Standalone compose
-└── .env                    # New server vars
-
-Services: (Same setup, different hardware)
-├── asr-web (port 3001)
-├── postgres (independent copy of asr database)
-└── redis (independent instance)
-
-Nginx: api.myasr.me → new.server.ip
-DNS: myasr.me → new.server.ip
-```
-
-**Migration Process:**
-1. Backup asr database from old server
-2. Restore to new server
-3. Export asr:* Redis keys → import to new Redis
-4. Copy .env, docker-compose.yml
-5. Start services
-6. Update DNS
-7. Monitor for 24h
-8. Keep old server as backup for 1 week
-9. Decommission
-
-**Zero code changes required.**
-
-## Security Considerations
-
-### Authentication
-- Passwords: bcrypt (12 rounds)
-- JWT: HS256 (HMAC-SHA256)
-- Token expiry: 1 week (refresh available)
-- Refresh token: HttpOnly cookie (if web)
-
-### Data Privacy
-- User data: encrypted at rest (future)
-- Passwords: hashed, salted
-- API: HTTPS only
-- Rate limiting: prevent brute force
-- CORS: api.myasr.me only (for now)
-
-### Protection Against
-- SQL injection: Prepared statements (Prisma)
-- XSS: Never store user data in cookies
-- CSRF: State validation in auth flows
-- Timing attacks: Constant-time comparisons
-
-## Monitoring & Observability
-
-### Metrics to Track
-- API response times
-- Database query performance
-- FCM delivery rates
-- Protection event success rate
-- Device sync frequency
-
-### Logs
-- All API requests (with user ID)
-- Database migrations
-- FCM failures
-- Scheduled job execution
-
-### Alerts
-- High error rates
-- Database connection failures
-- FCM service down
-- Disk space critical
-- Memory usage critical
-
-## Performance Targets
-
-### API Response Times
-- Auth endpoints: <200ms
-- App list: <500ms
-- Commitment creation: <300ms
-- Notification send: <500ms (async)
-
-### Database
-- Query timeout: 5s
-- Connection pool: 10-20
-- Slow query log: >1s
-
-### Scalability
-- Concurrent users: Target 1M+
-- Requests per second: Target 10k+
-- Database size: Can grow to 100GB+ (auto-archive old events)
-
-## Future Enhancements
-
-### Phase 2 (V1.1)
-- iOS support
-- Advanced analytics
-- Social leaderboards
-- Custom reward catalog
-
-### Phase 3 (V2)
-- AI-powered insights
-- Integration with calendar/productivity apps
-- Family/parental controls
-- Workplace wellness programs
-
-### Phase 4 (V3)
-- VR/AR focused experiences
-- Biometric integration
-- ML-based habit prediction
-- Global community features
+No code changes, no Bookween changes.

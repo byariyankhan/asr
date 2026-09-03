@@ -1,492 +1,145 @@
-# Asr Deployment Guide
+# Deployment
 
-## Pre-Deployment Checklist
+Asr runs on the same VPS as Bookween for now, in its own directory, its own
+compose project, its own PostgreSQL and Redis containers, and its own nginx
+site. Nothing under `/opt/bookween` is modified, and Bookween's
+`check-infra-drift` keeps passing because its compose file is untouched.
 
-### Domain & DNS
-- [ ] Domain `myasr.me` registered
-- [ ] DNS A record pointing to 187.52.122.99
-- [ ] DNS propagation verified (`nslookup myasr.me`)
+```
+/opt/bookween/                 (existing, not touched)
+  docker-compose.yml           postgres :5432, redis :6379, web :3000
+/opt/asr/                      (new)
+  docker-compose.yml           postgres :5433, redis :6380, api :3001, migrate
+  .env
+  backup.sh
+  src/                         git checkout of byariyankhan/asr
+  backups/
+```
 
-### SSL Certificate
-- [ ] Let's Encrypt certificate obtained for `api.myasr.me`
-- [ ] Certificate configured in Nginx
-- [ ] Auto-renewal tested
+Host port bindings are all `127.0.0.1:` and never collide. Container names
+are prefixed by the compose project name (`asr-postgres-1`, ...), so the two
+stacks cannot be confused on the Docker side either.
 
-### Credentials & Secrets
-- [ ] PostgreSQL password for `asr` user set
-- [ ] Redis password configured
-- [ ] JWT secret generated
-- [ ] Firebase FCM credentials obtained
-- [ ] Resend API key (if using email)
-- [ ] Paddle API credentials (if using payments)
+## First-time setup
 
-### Environment Setup
-- [ ] `/opt/asr/.env` created with all required variables
-- [ ] `.env` file never committed to git
-- [ ] Secrets rotation policy documented
+### 1. DNS
 
----
+`A` records for `joinasr.com` and `api.joinasr.com` → `187.52.122.99`.
+Wait until `getent hosts api.joinasr.com` on the VPS returns the IP.
 
-## Step 1: Database Setup
+### 2. Directory and checkout
 
-### Create Asr Database
 ```bash
-# SSH into VPS
-ssh root@187.52.122.99
-
-# Connect to postgres
-psql -U postgres
-
-# Create database
-CREATE DATABASE asr OWNER asr;
-GRANT ALL PRIVILEGES ON DATABASE asr TO asr;
-\q
+mkdir -p /opt/asr/backups
+git clone https://github.com/byariyankhan/asr /opt/asr/src
+cp /opt/asr/src/infra/docker-compose.yml /opt/asr/docker-compose.yml
+cp /opt/asr/src/infra/backup.sh /opt/asr/backup.sh && chmod 700 /opt/asr/backup.sh
 ```
 
-### Verify Connection
+### 3. Environment
+
+`/opt/asr/.env` (mode 600). Generate secrets with `openssl rand -base64 32`.
+
+```
+PG_PASS=
+REDIS_PASS=
+BETTER_AUTH_SECRET=
+BETTER_AUTH_URL=https://api.joinasr.com
+PUBLIC_SITE_URL=https://joinasr.com
+RESEND_API_KEY=
+EMAIL_FROM=Asr <noreply@joinasr.com>
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=           # keep the \n escapes; the app unescapes them
+PLAY_PACKAGE_NAME=com.joinasr.app
+PLAY_SERVICE_ACCOUNT_JSON_B64=  # base64 of the service-account JSON for the Play Developer API
+```
+
+`docker compose config -q` must pass before anything else; it fails on any
+missing variable.
+
+### 4. Build, migrate, start
+
 ```bash
-psql -U asr -d asr -c "SELECT version();"
-```
-
-### Run Migrations
-```bash
-cd /opt/asr/src
-npm run db:migrate
-```
-
----
-
-## Step 2: Docker Compose Setup
-
-### Update Bookween Compose File
-Edit `/opt/bookween/docker-compose.yml` to add asr service:
-
-```yaml
-services:
-  # ... existing postgres, redis, web (bookween)
-
-  asr-web:
-    build:
-      context: /opt/asr/src
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_SITE_URL: ${ASR_SITE_URL}
-    restart: unless-stopped
-    environment:
-      DATABASE_URL: postgresql://asr:${PG_PASS}@postgres:5432/asr
-      REDIS_URL: redis://:${REDIS_PASS}@redis:6379/1
-      NODE_ENV: production
-      PORT: 3000
-      HOSTNAME: 0.0.0.0
-      BETTER_AUTH_SECRET: ${ASR_BETTER_AUTH_SECRET}
-      BETTER_AUTH_URL: ${ASR_BETTER_AUTH_URL}
-      RESEND_API_KEY: ${RESEND_API_KEY}
-      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
-      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
-      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
-    ports:
-      - "127.0.0.1:3001:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - bookween
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-```
-
-### Validate Compose
-```bash
-docker compose -f /opt/bookween/docker-compose.yml config -q
-```
-
-### Build Asr Image
-```bash
-cd /opt/bookween
-docker compose build asr-web
-```
-
----
-
-## Step 3: Nginx Configuration
-
-### Create Asr Nginx Config
-Create `/etc/nginx/sites-available/asr`:
-
-```nginx
-server {
-    server_name api.myasr.me www.api.myasr.me;
-
-    client_max_body_size 6m;
-
-    location / {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-    }
-
-    # SSL (will be added by certbot)
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2 ipv6only=on;
-    ssl_certificate /etc/letsencrypt/live/api.myasr.me/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.myasr.me/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-}
-
-server {
-    listen 80;
-    listen [::]:80;
-    server_name api.myasr.me www.api.myasr.me;
-    return 301 https://$host$request_uri;
-}
-```
-
-### Enable Site
-```bash
-sudo ln -s /etc/nginx/sites-available/asr /etc/nginx/sites-enabled/asr
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-### Get SSL Certificate
-```bash
-sudo certbot --nginx -d api.myasr.me -d www.api.myasr.me
-```
-
----
-
-## Step 4: Environment Variables
-
-### Create `/opt/asr/.env`
-```bash
-# Build-time
-NEXT_PUBLIC_SITE_URL=https://api.myasr.me
-NODE_ENV=production
-
-# Database
-DATABASE_URL=postgresql://asr:${PG_PASS}@postgres:5432/asr
-
-# Redis
-REDIS_URL=redis://:${REDIS_PASS}@redis:6379/1
-
-# Authentication
-BETTER_AUTH_SECRET=<generate with: openssl rand -base64 32>
-BETTER_AUTH_URL=https://api.myasr.me
-
-# Email (Resend)
-RESEND_API_KEY=<from Resend dashboard>
-
-# Firebase (Notifications)
-FIREBASE_PROJECT_ID=<from Firebase Console>
-FIREBASE_PRIVATE_KEY=<from Firebase Console>
-FIREBASE_CLIENT_EMAIL=<from Firebase Console>
-
-# Optional: Analytics, Sentry, etc.
-SENTRY_DSN=<optional>
-
-# Payments (Paddle)
-PADDLE_ENV=live
-PADDLE_API_KEY=<from Paddle>
-PADDLE_CLIENT_TOKEN=<from Paddle>
-```
-
----
-
-## Step 5: Deploy Services
-
-### Start Asr Service
-```bash
-cd /opt/bookween
-docker compose up -d asr-web
-```
-
-### Verify Container Running
-```bash
+cd /opt/asr
+docker compose build api migrate
+docker compose up -d postgres redis
+docker compose run --rm migrate
+docker compose up -d api
 docker compose ps
-
-# Expected output:
-# asr-web        running (Up about X seconds)
-# postgres       running
-# redis          running
-# web            running
+wget -qO- http://127.0.0.1:3001/v1/health
 ```
 
-### Check Logs
-```bash
-docker compose logs -f asr-web
-```
-
-### Verify Health Check
-```bash
-curl http://127.0.0.1:3001/api/v1/health
-```
-
----
-
-## Step 6: Run Database Migrations
+### 5. nginx
 
 ```bash
-docker compose exec asr-web npm run db:migrate
+cp /opt/asr/src/infra/nginx/asr-api /etc/nginx/sites-available/asr-api
+ln -s /etc/nginx/sites-available/asr-api /etc/nginx/sites-enabled/asr-api
+nginx -t && systemctl reload nginx
+certbot --nginx -d api.joinasr.com
 ```
 
-### Verify Schema
-```bash
-psql -U asr -d asr -c "
-  SELECT table_name 
-  FROM information_schema.tables 
-  WHERE table_schema = 'public' 
-  ORDER BY table_name;
-"
-```
+The landing page and the `/w/<code>` fallback are served by the same API
+container under the `joinasr.com` host; add that site the same way when the
+page exists (`infra/nginx/asr-site`).
 
----
-
-## Step 7: Verify Deployment
-
-### Test API Endpoints
-```bash
-# Health check
-curl -i https://api.myasr.me/api/v1/health
-
-# Signup (should fail with missing fields, but endpoint exists)
-curl -X POST https://api.myasr.me/api/v1/auth/signup \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"test"}'
-```
-
-### Check Nginx
-```bash
-sudo tail -f /var/log/nginx/access.log
-sudo tail -f /var/log/nginx/error.log
-```
-
-### Monitor Resources
-```bash
-docker stats asr-web
-
-# Expected:
-# CPU: 1-3%
-# Memory: 300-500MB
-```
-
----
-
-## Step 8: Backup Configuration
-
-### Database Backup
-```bash
-# Daily backup script
-cat > /usr/local/bin/backup-asr.sh <<'EOF'
-#!/bin/bash
-BACKUP_DIR="/opt/backups"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="$BACKUP_DIR/asr_$TIMESTAMP.dump"
-
-mkdir -p $BACKUP_DIR
-
-# Backup asr database
-docker compose -f /opt/bookween/docker-compose.yml exec -T postgres \
-  pg_dump -U asr -d asr -F custom > $BACKUP_FILE
-
-# Upload to R2 (optional)
-# aws s3 cp $BACKUP_FILE s3://backups/asr/ --region auto
-
-echo "Backup created: $BACKUP_FILE"
-EOF
-
-chmod +x /usr/local/bin/backup-asr.sh
-```
-
-### Add Cron Job
-```bash
-# Edit crontab
-crontab -e
-
-# Add line (backup daily at 2 AM):
-0 2 * * * /usr/local/bin/backup-asr.sh
-```
-
----
-
-## Step 9: Monitoring & Alerts
-
-### Health Check Endpoint
-```bash
-# Should return 200 with:
-# {"status": "ok"}
-curl https://api.myasr.me/api/v1/health
-```
-
-### Log Monitoring
-```bash
-# Watch container logs
-docker compose logs -f asr-web --tail=50
-
-# Filter errors
-docker compose logs asr-web 2>&1 | grep -i error
-```
-
-### CPU/Memory Alerts
-```bash
-# Monitor resource usage
-watch -n 5 'docker stats asr-web --no-stream'
-```
-
----
-
-## Post-Deployment
-
-### ✅ Verification Checklist
-- [ ] API responds to requests
-- [ ] SSL certificate valid (check https://api.myasr.me)
-- [ ] Database connection working
-- [ ] Redis connection working
-- [ ] FCM notification service working
-- [ ] Email service working (test signup)
-- [ ] Backups running daily
-- [ ] Logs accessible
-- [ ] Resource usage acceptable
-
-### 📊 Monitoring
-- Daily health checks
-- Weekly performance review
-- Monthly security audit
-- Quarterly backup restore test
-
-### 🔧 Maintenance
-- Keep Docker images updated
-- Rotate credentials quarterly
-- Archive old logs monthly
-- Optimize database quarterly
-
----
-
-## Rollback Procedure
-
-If deployment fails:
+### 6. Backups
 
 ```bash
-# Stop asr-web
-docker compose stop asr-web
-
-# Remove container
-docker compose rm asr-web
-
-# Restore database from backup
-docker compose exec -T postgres \
-  pg_restore -U asr -d asr /path/to/backup.dump
-
-# Restart
-docker compose up -d asr-web
+(crontab -l; echo "30 2 * * * /opt/asr/backup.sh >> /opt/asr/backups/backup.log 2>&1") | crontab -
 ```
 
----
+`backup.sh` does `pg_dump -Fc` inside the container, keeps the last 14 dumps
+in `/opt/asr/backups/`, and (once credentials are set) pushes to the same
+offsite bucket Bookween uses under an `asr/` prefix. Bookween's backup runs
+at 02:00; this runs at 02:30.
 
-## Troubleshooting
+## Every deploy
 
-### Service won't start
+Same shape as Bookween's `deploy.yml`; lives in this repo's
+`.github/workflows/deploy.yml` once the backend exists:
+
 ```bash
-docker compose logs asr-web
-# Check: Database connection, environment variables, port conflicts
+cd /opt/asr/src && git fetch origin main && git reset --hard origin/main
+cd /opt/asr
+docker compose build api migrate
+docker compose exec -T postgres pg_dump -U asr -d asr -Fc > backups/pre-deploy-$(date -u +%Y%m%d-%H%M%S).dump
+ls -t backups/pre-deploy-*.dump | tail -n +6 | xargs -r rm
+docker compose run --rm migrate
+docker compose up -d api --force-recreate
+docker image prune -f
 ```
 
-### Database migration fails
-```bash
-# Verify database exists and user has permissions
-psql -U asr -d asr -c "SELECT 1;"
+Rollback: `git reset --hard <previous sha>`, rebuild, restore the pre-deploy
+dump if the migration was not backward compatible.
 
-# Run migration manually
-docker compose exec asr-web npx kysely migrate:latest
-```
+## Resource budget
 
-### High memory usage
-```bash
-# Check Node process
-docker exec <container_id> ps aux
-# Restart service
-docker compose restart asr-web
-```
+Measured on Bookween's stack: Postgres idle ≈ 40 MB, Redis ≈ 10 MB, a Next.js
+standalone API ≈ 150–250 MB. Asr adds roughly 300 MB to a machine with about
+6.5 GB free. Nothing to tune until the VPS graph moves.
 
-### SSL certificate issues
-```bash
-# Verify certificate
-sudo certbot certificates
+## Monitoring
 
-# Renew manually
-sudo certbot renew --force-renewal
+- `GET /v1/health` checked externally every minute (same uptime monitor as
+  Bookween, separate check).
+- `docker compose logs -f api` for errors; the API logs one JSON line per
+  request with user id, route, status, duration.
+- The watchdog writes its last successful run time to Redis; `/v1/health`
+  reports `watchdog_stale: true` if that is older than 30 minutes.
+- Backup failure alerts reuse Bookween's `alert.sh` (email), with a distinct
+  subject.
 
-# Check logs
-sudo tail -f /var/log/letsencrypt/letsencrypt.log
-```
+## Moving to a dedicated server later
 
----
+1. Provision the new VPS, install Docker and nginx, copy `/opt/asr` minus
+   `backups/` (the Postgres volume is not copied; the dump is).
+2. On the old server: `docker compose exec -T postgres pg_dump -U asr -d asr -Fc > asr-move.dump`.
+3. On the new server: `docker compose up -d postgres`, then
+   `docker compose exec -T postgres pg_restore -U asr -d asr --clean --if-exists < asr-move.dump`.
+4. Start `api`, run `certbot`, verify `/v1/health` on the new IP directly.
+5. Lower DNS TTL a day before; switch `A` records; watch both servers' logs
+   for an hour.
+6. Stop the old stack; keep `/opt/asr` there for a week; then remove.
 
-## Performance Optimization (Future)
-
-### Caching Layer
-- Add Redis caching for frequently accessed data
-- Cache API responses (15-60 min)
-- Implement cache invalidation strategy
-
-### Database Optimization
-```sql
--- Analyze query performance
-EXPLAIN ANALYZE SELECT * FROM users WHERE email = 'test@example.com';
-
--- Create composite indexes if needed
-CREATE INDEX idx_protection_events_device_timestamp 
-ON protection_events(device_id, created_at DESC);
-```
-
-### Load Testing
-```bash
-# Use k6 or Apache Bench
-ab -n 1000 -c 100 https://api.myasr.me/api/v1/health
-```
-
----
-
-## Scaling to Separate Server (Future)
-
-When traffic demands:
-
-1. **Backup asr database**
-   ```bash
-   pg_dump -U asr -d asr -F custom > asr_prod.dump
-   ```
-
-2. **Export Redis keys**
-   ```bash
-   redis-cli -a PASSWORD KEYS "asr:*" > asr_keys.txt
-   ```
-
-3. **Set up new VPS** with same configuration
-
-4. **Restore data**
-   ```bash
-   pg_restore -U asr -d asr asr_prod.dump
-   redis-cli -a PASSWORD < asr_keys.txt
-   ```
-
-5. **Update DNS** - Point api.myasr.me to new IP
-
-6. **Monitor** - Watch logs for 24 hours
-
-**Zero code changes required** - architecture supports horizontal scaling.
-
+Redis does not need to move. Nothing on the Bookween side changes.

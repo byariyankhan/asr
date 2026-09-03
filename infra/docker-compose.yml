@@ -1,0 +1,83 @@
+# Production compose for the VPS. Version of record; the live copy is
+# /opt/asr/docker-compose.yml (see docs/DEPLOYMENT.md). Build contexts are
+# relative to /opt/asr, where src/ is the git checkout.
+#
+# Deliberately separate from /opt/bookween: own Postgres, own Redis, own
+# volumes, own host ports (5433/6380/3001 vs Bookween's 5432/6379/3000).
+# Moving this stack to another machine is a directory copy plus a pg_dump.
+name: asr
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: asr
+      POSTGRES_PASSWORD: ${PG_PASS}
+      POSTGRES_DB: asr
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASS}
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASS}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://asr:${PG_PASS}@postgres:5432/asr
+      REDIS_URL: redis://:${REDIS_PASS}@redis:6379
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
+      PLAY_PACKAGE_NAME: ${PLAY_PACKAGE_NAME}
+      PLAY_SERVICE_ACCOUNT_JSON_B64: ${PLAY_SERVICE_ACCOUNT_JSON_B64}
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # One-off: `docker compose run --rm migrate`
+  migrate:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: builder
+    environment:
+      DATABASE_URL: postgresql://asr:${PG_PASS}@postgres:5432/asr
+    command: ["pnpm", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:

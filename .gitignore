@@ -1,43 +1,36 @@
-# Dependencies
+# Node / Next.js (backend/)
 node_modules/
-*.lock
-pnpm-lock.yaml
-
-# Build outputs
 .next/
-dist/
-build/
+out/
+*.tsbuildinfo
+coverage/
+next-env.d.ts
 
-# Environment
+# Environment (never commit real values; .env.example is committed)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
-# IDE
+# Android (android/)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.iml
+android/.idea/
+android/captures/
+*.apk
+*.aab
+*.keystore
+*.jks
+google-services.json
+
+# Editors / OS
 .vscode/
 .idea/
 *.swp
-*.swo
-
-# OS
 .DS_Store
 Thumbs.db
 
 # Logs
-logs/
 *.log
-
-# Android
-.gradle/
-.idea/
-*.apk
-*.aar
-build/
-
-# Testing
-coverage/
-.nyc_output/
-
-# Misc
-.cache/
-temp/

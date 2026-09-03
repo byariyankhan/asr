@@ -1,0 +1,140 @@
+# Android
+
+Kotlin, Jetpack Compose, single-activity, MVVM with a repository layer, Hilt
+for DI, Room for local persistence, WorkManager for background work, Retrofit
++ OkHttp for the API, Google Play Billing for subscriptions. `minSdk 26`
+(Android 8), `targetSdk` current.
+
+## Enforcement loop
+
+The app must know which app is in the foreground and stop the user when a
+limit is reached. Two mechanisms exist on Android; we use the one Google is
+comfortable with and keep the other as a fallback that is off by default.
+
+### Primary: foreground service + UsageStatsManager + overlay
+
+1. A foreground service (persistent notification, "Asr is protecting your
+   time") polls `UsageStatsManager.queryEvents` every 1 second while the screen
+   is on. This needs the `PACKAGE_USAGE_STATS` special permission, which the
+   user grants in system settings; the onboarding flow explains why and deep
+   links there.
+2. When a controlled app moves to the foreground, the service starts or
+   resumes that app's local usage counter.
+3. When the counter reaches the limit, the service shows a full-screen
+   overlay (`SYSTEM_ALERT_WINDOW`, also granted in settings) on top of the
+   blocked app. The overlay offers: go back, start a challenge to earn
+   minutes, or (during a commitment) "I give up", which records a break.
+4. Pressing home or back returns the user to the launcher; the overlay
+   re-appears the moment the blocked app is foregrounded again.
+
+This is how most shipping blockers (StayFree, YourHour, ActionDash) work and
+it passes Play review with a clear declaration.
+
+### Fallback: AccessibilityService
+
+Faster foreground detection and harder to bypass, but Google rejects apps
+whose accessibility usage is not for accessibility. We ship the service
+disabled and undeclared in V1. If real users find the polling approach too
+easy to evade, we revisit with a proper policy declaration. Do not enable it
+casually.
+
+### Known limits (documented in-app, not hidden)
+
+- Uninstalling Asr or revoking the usage permission stops enforcement. That
+  is what heartbeats and witnesses are for.
+- Split screen and picture-in-picture count as foreground time for the
+  visible app.
+- Some OEMs (Xiaomi, Oppo, Vivo, Samsung with aggressive battery settings)
+  kill foreground services. Onboarding detects the manufacturer and shows
+  the specific "allow background activity" steps. The heartbeat carries a
+  `protection_enabled` flag that is false if the service was killed and not
+  restarted, so silence is noticed.
+
+## Local data (Room)
+
+| Table | Purpose |
+|---|---|
+| `controlled_app` | package, label, limit, reset time, per-day used seconds |
+| `commitment` | mirror of the server row plus `locked` flag |
+| `challenge` | local progress (steps counted, focus seconds elapsed) |
+| `outbox` | events waiting to be sent, with the UUIDv7 id, retry count, next attempt |
+| `local_event` | full history for the user's own screens (streaks, charts) |
+
+Raw usage never leaves Room. Only `outbox` rows go to the server.
+
+## Outbox and idempotency
+
+Every server-bound event is written to `outbox` first with an id generated
+on the device (UUIDv7). A WorkManager job with network constraint drains it
+in order, retrying with exponential backoff. The server treats the id as an
+idempotency key, so a retry after a timeout cannot double-report a break or
+double-award minutes. The row is deleted only after a 2xx.
+
+## Heartbeat
+
+A periodic WorkManager job every 6 hours (the minimum reliable interval on
+modern Android is 15 minutes; 6 hours keeps battery impact invisible) posts
+the heartbeat. The app also sends one on every cold start and after every
+outbox drain. The server's watchdog threshold is 24 hours, which tolerates a
+missed period or a night in airplane mode.
+
+## Daily reset
+
+The user picks a reset time (default 04:00) so a limit does not refresh at
+midnight while they are still scrolling. Counters reset when the device
+clock crosses the reset time in the user's zone. If the phone was off at
+that moment, the reset is applied on next wake based on the last reset
+timestamp. Changing the reset time is locked during a commitment.
+
+## Challenges
+
+| Type | Sensor | Verification |
+|---|---|---|
+| `walk_steps` | `TYPE_STEP_COUNTER` (needs `ACTIVITY_RECOGNITION` on API 29+) | Delta since challenge start; capped at 200 steps/min to reject shaking |
+| `focus_session` | None: timer with screen-on and no controlled app foregrounded | Any controlled app foreground cancels the session |
+| `waiting_period` | None: countdown | Nothing to verify; it is friction, not proof |
+
+Reward minutes are applied locally the instant the challenge completes and
+reported to the server with the `challenge_completed` event. The daily cap
+is enforced locally and re-checked by the server.
+
+## Witness invite (App Links)
+
+`https://joinasr.com/w/<code>` is declared as an Android App Link with
+`autoVerify`, backed by `/.well-known/assetlinks.json` on `joinasr.com`. If
+the app is installed, the link opens the accept screen. If not, the fallback
+web page shows the inviter's name and a Play Store button with
+`referrer=w_<code>`; the app reads the install referrer on first launch and
+opens the accept screen after sign-up.
+
+## Permissions requested
+
+| Permission | Why | When |
+|---|---|---|
+| `PACKAGE_USAGE_STATS` | Detect the foreground app and count time | Onboarding step 2 |
+| `SYSTEM_ALERT_WINDOW` | Show the block screen over other apps | Onboarding step 3 |
+| `POST_NOTIFICATIONS` | Witness and reminder notifications | Onboarding step 4 |
+| `ACTIVITY_RECOGNITION` | Step challenges | First time a step challenge is started |
+| `FOREGROUND_SERVICE_SPECIAL_USE` | The protection service | Manifest |
+| `RECEIVE_BOOT_COMPLETED` | Restart protection after reboot | Manifest |
+
+No location, contacts, camera, microphone, or SMS.
+
+## Play policy notes
+
+- The usage-access declaration form: "Screen-time management. Usage data is
+  processed on-device to enforce user-set limits. Only daily totals for apps
+  the user chose to limit are sent to our servers, to show to accountability
+  partners the user invited."
+- The Data safety form lists: email, name, app usage totals (user-chosen
+  apps only), device identifiers (install id, push token). All encrypted in
+  transit; user can request deletion.
+- Subscriptions use Play Billing. No external payment links.
+- The overlay must never obscure system dialogs or the permission screens.
+
+## Build configuration
+
+Domain and API base URL come from `BuildConfig` fields set in
+`android/app/build.gradle.kts` per flavor (`dev` points at a local server,
+`prod` at `https://api.joinasr.com`). Nothing is hard-coded in Kotlin
+source.
