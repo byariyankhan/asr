@@ -155,13 +155,42 @@ else
 fi
 
 step "Obtaining a certificate"
-if [ -d /etc/letsencrypt/live/api.joinasr.io ]; then
-  echo "  certificate already present"
-elif command -v certbot >/dev/null && [ -n "${CERTBOT_EMAIL:-}" ]; then
-  certbot --nginx -d api.joinasr.io --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
-  echo "  issued and nginx reloaded"
+# certbot --nginx writes its ssl_* lines into whichever server block claims
+# the name it was asked for, and when none does it falls back to the default
+# server -- somebody else's file. That is not hypothetical: this config still
+# said api.joinasr.com after the domain moved to .io, so a run here deployed
+# Asr's certificate into Bookween's site. Hence the two guards below: refuse
+# to run certbot unless nginx really serves api.joinasr.io, and afterwards
+# prove that no site file but ours changed.
+# The condition is whether OUR vhost serves TLS, not whether a certificate
+# exists on disk: after the accident above the certificate existed and
+# asr-api still had no ssl_* lines, and a "cert is present" check would have
+# skipped the step that fixes exactly that.
+if grep -q "ssl_certificate /etc/letsencrypt/live/api.joinasr.io" /etc/nginx/sites-available/asr-api 2>/dev/null; then
+  echo "  certificate already installed in asr-api"
+elif ! command -v certbot >/dev/null; then
+  echo "  skipped: certbot is not installed"
+elif [ -z "${CERTBOT_EMAIL:-}" ]; then
+  echo "  skipped: set CERTBOT_EMAIL, or run 'certbot --nginx -d api.joinasr.io' yourself"
 else
-  echo "  skipped: run 'certbot --nginx -d api.joinasr.io' yourself"
+  nginx -T 2>/dev/null | grep -q "server_name api.joinasr.io" \
+    || die "No server block serves api.joinasr.io. Not running certbot: it would edit somebody else's."
+  before=$(mktemp); after=$(mktemp)
+  find /etc/nginx/sites-available -type f ! -name asr-api -exec md5sum {} + | sort > "$before"
+  # --keep-until-expiring so a re-run installs the certificate it already
+  # has rather than issuing a duplicate; Let's Encrypt rate-limits those.
+  certbot --nginx -d api.joinasr.io --cert-name api.joinasr.io \
+    --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect --keep-until-expiring
+  find /etc/nginx/sites-available -type f ! -name asr-api -exec md5sum {} + | sort > "$after"
+  if ! diff -q "$before" "$after" >/dev/null; then
+    echo "--- nginx sites that changed underneath certbot ---"
+    diff "$before" "$after" || true
+    die "certbot modified an nginx site other than asr-api. Stop and look before anything else."
+  fi
+  rm -f "$before" "$after"
+  grep -q "ssl_certificate /etc/letsencrypt/live/api.joinasr.io" /etc/nginx/sites-available/asr-api \
+    || die "certbot reported success but asr-api has no certificate line."
+  echo "  issued into asr-api, and no other site file changed"
 fi
 
 echo

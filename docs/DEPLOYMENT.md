@@ -61,7 +61,13 @@ The script it runs is idempotent and refuses to overwrite an existing
 5. **Waits for `/v1/health`** to actually answer before going on, so
    "the script finished" and "the API works" are the same statement.
 6. **Installs the nginx site**, and issues the certificate if
-   `CERTBOT_EMAIL` is set.
+   `CERTBOT_EMAIL` is set. Two guards sit around certbot, because
+   `certbot --nginx` edits whichever server block claims the hostname and
+   falls back to the default server when none does: it refuses to run
+   unless nginx really serves `api.joinasr.io`, and afterwards it proves
+   no site file but `asr-api` changed. The first bootstrap that reached
+   this step had `api.joinasr.com` still written in the site file, and
+   certbot deployed Asr's certificate into Bookween's.
 7. **Schedules the nightly backup** at 02:30 by writing `/etc/cron.d/asr-backup`
    (Bookween's is at 02:00, scheduled the same way).
 

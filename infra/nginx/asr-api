@@ -1,7 +1,11 @@
 # /etc/nginx/sites-available/asr-api
-# certbot --nginx -d api.joinasr.com   adds the ssl_* lines and the 80→443 redirect.
+# certbot --nginx -d api.joinasr.io   adds the ssl_* lines and the 80→443 redirect.
+# server_name has to be the real hostname: certbot --nginx edits whichever
+# server block claims the name it was asked for, and if none does it falls
+# back to the default server -- which is how a run with .com still written
+# here deployed Asr's certificate into Bookween's site file.
 server {
-    server_name api.joinasr.com;
+    server_name api.joinasr.io;
 
     client_max_body_size 1m;
 
