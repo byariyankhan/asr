@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+*.lock
+pnpm-lock.yaml
+
+# Build outputs
+.next/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Android
+.gradle/
+.idea/
+*.apk
+*.aar
+build/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+.cache/
+temp/
