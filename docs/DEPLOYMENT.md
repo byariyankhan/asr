@@ -22,6 +22,26 @@ stacks cannot be confused on the Docker side either.
 
 ## First-time setup
 
+`infra/first-time-setup.sh` does all of this. On the VPS, as root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/byariyankhan/asr/master/infra/first-time-setup.sh -o setup.sh
+bash setup.sh /root/firebase-key.json
+```
+
+The argument is the Firebase Admin SDK service-account JSON (Firebase
+Console → Project settings → Service accounts → Generate new private key).
+The script reads it once, folds the three fields into `.env`, and tells you
+to delete the file afterwards.
+
+It checks DNS resolves and that ports 5433/6380/3001 are free before
+touching anything, never overwrites an existing `.env`, and leaves
+`/opt/asr` in a running state with the nightly backup scheduled. Two manual
+steps remain, which it prints: `certbot --nginx -d api.joinasr.io`, and
+deleting the key file.
+
+What it does, for when you need to do a piece of it by hand:
+
 ### 1. DNS
 
 `A` records for `joinasr.io` and `api.joinasr.io` → `187.52.122.99`.
@@ -33,28 +53,38 @@ Wait until `getent hosts api.joinasr.io` on the VPS returns the IP.
 mkdir -p /opt/asr/backups
 git clone https://github.com/byariyankhan/asr /opt/asr/src
 cp /opt/asr/src/infra/docker-compose.yml /opt/asr/docker-compose.yml
-cp /opt/asr/src/infra/backup.sh /opt/asr/backup.sh && chmod 700 /opt/asr/backup.sh
+install -m 700 /opt/asr/src/infra/backup.sh /opt/asr/backup.sh
 ```
 
 ### 3. Environment
 
-`/opt/asr/.env` (mode 600). Generate secrets with `openssl rand -base64 32`.
+`/opt/asr/.env`, mode 600. Generate each secret with
+`openssl rand -base64 32`.
 
 ```
 PG_PASS=
 REDIS_PASS=
 BETTER_AUTH_SECRET=
+INTERNAL_SECRET=            # x-internal-secret header for POST /v1/internal/watchdog
 BETTER_AUTH_URL=https://api.joinasr.io
 PUBLIC_SITE_URL=https://joinasr.io
-RESEND_API_KEY=
 EMAIL_FROM=Asr <noreply@joinasr.io>
+RESEND_API_KEY=             # empty: emails are logged, not sent
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
-FIREBASE_PRIVATE_KEY=           # keep the \n escapes; the app unescapes them
-INTERNAL_SECRET=                # x-internal-secret header for POST /v1/internal/watchdog
+FIREBASE_PRIVATE_KEY=       # see below
 PLAY_PACKAGE_NAME=io.joinasr.app
-PLAY_SERVICE_ACCOUNT_JSON_B64=  # base64 of the service-account JSON for the Play Developer API
-PLAY_PUBSUB_SECRET=             # the ?token= value on the Pub/Sub push endpoint for Play RTDN
+PLAY_SERVICE_ACCOUNT_JSON_B64=   # empty: /v1/subscription/verify answers 503
+PLAY_PUBSUB_SECRET=              # the ?token= value on the Pub/Sub push endpoint
+```
+
+`FIREBASE_PRIVATE_KEY` must be **one line, single-quoted, with literal
+`\n`** where the key has newlines. Compose keeps single-quoted values
+verbatim (double quotes would turn `\n` into a real newline and break the
+line); `server/fcm.ts` converts them back. From the service-account JSON:
+
+```bash
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("FIREBASE_PRIVATE_KEY=\x27" + d["private_key"].replace(chr(10), "\\n") + "\x27")' key.json
 ```
 
 `docker compose config -q` must pass before anything else; it fails on any
@@ -64,15 +94,15 @@ missing variable.
 
 ```bash
 cd /opt/asr
-docker compose build api migrate
+docker compose build api
+docker compose build migrate
 docker compose up -d postgres redis
 docker compose run --rm migrate
 docker compose up -d api
-docker compose ps
 wget -qO- http://127.0.0.1:3001/v1/health
 ```
 
-### 5. nginx
+### 5. nginx and TLS
 
 ```bash
 cp /opt/asr/src/infra/nginx/asr-api /etc/nginx/sites-available/asr-api
@@ -95,6 +125,12 @@ page exists (`infra/nginx/asr-site`).
 in `/opt/asr/backups/`, and (once credentials are set) pushes to the same
 offsite bucket Bookween uses under an `asr/` prefix. Bookween's backup runs
 at 02:00; this runs at 02:30.
+
+### 7. GitHub secrets
+
+For the deploy workflow: `VPS_SSH_KEY` (a private key whose public half is
+in the VPS's `authorized_keys`) and `VPS_HOST` (`187.52.122.99`). The host
+key is pinned in `infra/vps-host-key.pub`, not scanned.
 
 ## Every deploy
 
