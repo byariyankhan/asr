@@ -54,6 +54,7 @@ import io.joinasr.app.ui.screens.ProgressScreen
 import io.joinasr.app.ui.screens.ResetPasswordScreen
 import io.joinasr.app.ui.screens.ReviewScreen
 import io.joinasr.app.ui.screens.ProtectionLostScreen
+import io.joinasr.app.ui.screens.ReactScreen
 import io.joinasr.app.ui.screens.ProtectionScreen
 import io.joinasr.app.ui.screens.SecurityScreen
 import io.joinasr.app.ui.screens.SignUpScreen
@@ -61,6 +62,7 @@ import io.joinasr.app.ui.screens.UsageAccessScreen
 import io.joinasr.app.ui.screens.WelcomeScreen
 import io.joinasr.app.ui.screens.WitnessInviteScreen
 import io.joinasr.app.DeepLink
+import io.joinasr.app.data.InboxItem
 import io.joinasr.app.data.SupportedPerson
 import io.joinasr.app.witness.Relationships
 import io.joinasr.app.witness.WitnessViewModel
@@ -176,6 +178,8 @@ fun AsrApp(
     var showingProtectionLost by remember { mutableStateOf(false) }
     // Figma 19, opened from the bell.
     var showingNotifications by remember { mutableStateOf(false) }
+    // Figma 25, opened from a notification about somebody else.
+    var reactingTo by remember { mutableStateOf<InboxItem?>(null) }
     // Figma 18. The code from a witness link, held until it is answered.
     var inviteCode by remember { mutableStateOf<String?>(null) }
     // True while somebody who opened an invite is going through sign-up.
@@ -284,9 +288,10 @@ fun AsrApp(
     BackHandler(
         enabled = tab != AsrTab.Home || profileRoute != null || addingWitness ||
             deletingAccount || showingProtectionLost || openPerson != null ||
-            showingNotifications,
+            showingNotifications || reactingTo != null,
     ) {
         when {
+            reactingTo != null -> reactingTo = null
             showingNotifications -> showingNotifications = false
             showingProtectionLost -> showingProtectionLost = false
             deletingAccount -> deletingAccount = false
@@ -480,32 +485,63 @@ fun AsrApp(
                             // screens rather than a bar inside each of them:
                             // four copies would be four things to keep in
                             // agreement about which tab is selected.
-                            AsrTab.Home -> if (showingNotifications) {
-                                // Figma 19.
-                                NotificationsScreen(
-                                    items = inboxItems,
-                                    unread = unread,
-                                    loaded = inboxLoaded,
-                                    onBack = { showingNotifications = false },
-                                    onOpen = { inboxViewModel.markRead(it.id) },
-                                    onMarkAllRead = inboxViewModel::markAllRead,
-                                )
-                            } else if (showingProtectionLost) {
-                                // Figma 27.
-                                ProtectionLostScreen(
-                                    onBack = { showingProtectionLost = false },
-                                    onDismiss = { showingProtectionLost = false },
-                                )
-                            } else {
-                                DashboardScreen(
-                                    pact = activePact,
-                                    onProtectionLost = { showingProtectionLost = true },
-                                    onNotifications = {
-                                        inboxViewModel.refresh()
-                                        showingNotifications = true
-                                    },
-                                    unreadNotifications = unread,
-                                )
+                            AsrTab.Home -> {
+                                val about = reactingTo
+                                if (about != null) {
+                                    // Figma 25.
+                                    val person = supporting.firstOrNull {
+                                        it.user.id == about.aboutUserId
+                                    }
+                                    ReactScreen(
+                                        item = about,
+                                        personName = person?.user?.name,
+                                        chosen = about.eventId?.let { reactions[it] },
+                                        busy = false,
+                                        onBack = { reactingTo = null },
+                                        onSend = { emoji ->
+                                            val eventId = about.eventId
+                                            if (person != null && eventId != null) {
+                                                witnessViewModel.react(person.id, eventId, emoji)
+                                            }
+                                            reactingTo = null
+                                        },
+                                    )
+                                } else if (showingNotifications) {
+                                    // Figma 19.
+                                    NotificationsScreen(
+                                        items = inboxItems,
+                                        unread = unread,
+                                        loaded = inboxLoaded,
+                                        onBack = { showingNotifications = false },
+                                        onOpen = { item ->
+                                            inboxViewModel.markRead(item.id)
+                                            // Only a notification that names an
+                                            // event of somebody this person
+                                            // actually witnesses can be reacted
+                                            // to. The rest are read and no more.
+                                            val canReact = item.eventId != null &&
+                                                supporting.any { it.user.id == item.aboutUserId }
+                                            if (canReact) reactingTo = item
+                                        },
+                                        onMarkAllRead = inboxViewModel::markAllRead,
+                                    )
+                                } else if (showingProtectionLost) {
+                                    // Figma 27.
+                                    ProtectionLostScreen(
+                                        onBack = { showingProtectionLost = false },
+                                        onDismiss = { showingProtectionLost = false },
+                                    )
+                                } else {
+                                    DashboardScreen(
+                                        pact = activePact,
+                                        onProtectionLost = { showingProtectionLost = true },
+                                        onNotifications = {
+                                            inboxViewModel.refresh()
+                                            showingNotifications = true
+                                        },
+                                        unreadNotifications = unread,
+                                    )
+                                }
                             }
 
                             AsrTab.Progress -> ProgressScreen(pact = activePact)

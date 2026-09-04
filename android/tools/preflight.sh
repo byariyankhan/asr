@@ -8,7 +8,9 @@
 # spent on faults a parser would have caught in milliseconds: a duplicate key
 # in the version catalog, and a "--" inside an XML comment. Neither is a
 # Kotlin error, so neither showed up as one; both stopped the build before
-# the compiler ran.
+# the compiler ran. A third went on Modifier.height() used in two new screens
+# without its import, which a grep answers in milliseconds and which the
+# compiler is otherwise the only thing that will tell you about.
 #
 # Run this before every push that touches android/.
 set -euo pipefail
@@ -52,6 +54,15 @@ xml.dom.minidom.parse('$res')
     fail "${res#"$here/"}: $(cat /tmp/preflight.err)"
   fi
 done < <(find "$here" -path "*/src/*/res/*" -name "*.xml" -not -path "*/build/*")
+
+# Compose helpers used without their import. A missing import is not a typo
+# the eye catches -- the call reads exactly like the fifty around it that do
+# compile -- and it has already cost one CI round trip.
+if python3 "$here/tools/compose_imports.py" "$here/app/src/main/java" >/tmp/preflight.err 2>&1; then
+  pass "Compose imports resolve"
+else
+  while IFS= read -r line; do fail "$line"; done < /tmp/preflight.err
+fi
 
 # Every screen must be reachable. A Composable nobody calls compiles fine and
 # ships as nothing at all, which is exactly the sort of thing that gets
