@@ -51,55 +51,47 @@ object Enforcement {
     }
 
     /**
-     * Whether the pact has been broken, and by what.
+     * Which controlled apps are past their allowance today.
      *
-     * The block screen goes up the moment a limit is reached, so simply
-     * reaching one is not a breach — it is the app working. A breach is the
-     * block *failing to hold*: the app kept being used for
-     * [BREACH_GRACE_MINUTES] minutes beyond a limit that was supposed to
-     * stop it, which happens when a permission was revoked, the launch was
-     * dropped by the system, or the person found a way past the screen.
-     * That is the honest thing to call a broken pact, and it is the only
-     * definition this architecture can actually measure.
+     * Reported, not punished. Going over a limit does not fail a challenge
+     * and never did anything a person should lose a month of work over --
+     * the app in front of them is blocked, and that is the whole remedy the
+     * product has to offer.
      *
-     * Every controlled app is checked, not just the one in front: a limit
-     * blown through an hour ago is still blown through now, and waiting for
-     * the person to reopen that app to notice would be pretending.
+     * This used to be `breach`, and it ended the pact. The definition was
+     * defensible on paper -- three minutes past a limit means the block did
+     * not hold, which is somebody getting around it or the app failing --
+     * and wrong in practice for two reasons.
      *
-     * The grace is not generosity. It is the distance between "the loop was
-     * a poll behind" and "nothing stopped this", and three minutes is wide
-     * enough that no correctly working block can cross it -- the loop polls
-     * every second inside the last two minutes of a limit -- and narrow
-     * enough that somebody scrolling past a broken block reaches it almost
-     * at once.
+     * The first is that it cannot tell those two apart. A dropped launch, a
+     * revoked permission, a poll that arrived late on a phone under load:
+     * every one of them reads as three minutes past, and failing somebody's
+     * thirty-day challenge for a bug in this app is not accountability.
+     *
+     * The second is worse and is what somebody actually hit. Usage is
+     * counted from local midnight, so a challenge started at eleven at night
+     * inherits the whole day -- forty minutes of Instagram against a limit
+     * that was thirty minutes old. "Challenge failed, Day 1", for time spent
+     * before the promise existed. A pact cannot be broken before it is made.
+     *
+     * So a challenge now ends only by something the person did on purpose:
+     * finishing it, giving it up, removing the app, or turning protection
+     * off. Every one of those is a decision. Scrolling is not.
+     *
+     * Every controlled app is checked, not only the one in front: a limit
+     * spent an hour ago is still spent, and the witnesses' progress screen
+     * reads these.
      */
-    fun breach(
+    fun overLimit(
         pact: Pact?,
         snapshot: UsageSnapshot,
-        nowMillis: Long,
-        dayNumber: Int,
         earnedMinutes: Map<String, Int> = emptyMap(),
-    ): Breach? {
-        if (pact == null || !pact.isEnforceable) return null
-        for (app in pact.apps) {
+    ): List<PactApp> {
+        if (pact == null || !pact.isEnforceable) return emptyList()
+        return pact.apps.filter { app ->
             val used = snapshot.minutesByPackage[app.packageName] ?: 0
-            val allowed = app.limitMinutes + (earnedMinutes[app.packageName] ?: 0)
-            if (used >= allowed + BREACH_GRACE_MINUTES) {
-                return Breach(
-                    packageName = app.packageName,
-                    label = app.label,
-                    // The limit as it stood, bonus included. A failure screen
-                    // reading "15 min limit, 28 used" for somebody who had
-                    // earned ten of those would be an accusation the app
-                    // itself knows to be unfair.
-                    limitMinutes = allowed,
-                    usedMinutes = used,
-                    atMillis = nowMillis,
-                    dayNumber = dayNumber,
-                )
-            }
+            used >= app.limitMinutes + (earnedMinutes[app.packageName] ?: 0)
         }
-        return null
     }
 
     /**
@@ -127,9 +119,6 @@ object Enforcement {
 
     /** Within this many minutes of a limit, the loop watches closely. */
     const val CLOSE_MINUTES = 2
-
-    /** Minutes past a limit at which the block has demonstrably not held. */
-    const val BREACH_GRACE_MINUTES = 3
 
     /** A watched app is open and nearly out of time. */
     const val CLOSE_MILLIS = 1_000L

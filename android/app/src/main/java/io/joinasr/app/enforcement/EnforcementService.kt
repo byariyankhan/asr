@@ -20,6 +20,7 @@ import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.earn.EarnStore
 import io.joinasr.app.permissions.Permissions
+import io.joinasr.app.sync.PendingEvent
 import io.joinasr.app.sync.Sync
 import io.joinasr.app.sync.Uuid7
 import io.joinasr.app.usage.Day
@@ -71,6 +72,13 @@ class EnforcementService : Service() {
     /** True while [end] is running, so a slow write cannot end a pact twice. */
     @Volatile
     private var ending = false
+
+    /**
+     * Spent limits already reported, by event id. Cleared with the process;
+     * the ids are derived from the day, so a restart re-reports at most one
+     * event per app that the server already has.
+     */
+    private val limitsReported = mutableSetOf<String>()
 
     @Volatile
     private var pact: Pact? = null
@@ -172,18 +180,20 @@ class EnforcementService : Service() {
 
         cancelFocusIfBroken(snapshot.foregroundPackage, current)
 
-        // Checked before blocking. A pact that has already been broken, or
-        // has run its course, should not be putting a block screen in front
-        // of anybody: the challenge is over either way.
-        val breach = Enforcement.breach(current, snapshot, now, progress.dayNumber, earned)
-        if (breach != null) {
-            end(current, PactResult.Failed, breach)
-            return Enforcement.IDLE_MILLIS
-        }
+        // Checked before blocking: a pact that has run its course should not
+        // be putting a block screen in front of anybody.
+        //
+        // Nothing else ends it from here any more. Going past a limit is
+        // reported and blocked, not punished -- see `Enforcement.overLimit`
+        // for why a challenge that could be failed by scrolling was failing
+        // people for this app's own missed polls, and for time spent before
+        // the challenge existed.
         if (progress.isComplete) {
-            end(current, PactResult.Completed, breach = null)
+            end(current)
             return Enforcement.IDLE_MILLIS
         }
+
+        reportLimitsReached(current, snapshot, earned, now)
 
         flushIfDue(current, now, snapshot.minutesByPackage)
 
@@ -201,6 +211,48 @@ class EnforcementService : Service() {
     }
 
     /**
+     * Says that a limit was spent, once per app per day.
+     *
+     * The witnesses' progress screen already reads these -- "Reached a limit
+     * on Instagram" -- and nothing on any phone had ever sent one, because
+     * the only thing this loop did about a limit was fail the challenge over
+     * it. Reaching a limit is not a failure and is worth saying out loud; it
+     * is the pact working, in front of the people who asked to watch.
+     *
+     * The id is derived from the pact, the app and the day rather than from
+     * the clock, so the loop noticing the same spent limit forty times, and
+     * the service being restarted in the middle of it, all post the same
+     * event -- which the server already recognises as one it has.
+     */
+    private suspend fun reportLimitsReached(
+        pact: Pact,
+        snapshot: UsageSnapshot,
+        earned: Map<String, Int>,
+        now: Long,
+    ) {
+        val over = Enforcement.overLimit(pact, snapshot, earned)
+        if (over.isEmpty()) return
+        val dayStart = Day.startOfDay(now)
+        for (app in over) {
+            val id = Uuid7.forDay("${pact.startedAtMillis}|${app.packageName}", dayStart)
+            // In memory as well, so a spent limit somebody is sitting on does
+            // not put a write through the outbox every second.
+            if (!limitsReported.add(id)) continue
+            runCatching {
+                sync.report(
+                    pact,
+                    PendingEvent(
+                        id = id,
+                        type = "limit_hit",
+                        appPackage = app.packageName,
+                        occurredAtMillis = now,
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
      * Ends the challenge, and tells whoever is meant to be told.
      *
      * The order matters. The outcome is written first, then the event is
@@ -214,26 +266,14 @@ class EnforcementService : Service() {
      * outcome would leave the person looking at a dashboard for a challenge
      * that quietly no longer exists.
      */
-    private suspend fun end(pact: Pact, result: PactResult, breach: Breach?) {
+    private suspend fun end(pact: Pact) {
         if (ending) return
         ending = true
         val now = System.currentTimeMillis()
         val watching = runCatching { witnesses.current().size }.getOrDefault(0)
-        val eventId = Uuid7.next(now)
-        // Built together, in the one place all three ways of ending are
-        // built, so what this writes down and what the witnesses are told
-        // cannot drift apart.
-        val ending = if (breach != null) {
-            Endings.broken(pact, breach, watching, eventId, now)
-        } else if (result == PactResult.Failed) {
-            // Failed with nothing breached does not happen from here -- the
-            // service only fails a pact it caught -- but the type allows it
-            // and silently reporting the wrong reason would be worse than
-            // ending without a claim about why.
-            Endings.gaveUp(pact, watching, eventId, now)
-        } else {
-            Endings.completed(pact, watching, eventId, now)
-        }
+        // Built in the one place every way of ending is built, so what this
+        // writes down and what the witnesses are told cannot drift apart.
+        val ending = Endings.completed(pact, watching, Uuid7.next(now), now)
         outcomes.save(ending.outcome)
 
         runCatching {

@@ -5,38 +5,23 @@ import io.joinasr.app.sync.PendingEvent
 /**
  * What ending a challenge produces: something to keep and something to send.
  *
- * A challenge can end three ways and the two halves have to agree in all
- * three. The outcome is what the person is shown and what their history is
- * built from; the event is what their witnesses are told. Building them in
- * one place is what stops a screen saying "you gave up" while the message
- * that went out said the limit broke.
+ * The outcome is what the person is shown and what their history is built
+ * from; the event is what their witnesses are told. Building them in one
+ * place is what stops a screen saying "you gave up" while the message that
+ * went out said something else.
  *
- * The reason on a failure is not decoration. The server requires one on a
- * `broken` event, and it is what picks the sentence each witness reads --
- * `limit_exceeded` and `user_gave_up` are different things to be told, in
- * the same way that being caught and turning yourself in are.
+ * There are two ways a challenge ends on this phone, and both are
+ * deliberate: the person reached the end of it, or the person stopped it.
+ * There used to be a third -- a limit the block failed to hold, reported as
+ * `limit_exceeded` -- and it was removed with the rule behind it. Going over
+ * a limit is blocked and reported, not punished; `Enforcement.overLimit`
+ * has the argument. The other two failures, removing the app and turning
+ * protection off, are the server's to notice, because a phone that has done
+ * either is not going to report it.
  */
 data class Ending(val outcome: PactOutcome, val event: PendingEvent)
 
 object Endings {
-
-    /** The limit did not hold. */
-    fun broken(
-        pact: Pact,
-        breach: Breach,
-        witnesses: Int,
-        eventId: String,
-        nowMillis: Long,
-    ) = Ending(
-        outcome = outcome(pact, PactResult.Failed, breach, witnesses, nowMillis),
-        event = PendingEvent(
-            id = eventId,
-            type = "broken",
-            reason = "limit_exceeded",
-            appPackage = breach.packageName,
-            occurredAtMillis = nowMillis,
-        ),
-    )
 
     /**
      * They stopped it themselves.

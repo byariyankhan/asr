@@ -40,24 +40,6 @@ class EndingTest {
     }
 
     @Test
-    fun `a broken limit names the app that broke it`() {
-        val breach = Breach(
-            packageName = "com.instagram.android",
-            label = "Instagram",
-            limitMinutes = 30,
-            usedMinutes = 41,
-            atMillis = 4_000L,
-            dayNumber = 3,
-        )
-        val ending = Endings.broken(pact, breach, witnesses = 1, eventId = "e1", nowMillis = 5_000L)
-
-        assertEquals(PactResult.Failed, ending.outcome.result)
-        assertEquals("limit_exceeded", ending.event.reason)
-        assertEquals("com.instagram.android", ending.event.appPackage)
-        assertEquals(breach, ending.outcome.breach)
-    }
-
-    @Test
     fun `finishing carries no reason at all`() {
         val ending = Endings.completed(pact, witnesses = 3, eventId = "e1", nowMillis = 5_000L)
 

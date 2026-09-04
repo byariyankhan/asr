@@ -227,61 +227,66 @@ class EnforcementTest {
         assertTrue(built.isEnforceable)
     }
 
-    // ---- breach: the block failing to hold ----
+    // ---- over the limit: reported, never a failure ----
 
     @Test
-    fun `reaching a limit is not a breach, it is the block working`() {
+    fun `reaching a limit puts the app on the list`() {
         val seen = snapshot(instagram, instagram to 20)
-        assertNull(Enforcement.breach(pact, seen, now, dayNumber = 6))
+        assertEquals(listOf(instagram), Enforcement.overLimit(pact, seen).map { it.packageName })
     }
 
     @Test
-    fun `a minute or two past a limit is a slow poll, not a breach`() {
-        val seen = snapshot(instagram, instagram to 22)
-        assertNull(Enforcement.breach(pact, seen, now, dayNumber = 6))
+    fun `under the limit is not on it`() {
+        val seen = snapshot(instagram, instagram to 19)
+        assertTrue(Enforcement.overLimit(pact, seen).isEmpty())
+    }
+
+    /**
+     * The whole reason this replaced `breach`. A limit spent forty minutes
+     * deep is the same fact as a limit just spent -- a spent limit -- and
+     * failing a thirty-day challenge over the difference punished people for
+     * this app's own missed polls and for time spent before they promised
+     * anything.
+     */
+    @Test
+    fun `being far past a limit is the same fact as reaching it`() {
+        val just = Enforcement.overLimit(pact, snapshot(instagram, instagram to 20))
+        val far = Enforcement.overLimit(pact, snapshot(instagram, instagram to 400))
+        assertEquals(just, far)
     }
 
     @Test
-    fun `past the limit by the grace is a breach`() {
-        val seen = snapshot(instagram, instagram to 23)
-        val breach = Enforcement.breach(pact, seen, now, dayNumber = 6)
-        assertEquals(instagram, breach?.packageName)
-        assertEquals("Instagram", breach?.label)
-        assertEquals(20, breach?.limitMinutes)
-        assertEquals(23, breach?.usedMinutes)
-        assertEquals(6, breach?.dayNumber)
-        assertEquals(now, breach?.atMillis)
-    }
-
-    @Test
-    fun `a breach counts even when the app is no longer in front`() {
+    fun `an app no longer in front is still over its limit`() {
         val seen = snapshot(messages, instagram to 40)
-        assertEquals(instagram, Enforcement.breach(pact, seen, now, dayNumber = 2)?.packageName)
+        assertEquals(listOf(instagram), Enforcement.overLimit(pact, seen).map { it.packageName })
     }
 
     @Test
-    fun `an app outside the pact cannot breach it`() {
+    fun `an app outside the pact is not counted`() {
         val seen = snapshot(messages, messages to 900)
-        assertNull(Enforcement.breach(pact, seen, now, dayNumber = 2))
+        assertTrue(Enforcement.overLimit(pact, seen).isEmpty())
     }
 
     @Test
-    fun `no pact cannot be breached`() {
+    fun `no pact has nothing over a limit`() {
         val seen = snapshot(instagram, instagram to 999)
-        assertNull(Enforcement.breach(null, seen, now, dayNumber = 1))
+        assertTrue(Enforcement.overLimit(null, seen).isEmpty())
     }
 
     @Test
-    fun `an unenforceable pact cannot be breached`() {
+    fun `an unenforceable pact has nothing over a limit`() {
         val empty = Pact(apps = emptyList(), startedAtMillis = 0)
         val seen = snapshot(instagram, instagram to 999)
-        assertNull(Enforcement.breach(empty, seen, now, dayNumber = 1))
+        assertTrue(Enforcement.overLimit(empty, seen).isEmpty())
     }
 
     @Test
-    fun `the first app over its limit is the one reported`() {
+    fun `every app over its limit is listed, not just the first`() {
         val seen = snapshot(youtube, instagram to 100, youtube to 100)
-        assertEquals(instagram, Enforcement.breach(pact, seen, now, dayNumber = 3)?.packageName)
+        assertEquals(
+            listOf(instagram, youtube),
+            Enforcement.overLimit(pact, seen).map { it.packageName }.sorted(),
+        )
     }
 
     // ---- earned time ----
@@ -310,13 +315,14 @@ class EnforcementTest {
     }
 
     @Test
-    fun `a breach is measured against the raised limit`() {
-        // 20 + 10 earned + 3 grace. Twenty-nine is not yet a breach.
+    fun `being over is measured against the raised limit`() {
         val earned = mapOf(instagram to 10)
-        assertNull(Enforcement.breach(pact, snapshot(instagram, instagram to 32), now, 6, earned))
-        val breach = Enforcement.breach(pact, snapshot(instagram, instagram to 33), now, 6, earned)
-        assertEquals(30, breach?.limitMinutes)
-        assertEquals(33, breach?.usedMinutes)
+        assertTrue(Enforcement.overLimit(pact, snapshot(instagram, instagram to 29), earned).isEmpty())
+        assertEquals(
+            listOf(instagram),
+            Enforcement.overLimit(pact, snapshot(instagram, instagram to 30), earned)
+                .map { it.packageName },
+        )
     }
 
     @Test

@@ -6,7 +6,11 @@ import kotlinx.serialization.Serializable
 enum class PactResult { Failed, Completed }
 
 /**
- * The moment a limit stopped holding.
+ * The moment a limit stopped holding, on a challenge that ended for it.
+ *
+ * Historical. No challenge ends this way any more; see
+ * `Enforcement.overLimit`. Kept so an outcome written by an older build
+ * still decodes and still shows the person what happened.
  *
  * Recorded with the numbers that were true when it happened rather than
  * recomputed later: the day's counts reset at midnight, and a failure screen
@@ -38,7 +42,12 @@ data class PactOutcome(
     val endedAtMillis: Long,
     val durationDays: Int,
     val apps: List<PactApp>,
-    /** Present exactly when [result] is [PactResult.Failed]. */
+    /**
+     * Only on outcomes written before going over a limit stopped ending a
+     * challenge. Nothing produces one now -- a failure is a give-up, and a
+     * spent limit is reported and blocked rather than punished -- but they
+     * are on people's phones and are still theirs to read.
+     */
     val breach: Breach? = null,
     /**
      * How many witnesses were on the challenge when it ended. What the

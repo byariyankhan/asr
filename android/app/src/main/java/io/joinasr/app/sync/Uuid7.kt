@@ -1,5 +1,6 @@
 package io.joinasr.app.sync
 
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Locale
 
@@ -36,6 +37,40 @@ object Uuid7 {
         bytes[6] = ((bytes[6].toInt() and 0x0F) or 0x70).toByte()
         bytes[8] = ((bytes[8].toInt() and 0x3F) or 0x80).toByte()
 
+        return format(bytes)
+    }
+
+    /**
+     * The same shape, but the same id every time for the same fact.
+     *
+     * Some events are a fact about a day rather than a moment: "Instagram
+     * went past its limit on the 4th" is true once, however many times the
+     * loop notices it and however often the service is restarted. The server
+     * takes the event id as its idempotency key, so deriving that id from
+     * what the event is about -- rather than from when it happened to be
+     * seen -- is what makes reporting it again free.
+     *
+     * Still sorted by time: the 48-bit prefix is the start of the day the
+     * fact belongs to, so these interleave correctly with ordinary events in
+     * an outbox that has been waiting a week.
+     */
+    fun forDay(seed: String, dayStartMillis: Long): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(seed.toByteArray())
+        val bytes = digest.copyOf(16)
+
+        bytes[0] = (dayStartMillis ushr 40).toByte()
+        bytes[1] = (dayStartMillis ushr 32).toByte()
+        bytes[2] = (dayStartMillis ushr 24).toByte()
+        bytes[3] = (dayStartMillis ushr 16).toByte()
+        bytes[4] = (dayStartMillis ushr 8).toByte()
+        bytes[5] = dayStartMillis.toByte()
+
+        bytes[6] = ((bytes[6].toInt() and 0x0F) or 0x70).toByte()
+        bytes[8] = ((bytes[8].toInt() and 0x3F) or 0x80).toByte()
+        return format(bytes)
+    }
+
+    private fun format(bytes: ByteArray): String {
         val hex = buildString(32) {
             for (byte in bytes) append(String.format(Locale.US, "%02x", byte))
         }
