@@ -1100,6 +1100,9 @@ fun AsrApp(
                         selected = tab,
                         onSelect = goToTab,
                         modifier = Modifier.padding(horizontal = 12.dp),
+                        // The Profile tab is the person, so it is their face.
+                        profileImage = current.me.image,
+                        profileName = current.me.name,
                     )
                     Spacer(Modifier.height(12.dp))
                 }
