@@ -50,6 +50,9 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
+          # .git is excluded from the tarball, so the commit has to travel as
+          # a file. /v1/health reports it and the deploy asserts against it.
+          git rev-parse HEAD > .asr-commit
           tar czf /tmp/asr-src.tgz --exclude=.git --exclude=node_modules --exclude=.next .
           scp -i ~/.ssh/deploy_key /tmp/asr-src.tgz root@"$VPS_HOST":/tmp/asr-src.tgz
           ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" bash -s <<'REMOTE'
@@ -175,21 +178,41 @@ jobs:
           PY
           shred -u /root/.asr-secrets 2>/dev/null || rm -f /root/.asr-secrets
           docker compose config -q
-          docker compose up -d api --force-recreate
+          # ASR_COMMIT is what /v1/health reports and what the deploy asserts
+          # against. Restarting without it leaves the live answer saying
+          # "commit": null, which reads as the deploy check being broken when
+          # it is only this workflow having recreated the container.
+          commit=$(cat /opt/asr/src/.asr-commit 2>/dev/null || true)
+          ASR_COMMIT="$commit" docker compose up -d api --force-recreate
           # </dev/null or compose exec swallows the rest of this heredoc as its
           # own stdin. Prints lengths, never values.
-          for name in RESEND_API_KEY R2_ACCOUNT_ID R2_BUCKET; do
+          #
+          # All four R2 variables, because the one that was wrong for days was
+          # 65 characters where 32 was expected, and this loop was not printing
+          # it. A length is not a secret and it is the whole check.
+          for name in RESEND_API_KEY R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET; do
             n=$(docker compose exec -T api printenv "$name" </dev/null | tr -d "\n" | wc -c)
             echo "  container $name: $n characters"
           done
+          healthy=""
           for _ in $(seq 1 10); do
             body=$(wget -qO- --content-on-error --timeout=5 http://127.0.0.1:3001/v1/health 2>/dev/null || true)
-            case "$body" in *'"ok":true'*) echo "healthy after restart"; exit 0 ;; esac
+            case "$body" in *'"ok":true'*) healthy=yes; break ;; esac
             sleep 3
           done
-          echo "the API did not come back healthy after the restart"
-          docker compose logs --tail=60 api || true
-          exit 1
+          if [ -z "$healthy" ]; then
+            echo "the API did not come back healthy after the restart"
+            docker compose logs --tail=60 api || true
+            exit 1
+          fi
+          echo "healthy after restart"
+          # Whether photo uploads actually work, by doing one. Reported, never
+          # fatal: R2 is optional and the API is fine without it. It says
+          # writable, or it names which value is wrong — which is the answer
+          # somebody wants while they are still looking at this log, not three
+          # deploys later.
+          echo "  storage: $(wget -qO- --content-on-error --timeout=10 http://127.0.0.1:3001/v1/health/storage 2>/dev/null || echo '<no answer>')"
+          exit 0
           REMOTE
 
       # The key is in .env now; the loose copy has no reason to survive.
