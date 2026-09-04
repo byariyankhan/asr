@@ -86,17 +86,22 @@ jobs:
       # the exact failure that went unnoticed for weeks. So the build says
       # out loud whether the ids the plugin generated are actually in the
       # APK, on every run.
+      # Found rather than assumed: the google-services plugin has moved its
+      # output directory between versions, and a check that hard-codes one
+      # path fails for the wrong reason.
       - name: Firebase config in the APK
         if: success()
         run: |
-          values=app/build/generated/res/google-services/debug/values/values.xml
-          if [ ! -f "$values" ]; then
+          values=$(grep -rl "google_app_id" app/build/generated 2>/dev/null | head -1)
+          if [ -z "$values" ]; then
             echo "::error::google-services did not run. Push will reach nobody."
+            find app/build/generated -name "values*.xml" | head -20
             exit 1
           fi
-          echo "google_app_id: $(grep -o '"google_app_id">[^<]*' "$values" | cut -d'>' -f2)"
-          echo "project_id:    $(grep -o '"project_id">[^<]*' "$values" | cut -d'>' -f2)"
-          echo "sender_id:     $(grep -o '"gcm_defaultSenderId">[^<]*' "$values" | cut -d'>' -f2)"
+          echo "from: $values"
+          for key in google_app_id project_id gcm_defaultSenderId; do
+            echo "$key: $(grep -o "\"$key\">[^<]*" "$values" | cut -d'>' -f2)"
+          done
 
       - uses: actions/upload-artifact@v4
         if: success()
