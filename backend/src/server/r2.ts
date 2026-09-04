@@ -37,12 +37,41 @@ export type R2Config = {
  * from inside fetch with nothing naming the cause.
  */
 export function r2Config(): R2Config | null {
-  const accountId = process.env.R2_ACCOUNT_ID?.trim();
+  const accountId = accountIdFrom(process.env.R2_ACCOUNT_ID ?? "");
   const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim();
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim();
   const bucket = process.env.R2_BUCKET?.trim();
   if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return null;
   return { accountId, accessKeyId, secretAccessKey, bucket };
+}
+
+/**
+ * The account id out of whatever was pasted.
+ *
+ * Cloudflare's dashboard does not show the account id on its own next to the
+ * R2 keys. It shows the S3 API endpoint —
+ * `https://<id>.r2.cloudflarestorage.com/<bucket>` — and copying that whole
+ * line into R2_ACCOUNT_ID is the obvious thing to do with it. It is also
+ * what happened here: the probe reported `account_id_is_not_a_hex_id` from
+ * production, after the same value had spent days failing every upload as an
+ * unexplained TypeError from inside fetch.
+ *
+ * Refusing it would be correct and useless. The id is right there in the
+ * string, in the documented position, and taking it is parsing rather than
+ * guessing: scheme, credentials, port, path, and the
+ * `.cloudflarestorage.com` suffix all come off, including the jurisdiction
+ * forms like `<id>.eu.r2.cloudflarestorage.com`.
+ *
+ * A value that is already the id passes through untouched.
+ */
+export function accountIdFrom(raw: string): string {
+  let value = raw.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+  value = value.split(/[/?#]/)[0] ?? "";
+  const at = value.lastIndexOf("@");
+  if (at >= 0) value = value.slice(at + 1);
+  value = value.split(":")[0] ?? "";
+  if (/\.cloudflarestorage\.com$/i.test(value)) value = value.slice(0, value.indexOf("."));
+  return value;
 }
 
 /**

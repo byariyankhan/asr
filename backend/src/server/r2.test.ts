@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { __testing, configProblem, r2Config } from "./r2";
+import { __testing, accountIdFrom, configProblem, r2Config } from "./r2";
 
 const { encodeKey, sign, signingKey } = __testing;
 
@@ -156,5 +156,38 @@ describe("configuration", () => {
     // whole URL or an endpoint pasted where the id belongs, which produces a
     // hostname nobody would recognise as wrong at a glance.
     expect(configProblem({ ...config, accountId: "acc.123" })).toBe("account_id_is_not_a_hex_id");
+  });
+});
+
+describe("accountIdFrom", () => {
+  const id = "3f7a1c9e2b4d6058a1c3e5f7091b2d4c";
+
+  it("takes the id out of the endpoint the dashboard shows", () => {
+    // The exact string production had in R2_ACCOUNT_ID, which failed every
+    // upload as a TypeError from inside fetch for days.
+    expect(accountIdFrom(`https://${id}.r2.cloudflarestorage.com/asr-media`)).toBe(id);
+    expect(accountIdFrom(`https://${id}.r2.cloudflarestorage.com`)).toBe(id);
+    expect(accountIdFrom(`${id}.r2.cloudflarestorage.com`)).toBe(id);
+    expect(accountIdFrom(`https://${id}.r2.cloudflarestorage.com/`)).toBe(id);
+    // Jurisdiction-specific endpoints have an extra label in the middle.
+    expect(accountIdFrom(`https://${id}.eu.r2.cloudflarestorage.com/asr-media`)).toBe(id);
+  });
+
+  it("leaves an id that is already an id alone", () => {
+    expect(accountIdFrom(id)).toBe(id);
+    expect(accountIdFrom(` ${id}\r\n`)).toBe(id);
+  });
+
+  it("does not invent an id out of something that has none", () => {
+    // Anything that is not the documented shape passes through untouched
+    // and is still refused. Parsing a known shape is not the same as
+    // accepting whatever turns up.
+    expect(accountIdFrom("asr-media")).toBe("asr-media");
+    expect(configProblem({ ...config, accountId: accountIdFrom("asr-media") })).toBe(
+      "account_id_is_not_a_hex_id",
+    );
+    expect(configProblem({ ...config, accountId: accountIdFrom("https://example.com/x") })).toBe(
+      "account_id_is_not_a_hex_id",
+    );
   });
 });
