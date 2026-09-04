@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.joinasr.app.apps.AppEntry
+import io.joinasr.app.sync.Sync
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -35,15 +36,52 @@ sealed interface PactState {
 class PactViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = PactStore(application)
+    private val outcomes = OutcomeStore(application)
+    private val sync = Sync(application)
 
     val state: StateFlow<PactState> = store.pact
         .map { if (it == null) PactState.None else PactState.Active(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PactState.Loading)
 
+    /**
+     * The last challenge to end, if the person has not been shown how it
+     * ended yet. Figma 26 reads this; acknowledging it is what stops the
+     * screen reappearing on every launch.
+     */
+    val endedUnseen: StateFlow<PactOutcome?> =
+        outcomes.unseen.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    init {
+        // A challenge that ended with no signal left an event in the outbox.
+        // This is where it gets another go: on app start, which is the one
+        // moment there is definitely a foreground process and usually a
+        // network.
+        viewModelScope.launch {
+            val ended = outcomes.current() ?: return@launch
+            if (ended.reported) return@launch
+            runCatching {
+                sync.drain(ended.asPact())
+                if (sync.isDrained()) outcomes.markReported()
+            }
+        }
+    }
+
     fun commit(apps: List<AppEntry>, limits: Map<String, Int>, durationDays: Int) {
         viewModelScope.launch {
-            store.save(Pact.from(apps, limits, durationDays, System.currentTimeMillis()))
+            val pact = Pact.from(apps, limits, durationDays, System.currentTimeMillis())
+            // Stored first. The challenge has started whether or not the
+            // server ever hears about it, and a person on a train pressing
+            // Start must end up with a running challenge, not an error.
+            store.save(pact)
+            // The server's copy is best-effort and keyed by the start
+            // time, so a stale id from the last challenge can never be
+            // mistaken for this one's.
+            runCatching { sync.remotePactId(pact) }
         }
+    }
+
+    fun acknowledgeEnded() {
+        viewModelScope.launch { outcomes.markSeen() }
     }
 
     /**
@@ -55,3 +93,14 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { store.clear() }
     }
 }
+
+/**
+ * A finished challenge, back in the shape the sync layer needs to address
+ * it. Only ever used to find or create the server's copy of something that
+ * has already ended, which is why nothing enforces it.
+ */
+private fun PactOutcome.asPact() = Pact(
+    apps = apps,
+    startedAtMillis = startedAtMillis,
+    durationDays = durationDays,
+)

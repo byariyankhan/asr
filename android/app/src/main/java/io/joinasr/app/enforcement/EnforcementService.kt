@@ -16,10 +16,15 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import io.joinasr.app.MainActivity
 import io.joinasr.app.R
+import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.permissions.Permissions
+import io.joinasr.app.sync.PendingEvent
+import io.joinasr.app.sync.Sync
+import io.joinasr.app.sync.Uuid7
 import io.joinasr.app.usage.Day
 import io.joinasr.app.usage.UsageReader
 import io.joinasr.app.usage.usageReader
+import io.joinasr.app.witness.WitnessStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,6 +57,18 @@ class EnforcementService : Service() {
     private lateinit var reader: UsageReader
     private lateinit var store: PactStore
     private lateinit var status: ProtectionStatusStore
+    private lateinit var outcomes: OutcomeStore
+    private lateinit var witnesses: WitnessStore
+    private lateinit var sync: Sync
+
+    /** When the outbox was last emptied, so it is drained on a timer rather
+     *  than on every pass of a loop that can run once a second. */
+    @Volatile
+    private var lastFlushMillis = 0L
+
+    /** True while [end] is running, so a slow write cannot end a pact twice. */
+    @Volatile
+    private var ending = false
 
     @Volatile
     private var pact: Pact? = null
@@ -75,6 +92,9 @@ class EnforcementService : Service() {
         reader = usageReader(this)
         store = PactStore(this)
         status = ProtectionStatusStore(this)
+        outcomes = OutcomeStore(this)
+        witnesses = WitnessStore(this)
+        sync = Sync(this)
 
         createChannel()
         startInForeground(apps = 0)
@@ -139,6 +159,24 @@ class EnforcementService : Service() {
         }
 
         val snapshot = reader.poll()
+        val now = System.currentTimeMillis()
+        val progress = ChallengeProgress.of(current.startedAtMillis, current.durationDays, now)
+
+        // Checked before blocking. A pact that has already been broken, or
+        // has run its course, should not be putting a block screen in front
+        // of anybody: the challenge is over either way.
+        val breach = Enforcement.breach(current, snapshot, now, progress.dayNumber)
+        if (breach != null) {
+            end(current, PactResult.Failed, breach)
+            return Enforcement.IDLE_MILLIS
+        }
+        if (progress.isComplete) {
+            end(current, PactResult.Completed, breach = null)
+            return Enforcement.IDLE_MILLIS
+        }
+
+        flushIfDue(current, now)
+
         when (val decision = Enforcement.decide(current, snapshot)) {
             Decision.Allow -> blocking = null
 
@@ -150,6 +188,70 @@ class EnforcementService : Service() {
             }
         }
         return Enforcement.pollDelayMillis(current, snapshot)
+    }
+
+    /**
+     * Ends the challenge, and tells whoever is meant to be told.
+     *
+     * The order matters. The outcome is written first, then the event is
+     * queued, then the pact is cleared -- so a phone that dies halfway
+     * through comes back with a finished challenge and an event still to
+     * send, rather than with a pact it has already stopped enforcing or a
+     * failure nothing recorded.
+     *
+     * The pact is cleared last for the same reason: clearing it is what
+     * stops this service, and a service that stopped before writing the
+     * outcome would leave the person looking at a dashboard for a challenge
+     * that quietly no longer exists.
+     */
+    private suspend fun end(pact: Pact, result: PactResult, breach: Breach?) {
+        if (ending) return
+        ending = true
+        val now = System.currentTimeMillis()
+        val outcome = PactOutcome(
+            result = result,
+            startedAtMillis = pact.startedAtMillis,
+            endedAtMillis = now,
+            durationDays = pact.durationDays,
+            apps = pact.apps,
+            breach = breach,
+            witnesses = runCatching { witnesses.current().size }.getOrDefault(0),
+            reported = false,
+        )
+        outcomes.save(outcome)
+
+        val event = PendingEvent(
+            id = Uuid7.next(now),
+            type = if (result == PactResult.Failed) "broken" else "completed",
+            // The server requires a reason on a broken event, and this is
+            // the true one: the limit was exceeded, which is only possible
+            // when the block did not hold.
+            reason = if (result == PactResult.Failed) "limit_exceeded" else null,
+            appPackage = breach?.packageName,
+            occurredAtMillis = now,
+        )
+        runCatching {
+            sync.report(pact, event)
+            if (sync.isDrained()) outcomes.markReported()
+        }
+
+        blocking = null
+        store.clear()
+    }
+
+    /**
+     * Empties the outbox now and then while a challenge is running, so an
+     * event queued during a tunnel is not still sitting there a day later.
+     */
+    private suspend fun flushIfDue(pact: Pact, nowMillis: Long) {
+        if (nowMillis - lastFlushMillis < FLUSH_EVERY_MILLIS) return
+        lastFlushMillis = nowMillis
+        runCatching {
+            sync.drain(pact)
+            // Measured, not assumed. A heartbeat that always says true is
+            // worse than none: it is what a witness would be trusting.
+            sync.heartbeat(protectionEnabled = Permissions.canDrawOverlays(this))
+        }
     }
 
     /**
@@ -239,6 +341,9 @@ class EnforcementService : Service() {
         private const val CHANNEL_ID = "protection"
         private const val NOTIFICATION_ID = 1
         private const val DAY_MILLIS = 24L * 60 * 60 * 1000
+
+        /** How often the loop tries to empty the outbox. */
+        private const val FLUSH_EVERY_MILLIS = 30L * 60 * 1000
 
         /**
          * Starts the loop, if there is anything for it to do.

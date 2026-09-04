@@ -28,6 +28,8 @@ class EnforcementTest {
         startedAtMillis = 1_772_150_400_000L,
     )
 
+    private val now = 1_772_193_720_000L
+
     private fun snapshot(foreground: String?, vararg used: Pair<String, Int>) = UsageSnapshot(
         minutesByPackage = used.toMap(),
         foregroundPackage = foreground,
@@ -219,5 +221,62 @@ class EnforcementTest {
         val built = Pact.from(listOf(AppEntry(instagram, "Instagram")), emptyMap(), 14, 0)
         assertEquals(DailyLimit.DEFAULT_MINUTES, built.apps.single().limitMinutes)
         assertTrue(built.isEnforceable)
+    }
+
+    // ---- breach: the block failing to hold ----
+
+    @Test
+    fun `reaching a limit is not a breach, it is the block working`() {
+        val seen = snapshot(instagram, instagram to 20)
+        assertNull(Enforcement.breach(pact, seen, now, dayNumber = 6))
+    }
+
+    @Test
+    fun `a minute or two past a limit is a slow poll, not a breach`() {
+        val seen = snapshot(instagram, instagram to 22)
+        assertNull(Enforcement.breach(pact, seen, now, dayNumber = 6))
+    }
+
+    @Test
+    fun `past the limit by the grace is a breach`() {
+        val seen = snapshot(instagram, instagram to 23)
+        val breach = Enforcement.breach(pact, seen, now, dayNumber = 6)
+        assertEquals(instagram, breach?.packageName)
+        assertEquals("Instagram", breach?.label)
+        assertEquals(20, breach?.limitMinutes)
+        assertEquals(23, breach?.usedMinutes)
+        assertEquals(6, breach?.dayNumber)
+        assertEquals(now, breach?.atMillis)
+    }
+
+    @Test
+    fun `a breach counts even when the app is no longer in front`() {
+        val seen = snapshot(messages, instagram to 40)
+        assertEquals(instagram, Enforcement.breach(pact, seen, now, dayNumber = 2)?.packageName)
+    }
+
+    @Test
+    fun `an app outside the pact cannot breach it`() {
+        val seen = snapshot(messages, messages to 900)
+        assertNull(Enforcement.breach(pact, seen, now, dayNumber = 2))
+    }
+
+    @Test
+    fun `no pact cannot be breached`() {
+        val seen = snapshot(instagram, instagram to 999)
+        assertNull(Enforcement.breach(null, seen, now, dayNumber = 1))
+    }
+
+    @Test
+    fun `an unenforceable pact cannot be breached`() {
+        val empty = Pact(apps = emptyList(), startedAtMillis = 0)
+        val seen = snapshot(instagram, instagram to 999)
+        assertNull(Enforcement.breach(empty, seen, now, dayNumber = 1))
+    }
+
+    @Test
+    fun `the first app over its limit is the one reported`() {
+        val seen = snapshot(youtube, instagram to 100, youtube to 100)
+        assertEquals(instagram, Enforcement.breach(pact, seen, now, dayNumber = 3)?.packageName)
     }
 }

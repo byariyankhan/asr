@@ -33,6 +33,7 @@ import io.joinasr.app.ui.screens.AddWitnessesScreen
 import io.joinasr.app.ui.screens.BlockingDisclosureScreen
 import io.joinasr.app.ui.screens.ChallengeStartedScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
+import io.joinasr.app.ui.screens.ChallengeEndedScreen
 import io.joinasr.app.ui.screens.ChooseAppsScreen
 import io.joinasr.app.ui.screens.CheckEmailScreen
 import io.joinasr.app.ui.screens.DailyLimitsScreen
@@ -48,6 +49,7 @@ import io.joinasr.app.ui.screens.ProfileScreen
 import io.joinasr.app.ui.screens.ProgressScreen
 import io.joinasr.app.ui.screens.ResetPasswordScreen
 import io.joinasr.app.ui.screens.ReviewScreen
+import io.joinasr.app.ui.screens.ProtectionLostScreen
 import io.joinasr.app.ui.screens.ProtectionScreen
 import io.joinasr.app.ui.screens.SecurityScreen
 import io.joinasr.app.ui.screens.SignUpScreen
@@ -123,6 +125,7 @@ fun AsrApp(
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
+    val endedUnseen by pactViewModel.endedUnseen.collectAsStateWithLifecycle()
     val witnesses by witnessViewModel.witnesses.collectAsStateWithLifecycle()
     val pendingShare by witnessViewModel.pendingShare.collectAsStateWithLifecycle()
     val inviting by witnessViewModel.inviting.collectAsStateWithLifecycle()
@@ -149,6 +152,8 @@ fun AsrApp(
     // Figma 31, which sits on top of Personal Details rather than in the
     // profile's row list: the design puts it at the bottom of that screen.
     var deletingAccount by remember { mutableStateOf(false) }
+    // Figma 27, opened from the NOT PROTECTED pill on the dashboard.
+    var showingProtectionLost by remember { mutableStateOf(false) }
     // True between committing a pact and pressing "Go to dashboard" on
     // Figma 12. Not stored: it is a moment, not a state of the challenge,
     // and a person who closes the app during it has still started.
@@ -225,15 +230,22 @@ fun AsrApp(
     // Back from any other tab returns to Home rather than leaving the app,
     // which is what a bottom bar implies and what every app with one does.
     BackHandler(
-        enabled = tab != AsrTab.Home || profileRoute != null || addingWitness || deletingAccount,
+        enabled = tab != AsrTab.Home || profileRoute != null || addingWitness ||
+            deletingAccount || showingProtectionLost,
     ) {
         when {
+            showingProtectionLost -> showingProtectionLost = false
             deletingAccount -> deletingAccount = false
             profileRoute != null -> profileRoute = null
             addingWitness -> addingWitness = false
             else -> tab = AsrTab.Home
         }
     }
+
+    // Read into a local so the branch below can smart-cast it. A delegated
+    // property cannot be, and `!!` on the thing that tells somebody their
+    // challenge broke is not where to be casual.
+    val ended = endedUnseen
 
     when (val current = session) {
         // Between launch and the answer from /v1/me. Blank rather than a
@@ -262,6 +274,19 @@ fun AsrApp(
                 // One read of a small file. Blank rather than a spinner, for
                 // the same reason as above.
                 Box(Modifier.fillMaxSize().background(AsrColors.Background))
+            } else if (pactState is PactState.None && ended != null) {
+                // Figma 26. A challenge that ended is shown once, before the
+                // setup flow: somebody whose pact broke overnight should not
+                // open the app to a duration picker and have to work out
+                // what happened from its absence.
+                ChallengeEndedScreen(
+                    outcome = ended,
+                    onStartNew = {
+                        setupStep = SetupStep.Duration
+                        pactViewModel.acknowledgeEnded()
+                    },
+                    onDismiss = pactViewModel::acknowledgeEnded,
+                )
             } else if (pactState is PactState.None) {
                 when (setupStep) {
                     // Figma 04. The first step, and the only one with nothing
@@ -371,7 +396,18 @@ fun AsrApp(
                             // screens rather than a bar inside each of them:
                             // four copies would be four things to keep in
                             // agreement about which tab is selected.
-                            AsrTab.Home -> DashboardScreen(pact = activePact)
+                            AsrTab.Home -> if (showingProtectionLost) {
+                                // Figma 27.
+                                ProtectionLostScreen(
+                                    onBack = { showingProtectionLost = false },
+                                    onDismiss = { showingProtectionLost = false },
+                                )
+                            } else {
+                                DashboardScreen(
+                                    pact = activePact,
+                                    onProtectionLost = { showingProtectionLost = true },
+                                )
+                            }
 
                             AsrTab.Progress -> ProgressScreen(pact = activePact)
 

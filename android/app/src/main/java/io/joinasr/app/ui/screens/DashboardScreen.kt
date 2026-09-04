@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -79,6 +81,8 @@ import java.time.ZoneId
 @Composable
 fun DashboardScreen(
     pact: Pact,
+    /** Opens Figma 27. Only reachable while a grant is actually missing. */
+    onProtectionLost: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = viewModel(),
 ) {
@@ -130,7 +134,11 @@ fun DashboardScreen(
         // block screen. Anything less and this app is not doing its job,
         // which is a thing to say out loud rather than paper over.
         val working = permissions.requiredGranted && state.loopLive && !state.blockDropped
-        ChallengeCard(progress = progress, protected = working)
+        ChallengeCard(
+            progress = progress,
+            protected = working,
+            onProtectionLost = onProtectionLost,
+        )
 
         Spacer(Modifier.height(26.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -200,7 +208,11 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun ChallengeCard(progress: ChallengeProgress, protected: Boolean) {
+private fun ChallengeCard(
+    progress: ChallengeProgress,
+    protected: Boolean,
+    onProtectionLost: () -> Unit,
+) {
     val shape = RoundedCornerShape(22.dp)
     Column(
         modifier = Modifier
@@ -216,10 +228,24 @@ private fun ChallengeCard(progress: ChallengeProgress, protected: Boolean) {
                 color = AsrColors.Accent,
                 modifier = Modifier.weight(1f),
             )
-            AsrPill(
-                text = if (protected) "PROTECTED" else "NOT PROTECTED",
-                highlighted = protected,
-            )
+            // The pill is the way in to Figma 27, and only when it has
+            // something to say: a person reading PROTECTED has nothing to
+            // fix, and a tappable pill that opens a screen listing three
+            // green rows would be a dead end dressed as a warning.
+            Box(
+                modifier = if (protected) {
+                    Modifier
+                } else {
+                    Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(role = Role.Button, onClick = onProtectionLost)
+                },
+            ) {
+                AsrPill(
+                    text = if (protected) "PROTECTED" else "NOT PROTECTED",
+                    highlighted = protected,
+                )
+            }
         }
 
         Spacer(Modifier.height(14.dp))
@@ -367,7 +393,11 @@ private fun DashboardPreview() {
             Modifier.fillMaxSize().background(AsrColors.Background).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ChallengeCard(ChallengeProgress(4, 14, 10, 29, false), protected = true)
+            ChallengeCard(
+                ChallengeProgress(4, 14, 10, 29, false),
+                protected = true,
+                onProtectionLost = {},
+            )
             UsageRow(PactApp("com.instagram.android", "Instagram", 15), null, 8)
             UsageRow(PactApp("com.zhiliaoapp.musically", "TikTok", 20), null, 20)
         }

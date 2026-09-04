@@ -79,4 +79,25 @@ object AsrColors {
      */
     val Danger = Color(0xFFFF6B6B)
     val DangerMuted = Color(0xFF231011)
+
+    /**
+     * A broken pact. Figma 26 and 27 draw their own red rather than reusing
+     * the delete screen's, and the difference is deliberate: deleting is a
+     * button somebody is about to press, a breach is something that already
+     * happened to them.
+     */
+    val Breach = Color(0xFFFF5D67)
+    val BreachMuted = Color(0xFF221012)
+    val BreachBorder = Color(0xFF4A2328)
+
+    /**
+     * A witness looking at somebody else's breach (Figma 25). Amber rather
+     * than red: it is a report about another person, not an alarm about the
+     * reader.
+     */
+    val Warning = Color(0xFFF0A22E)
+    val WarningMuted = Color(0xFF211505)
+
+    /** The outline of an accent-filled pill, where one is drawn. */
+    val AccentBorder = Color(0xFF173B2D)
 }

@@ -38,6 +38,47 @@ object Enforcement {
     }
 
     /**
+     * Whether the pact has been broken, and by what.
+     *
+     * The block screen goes up the moment a limit is reached, so simply
+     * reaching one is not a breach — it is the app working. A breach is the
+     * block *failing to hold*: the app kept being used for
+     * [BREACH_GRACE_MINUTES] minutes beyond a limit that was supposed to
+     * stop it, which happens when a permission was revoked, the launch was
+     * dropped by the system, or the person found a way past the screen.
+     * That is the honest thing to call a broken pact, and it is the only
+     * definition this architecture can actually measure.
+     *
+     * Every controlled app is checked, not just the one in front: a limit
+     * blown through an hour ago is still blown through now, and waiting for
+     * the person to reopen that app to notice would be pretending.
+     *
+     * The grace is not generosity. It is the distance between "the loop was
+     * a poll behind" and "nothing stopped this", and three minutes is wide
+     * enough that no correctly working block can cross it -- the loop polls
+     * every second inside the last two minutes of a limit -- and narrow
+     * enough that somebody scrolling past a broken block reaches it almost
+     * at once.
+     */
+    fun breach(pact: Pact?, snapshot: UsageSnapshot, nowMillis: Long, dayNumber: Int): Breach? {
+        if (pact == null || !pact.isEnforceable) return null
+        for (app in pact.apps) {
+            val used = snapshot.minutesByPackage[app.packageName] ?: 0
+            if (used >= app.limitMinutes + BREACH_GRACE_MINUTES) {
+                return Breach(
+                    packageName = app.packageName,
+                    label = app.label,
+                    limitMinutes = app.limitMinutes,
+                    usedMinutes = used,
+                    atMillis = nowMillis,
+                    dayNumber = dayNumber,
+                )
+            }
+        }
+        return null
+    }
+
+    /**
      * How long to wait before looking again.
      *
      * The tension: the block screen should arrive the moment a limit is
@@ -57,6 +98,9 @@ object Enforcement {
 
     /** Within this many minutes of a limit, the loop watches closely. */
     const val CLOSE_MINUTES = 2
+
+    /** Minutes past a limit at which the block has demonstrably not held. */
+    const val BREACH_GRACE_MINUTES = 3
 
     /** A watched app is open and nearly out of time. */
     const val CLOSE_MILLIS = 1_000L
