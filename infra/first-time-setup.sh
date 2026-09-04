@@ -135,12 +135,24 @@ if [ -z "$ok" ]; then
   die "The API did not report healthy."
 fi
 
-step "Installing the nginx site"
+step "Installing the nginx sites"
+# Two names, one upstream. api.joinasr.io is what the app talks to;
+# joinasr.io serves the links the product puts in front of other people --
+# the witness invitation and the App Links file Android verifies it with.
 cp "$ROOT/src/infra/nginx/asr-api" /etc/nginx/sites-available/asr-api
 ln -sf /etc/nginx/sites-available/asr-api /etc/nginx/sites-enabled/asr-api
+# Never clobbers TLS: certbot rewrites the file in place, so copying over a
+# site it has already edited would take the certificate back out.
+if grep -q "ssl_certificate" /etc/nginx/sites-available/asr-site 2>/dev/null; then
+  echo "  asr-site already has TLS; leaving it alone"
+else
+  cp "$ROOT/src/infra/nginx/asr-site" /etc/nginx/sites-available/asr-site
+fi
+ln -sf /etc/nginx/sites-available/asr-site /etc/nginx/sites-enabled/asr-site
 nginx -t
 systemctl reload nginx
 echo "  api.joinasr.io proxies to 127.0.0.1:3001 (plain HTTP until certbot runs)"
+echo "  joinasr.io + www proxy to the same place"
 
 step "Scheduling the nightly backup"
 # A file in /etc/cron.d, not root's crontab. Writing a file is idempotent on
@@ -160,44 +172,108 @@ else
   echo "  WARNING: the cron daemon is not active, so this will not fire"
 fi
 
-step "Obtaining a certificate"
+step "Obtaining certificates"
 # certbot --nginx writes its ssl_* lines into whichever server block claims
 # the name it was asked for, and when none does it falls back to the default
 # server -- somebody else's file. That is not hypothetical: this config still
 # said api.joinasr.com after the domain moved to .io, so a run here deployed
-# Asr's certificate into Bookween's site. Hence the two guards below: refuse
-# to run certbot unless nginx really serves api.joinasr.io, and afterwards
-# prove that no site file but ours changed.
-# The condition is whether OUR vhost serves TLS, not whether a certificate
-# exists on disk: after the accident above the certificate existed and
-# asr-api still had no ssl_* lines, and a "cert is present" check would have
-# skipped the step that fixes exactly that.
-if grep -q "ssl_certificate /etc/letsencrypt/live/api.joinasr.io" /etc/nginx/sites-available/asr-api 2>/dev/null; then
-  echo "  certificate already installed in asr-api"
-elif ! command -v certbot >/dev/null; then
-  echo "  skipped: certbot is not installed"
-elif [ -z "${CERTBOT_EMAIL:-}" ]; then
-  echo "  skipped: set CERTBOT_EMAIL, or run 'certbot --nginx -d api.joinasr.io' yourself"
-else
-  nginx -T 2>/dev/null | grep -q "server_name api.joinasr.io" \
-    || die "No server block serves api.joinasr.io. Not running certbot: it would edit somebody else's."
+# Asr's certificate into Bookween's site. Hence the guards below: refuse to
+# run certbot unless nginx really serves the name, and afterwards prove that
+# no site file but the intended one changed.
+#
+# The condition for skipping is whether OUR vhost serves TLS, not whether a
+# certificate exists on disk: after the accident above the certificate
+# existed and asr-api still had no ssl_* lines, and a "cert is present"
+# check would have skipped the step that fixes exactly that.
+# $1 is hard or soft. Every one of these branches is an `if`, never
+# `[ "$mode" = soft ] && { ...; }`: under `set -e` that compound returns 1
+# in hard mode and kills the script silently, one line above the die() that
+# was supposed to explain what went wrong.
+#
+# Soft warns and returns 1 where hard calls die() --
+# and die() exits the whole script, so `issue_cert ... || echo` would not
+# have caught anything. The API's certificate is worth stopping for. The
+# apex's is not: the app already works without it, and a bootstrap that
+# refuses to finish because Let's Encrypt was rate-limited helps nobody.
+issue_cert() {
+  local mode=$1 site=$2 certname=$3
+  shift 3
+  local domains=("$@")
+  local file="/etc/nginx/sites-available/$site"
+
+  if grep -q "ssl_certificate /etc/letsencrypt/live/$certname" "$file" 2>/dev/null; then
+    echo "  $certname: already installed in $site"
+    return 0
+  fi
+  if ! command -v certbot >/dev/null; then
+    echo "  $certname: skipped, certbot is not installed"
+    return 0
+  fi
+  if [ -z "${CERTBOT_EMAIL:-}" ]; then
+    local flags=""
+    local d
+    for d in "${domains[@]}"; do flags="$flags -d $d"; done
+    echo "  $certname: skipped, set CERTBOT_EMAIL or run 'certbot --nginx$flags' yourself"
+    return 0
+  fi
+
+  local d served
+  for d in "${domains[@]}"; do
+    served="server_name[^;]*(^| )${d//./\\.}( |;|$)"
+    if ! nginx -T 2>/dev/null | grep -qE "$served"; then
+      if [ "$mode" = soft ]; then
+        echo "  WARNING: no server block serves $d; skipping $certname"
+        return 1
+      fi
+      die "No server block serves $d. Not running certbot: it would edit somebody else's."
+    fi
+  done
+
+  local before after args=()
   before=$(mktemp); after=$(mktemp)
-  find /etc/nginx/sites-available -type f ! -name asr-api -exec md5sum {} + | sort > "$before"
+  find /etc/nginx/sites-available -type f ! -name "$site" -exec md5sum {} + | sort > "$before"
+  for d in "${domains[@]}"; do args+=(-d "$d"); done
   # --keep-until-expiring so a re-run installs the certificate it already
   # has rather than issuing a duplicate; Let's Encrypt rate-limits those.
-  certbot --nginx -d api.joinasr.io --cert-name api.joinasr.io \
-    --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect --keep-until-expiring
-  find /etc/nginx/sites-available -type f ! -name asr-api -exec md5sum {} + | sort > "$after"
+  if ! certbot --nginx "${args[@]}" --cert-name "$certname" \
+       --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect --keep-until-expiring; then
+    rm -f "$before" "$after"
+    if [ "$mode" = soft ]; then
+      echo "  WARNING: certbot failed for $certname"
+      return 1
+    fi
+    die "certbot failed for $certname."
+  fi
+  find /etc/nginx/sites-available -type f ! -name "$site" -exec md5sum {} + | sort > "$after"
   if ! diff -q "$before" "$after" >/dev/null; then
     echo "--- nginx sites that changed underneath certbot ---"
     diff "$before" "$after" || true
-    die "certbot modified an nginx site other than asr-api. Stop and look before anything else."
+    # Never soft: another site losing or gaining a certificate underneath us
+    # is the accident this whole guard exists for.
+    die "certbot modified an nginx site other than $site. Stop and look before anything else."
   fi
   rm -f "$before" "$after"
-  grep -q "ssl_certificate /etc/letsencrypt/live/api.joinasr.io" /etc/nginx/sites-available/asr-api \
-    || die "certbot reported success but asr-api has no certificate line."
-  echo "  issued into asr-api, and no other site file changed"
-fi
+  if ! grep -q "ssl_certificate /etc/letsencrypt/live/$certname" "$file"; then
+    if [ "$mode" = soft ]; then
+      echo "  WARNING: $certname reported success but $site has no certificate line"
+      return 1
+    fi
+    die "certbot reported success but $site has no certificate line."
+  fi
+  echo "  $certname: issued into $site, and no other site file changed"
+}
+
+issue_cert hard asr-api api.joinasr.io api.joinasr.io
+# The apex carries the witness invitation link. Failing to get a certificate
+# for it must not fail the whole setup -- the API is what the app needs, and
+# it is already serving by this point -- but it does need saying out loud,
+# because an https:// link in a WhatsApp message to somebody's mother is not
+# a thing to discover is broken later.
+# The apex carries the witness invitation link, which goes to other people
+# in their own messaging apps. Worth a loud warning, not worth failing a
+# setup whose API is already serving.
+issue_cert soft asr-site joinasr.io joinasr.io www.joinasr.io \
+  || echo "  WARNING: joinasr.io has no certificate yet; invitation links will not open"
 
 echo
 echo "============================================================"

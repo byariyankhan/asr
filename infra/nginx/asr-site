@@ -1,0 +1,36 @@
+# /etc/nginx/sites-available/asr-site
+# certbot --nginx -d joinasr.io -d www.joinasr.io   adds the ssl_* lines and
+# the 80→443 redirect.
+#
+# The apex. Nothing served it until now, which meant three things at once:
+# the witness invitation link in every message the app has sent produced no
+# preview, opened no page for anybody without the app, and could not be
+# verified as an App Link because /.well-known/assetlinks.json was not
+# reachable either.
+#
+# Same upstream as api.joinasr.io. It is one application behind two names,
+# so the profile photo an invitation shows is same-origin with the page
+# showing it — no second hostname for a crawler to resolve, no second
+# certificate for it to trust.
+#
+# server_name has to be the real hostname: certbot --nginx edits whichever
+# server block claims the name it was asked for, and if none does it falls
+# back to the default server.
+server {
+    server_name joinasr.io www.joinasr.io;
+
+    client_max_body_size 1m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 30s;
+    }
+
+    listen 80;
+    listen [::]:80;
+}

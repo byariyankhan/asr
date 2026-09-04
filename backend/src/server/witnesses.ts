@@ -134,6 +134,7 @@ export async function peekInvite(code: string) {
     .select([
       "witness.relationship",
       "witness.status",
+      "witness.user_id",
       "u.name as inviter_name",
       "u.image as inviter_image",
     ])
@@ -141,6 +142,19 @@ export async function peekInvite(code: string) {
     .where("u.deleted_at", "is", null)
     .executeTakeFirst();
   if (!row || row.status !== "invited") throw notFound("Invite");
+
+  // How long the challenge runs, when one is running. The invitation names
+  // it ("a 14-day challenge") and the page that opens the link should agree
+  // with the message that carried it. Null is an ordinary answer: a witness
+  // can be invited before the pact starts.
+  const pact = await db
+    .selectFrom("pact")
+    .select("duration_days")
+    .where("user_id", "=", row.user_id)
+    .where("status", "=", "active")
+    .orderBy("created_at", "desc")
+    .executeTakeFirst();
+
   // The photo travels with the name. Somebody deciding whether to vouch for
   // a person should see who is asking, and at this point they have no
   // account, which is the whole reason /v1/media needs no session.
@@ -148,6 +162,7 @@ export async function peekInvite(code: string) {
     inviter_name: row.inviter_name,
     inviter_image: imagePath(row.inviter_image),
     relationship: row.relationship,
+    days: pact?.duration_days ?? null,
   };
 }
 
