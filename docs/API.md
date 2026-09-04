@@ -50,6 +50,7 @@ Error:
 | 404 | Not found |
 | 409 | State conflict (`pact_active`, `locked_by_pact`, `invite_used`, `daily_cap_reached`) |
 | 429 | Rate limited; `Retry-After` header set |
+| 500 | Unhandled. `message` carries the error's class name and a short `trace` id, which is the same id in the server log. The class name — `R2Error`, `DatabaseError` — says which layer broke and nothing about the request. |
 
 ## Rate limits
 
@@ -62,6 +63,25 @@ Per user (or per IP before auth), enforced in Redis:
 | public invite lookup | 60 per minute per IP |
 | event ingestion | 120 per hour per device |
 | everything else | 300 per minute |
+
+## Health
+
+### `GET /health`
+
+`{ ok, db, redis, watchdog_stale }`. No auth; `200` when db and redis both
+answer, `503` otherwise. Polled by uptime monitors, so it is cheap.
+
+### `GET /health?probe=storage`
+
+The same, plus `storage: { configured, writable, status?, error? }` — which
+is answered by actually writing and deleting a small object in R2, because
+read permission is not evidence that a PUT will be accepted, and a token
+that can list a bucket and refuses every upload is exactly the failure that
+hides. `status` is what R2 gave back: `403` is a token without write
+permission, `404` is a bucket that is not there under that name. No bucket
+name, account id, or R2 body is returned.
+
+Opt-in because it costs two round trips to Cloudflare.
 
 ## Devices
 

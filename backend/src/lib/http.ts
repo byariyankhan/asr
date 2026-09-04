@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
@@ -58,9 +59,24 @@ export function route<P = Record<string, never>>(handler: Handler<P>): Handler<P
           { status: 400 },
         );
       }
-      console.error(`[${request.method} ${new URL(request.url).pathname}]`, error);
+      // The class name and a short id, in the message the client shows.
+      //
+      // "Something went wrong." was all anybody ever saw, on a phone, with
+      // the cause left in a log on a host the people fixing it could not
+      // reach — and an avatar upload failed that way for days while three
+      // different subsystems were guessed at. A constructor name is not
+      // data: R2Error, DatabaseError and RedisError name the layer and
+      // nothing about the request, the account or the environment. The id
+      // is the same one written to the log, for when the log is reachable.
+      const trace = randomUUID().slice(0, 8);
+      const name = error instanceof Error ? error.name : "unknown";
+      console.error(`[${request.method} ${new URL(request.url).pathname}] ${trace}`, error);
       return NextResponse.json(
-        { error: "internal_error", message: "Something went wrong." },
+        {
+          error: "internal_error",
+          message: `Something went wrong (${name} · ${trace}).`,
+          trace,
+        },
         { status: 500 },
       );
     }
