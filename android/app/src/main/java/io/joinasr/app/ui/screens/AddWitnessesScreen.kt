@@ -62,7 +62,6 @@ import io.joinasr.app.witness.Witness
  */
 @Composable
 fun AddWitnessesScreen(
-    fromName: String,
     challengeDays: Int,
     witnesses: List<Witness>,
     onBack: () -> Unit,
@@ -84,7 +83,6 @@ fun AddWitnessesScreen(
     LaunchedEffect(pendingShare) {
         val invite = pendingShare ?: return@LaunchedEffect
         val text = Relationships.inviteText(
-            fromName = fromName,
             relationship = invite.relationship,
             days = challengeDays,
             url = invite.url,
@@ -306,7 +304,6 @@ private fun ShareButton(enabled: Boolean, busy: Boolean, onClick: () -> Unit) {
 private fun AddWitnessesPreview() {
     AsrTheme {
         AddWitnessesScreen(
-            fromName = "Ariyan",
             challengeDays = 14,
             witnesses = listOf(Witness("1", "mother", 0)),
             onBack = {},

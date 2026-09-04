@@ -519,7 +519,6 @@ fun AsrApp(
                     // Figma 08. Invites go through Android's share sheet, so
                     // this step needs no server and works today.
                     SetupStep.Witnesses -> AddWitnessesScreen(
-                        fromName = current.me.name,
                         challengeDays = chosenDays,
                         witnesses = witnesses,
                         onBack = { setupStep = SetupStep.DailyLimits },
@@ -756,7 +755,6 @@ fun AsrApp(
                                     )
                                 } else if (addingWitness) {
                                     AddWitnessesScreen(
-                                        fromName = current.me.name,
                                         challengeDays = activePact?.durationDays
                                             ?: ChallengeDuration.DEFAULT_DAYS,
                                         witnesses = witnesses,
