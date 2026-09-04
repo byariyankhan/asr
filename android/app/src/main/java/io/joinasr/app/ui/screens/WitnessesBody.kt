@@ -52,6 +52,8 @@ fun ColumnScope.WitnessesBody(
     witnesses: List<Witness>,
     onAdd: () -> Unit,
     addEnabled: Boolean,
+    /** False when no challenge is running: there is nothing to witness yet. */
+    hasChallenge: Boolean = true,
 ) {
     val accepted = witnesses.count { it.accepted }
     Spacer(Modifier.height(20.dp))
@@ -83,7 +85,15 @@ fun ColumnScope.WitnessesBody(
     }
 
     Spacer(Modifier.height(14.dp))
-    AddWitnessButton(onClick = onAdd, enabled = addEnabled)
+    AddWitnessButton(onClick = onAdd, enabled = addEnabled && hasChallenge)
+    if (!hasChallenge) {
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Witnesses are invited to a challenge, so this opens once one is running.",
+            style = AsrType.Legal.copy(fontSize = 12.sp),
+            color = AsrColors.TextTertiary,
+        )
+    }
 
     Spacer(Modifier.height(16.dp))
     LockNote()

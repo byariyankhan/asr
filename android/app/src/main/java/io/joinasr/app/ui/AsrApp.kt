@@ -231,6 +231,22 @@ fun AsrApp(
     // and a person who closes the app during it has still started.
     var justStarted by remember { mutableStateOf(false) }
 
+    /**
+     * Whether the person is inside the setup flow.
+     *
+     * This used to be implied by having no pact, which put every new account
+     * straight into six screens of permissions and app pickers. That was
+     * wrong for the half of this product's users who never run a challenge
+     * at all: somebody invited to witness a friend signed up, and the first
+     * thing the app did was demand usage access to enforce limits they never
+     * asked for. Signing in now lands on the dashboard, and setup is entered
+     * from a button on it.
+     *
+     * Not stored. Backing out of the first step leaves nothing behind,
+     * which is the point: nothing is committed until the review screen.
+     */
+    var startingChallenge by remember { mutableStateOf(false) }
+
     // Held here and nowhere else, for the length of the setup flow only. A
     // half-made challenge is not something the app should remember: it is
     // committed whole on the last step, or it never existed. After that it
@@ -367,9 +383,13 @@ fun AsrApp(
     BackHandler(
         enabled = tab != AsrTab.Home || profileRoute != null || addingWitness ||
             deletingAccount || showingProtectionLost || openPerson != null ||
-            showingNotifications || reactingTo != null || earningFor != null,
+            showingNotifications || reactingTo != null || earningFor != null ||
+            startingChallenge,
     ) {
         when {
+            // Back out of setup step one. The later steps have their own
+            // chevrons and walk backwards through the flow.
+            startingChallenge && setupStep == SetupStep.Duration -> startingChallenge = false
             askingForSteps -> askingForSteps = false
             earningFor != null -> earningFor = null
             reactingTo != null -> reactingTo = null
@@ -445,23 +465,26 @@ fun AsrApp(
                 // the same reason as above.
                 Box(Modifier.fillMaxSize().background(AsrColors.Background))
             } else if (pactState is PactState.None && ended != null) {
-                // Figma 26. A challenge that ended is shown once, before the
-                // setup flow: somebody whose pact broke overnight should not
-                // open the app to a duration picker and have to work out
-                // what happened from its absence.
+                // Figma 26. A challenge that ended is shown once, before
+                // anything else: somebody whose pact broke overnight should
+                // not open the app to a dashboard and have to work out what
+                // happened from its absence.
                 ChallengeEndedScreen(
                     outcome = ended,
                     onStartNew = {
                         setupStep = SetupStep.Duration
+                        startingChallenge = true
                         pactViewModel.acknowledgeEnded()
                     },
                     onDismiss = pactViewModel::acknowledgeEnded,
                 )
-            } else if (pactState is PactState.None) {
+            } else if (startingChallenge && pactState is PactState.None) {
                 when (setupStep) {
-                    // Figma 04. The first step, and the only one with nothing
-                    // behind it: its frame has no chevron for that reason.
+                    // Figma 04. Its frame has no chevron, drawn when setup
+                    // was where everybody landed. It has one now, because
+                    // there is a dashboard behind it to go back to.
                     SetupStep.Duration -> ChallengeDurationScreen(
+                        onBack = { startingChallenge = false },
                         onContinue = { days ->
                             chosenDays = days
                             setupStep = SetupStep.UsageAccess
@@ -532,6 +555,7 @@ fun AsrApp(
                         onStart = {
                             pactViewModel.commit(chosenApps, chosenLimits, chosenDays)
                             justStarted = true
+                            startingChallenge = false
                         },
                     )
 
@@ -544,7 +568,7 @@ fun AsrApp(
                         onSkip = { setupStep = SetupStep.Protection },
                     )
                 }
-            } else if (justStarted) {
+            } else if (justStarted && pactState is PactState.Active) {
                 // Figma 12.
                 ChallengeStartedScreen(
                     days = (pactState as PactState.Active).pact.durationDays,
@@ -553,7 +577,10 @@ fun AsrApp(
                     onContinue = { justStarted = false },
                 )
             } else {
-                val activePact = (pactState as PactState.Active).pact
+                // Null when nothing is running, which every tab now handles.
+                // The bar and its four screens are the app; a challenge is
+                // something that happens inside it, not the price of entry.
+                val activePact = (pactState as? PactState.Active)?.pact
                 val signOut = {
                     destination = Destination.Welcome
                     tab = AsrTab.Home
@@ -570,7 +597,9 @@ fun AsrApp(
                                 val about = reactingTo
                                 val running = activeActivity
                                 val done = justEarned
-                                val earnApp = earningFor?.let { activePact.appFor(it) }
+                                val earnApp = activePact?.let { pact ->
+                                    earningFor?.let(pact::appFor)
+                                }
                                 if (done != null) {
                                     // Figma 24.
                                     EarnedScreen(
@@ -623,22 +652,19 @@ fun AsrApp(
                                             earnViewModel.clearError()
                                         },
                                         onWalk = {
-                                            if (Permissions.hasActivityRecognition(context)) {
-                                                earnViewModel.start(
-                                                    activePact,
-                                                    earnApp,
-                                                    EarnRules.WALK,
-                                                )
+                                            val pact = activePact
+                                            if (pact == null) {
+                                                earningFor = null
+                                            } else if (Permissions.hasActivityRecognition(context)) {
+                                                earnViewModel.start(pact, earnApp, EarnRules.WALK)
                                             } else {
                                                 askingForSteps = true
                                             }
                                         },
                                         onFocus = {
-                                            earnViewModel.start(
-                                                activePact,
-                                                earnApp,
-                                                EarnRules.FOCUS,
-                                            )
+                                            activePact?.let {
+                                                earnViewModel.start(it, earnApp, EarnRules.FOCUS)
+                                            }
                                         },
                                         errorMessage = earnError,
                                     )
@@ -689,6 +715,10 @@ fun AsrApp(
                                 } else {
                                     DashboardScreen(
                                         pact = activePact,
+                                        onStartChallenge = {
+                                            setupStep = SetupStep.Duration
+                                            startingChallenge = true
+                                        },
                                         onProtectionLost = { showingProtectionLost = true },
                                         onNotifications = {
                                             inboxViewModel.refresh()
@@ -704,6 +734,11 @@ fun AsrApp(
                             AsrTab.Progress -> ProgressScreen(
                                 pact = activePact,
                                 earnedMinutes = earnedToday.minutesByPackage,
+                                onStartChallenge = {
+                                    tab = AsrTab.Home
+                                    setupStep = SetupStep.Duration
+                                    startingChallenge = true
+                                },
                             )
 
                             AsrTab.Witnesses -> {
@@ -722,7 +757,8 @@ fun AsrApp(
                                 } else if (addingWitness) {
                                     AddWitnessesScreen(
                                         fromName = current.me.name,
-                                        challengeDays = activePact.durationDays,
+                                        challengeDays = activePact?.durationDays
+                                            ?: ChallengeDuration.DEFAULT_DAYS,
                                         witnesses = witnesses,
                                         onBack = { addingWitness = false },
                                         onInvite = witnessViewModel::invite,
@@ -752,6 +788,7 @@ fun AsrApp(
                                         },
                                         onAdd = { addingWitness = true },
                                         addEnabled = witnesses.size < Relationships.SLOTS,
+                                        hasChallenge = activePact != null,
                                     )
                                 }
                             }

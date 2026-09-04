@@ -33,6 +33,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.joinasr.app.challenge.ChallengeDuration
+import io.joinasr.app.ui.components.AsrBackChevron
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.components.AsrStepper
 import io.joinasr.app.ui.theme.AsrColors
@@ -53,6 +54,12 @@ import io.joinasr.app.ui.theme.AsrType
 @Composable
 fun ChallengeDurationScreen(
     onContinue: (Int) -> Unit,
+    /**
+     * Back to the dashboard. There is something behind this screen now:
+     * setup is entered on purpose from a dashboard that works without it,
+     * rather than being where everybody lands after signing up.
+     */
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var days by remember { mutableIntStateOf(ChallengeDuration.DEFAULT_DAYS) }
@@ -65,7 +72,9 @@ fun ChallengeDurationScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp),
     ) {
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(20.dp))
+        AsrBackChevron(onBack)
+        Spacer(Modifier.height(14.dp))
         Text("SETUP 1 OF 6", style = AsrType.Eyebrow, color = AsrColors.Accent)
         Spacer(Modifier.height(20.dp))
         Text(
@@ -251,5 +260,5 @@ private fun CustomRow(
 @Preview(widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 private fun ChallengeDurationPreview() {
-    AsrTheme { ChallengeDurationScreen(onContinue = {}) }
+    AsrTheme { ChallengeDurationScreen(onContinue = {}, onBack = {}) }
 }

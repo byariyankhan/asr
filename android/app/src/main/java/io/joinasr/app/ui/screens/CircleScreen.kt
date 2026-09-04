@@ -64,6 +64,7 @@ fun CircleScreen(
     onOpenPerson: (SupportedPerson) -> Unit,
     onAdd: () -> Unit,
     addEnabled: Boolean,
+    hasChallenge: Boolean,
     modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(supporting) {
@@ -101,6 +102,7 @@ fun CircleScreen(
                 witnesses = witnesses,
                 onAdd = onAdd,
                 addEnabled = addEnabled,
+                hasChallenge = hasChallenge,
             )
 
             CircleTab.Supporting -> {
@@ -401,6 +403,7 @@ private fun CirclePreview() {
             onOpenPerson = {},
             onAdd = {},
             addEnabled = true,
+            hasChallenge = true,
         )
     }
 }

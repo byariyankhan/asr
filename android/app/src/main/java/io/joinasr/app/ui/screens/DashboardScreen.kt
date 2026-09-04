@@ -50,6 +50,7 @@ import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.ui.DashboardViewModel
 import io.joinasr.app.ui.components.AsrIcons
+import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.components.AsrPill
 import io.joinasr.app.ui.greetingFor
 import io.joinasr.app.ui.theme.AsrColors
@@ -84,7 +85,16 @@ import java.time.ZoneId
  */
 @Composable
 fun DashboardScreen(
-    pact: Pact,
+    /**
+     * Null when no challenge is running, which is now an ordinary state
+     * rather than a reason to hide the app. Somebody who only ever agreed to
+     * witness a friend has no pact and never will, and sending them through
+     * a setup flow to reach the one screen they came for was this app
+     * asking the wrong person for six answers.
+     */
+    pact: Pact?,
+    /** Starts the setup flow, on purpose and from here. */
+    onStartChallenge: () -> Unit,
     /** Opens Figma 27. Only reachable while a grant is actually missing. */
     onProtectionLost: () -> Unit,
     /** Opens Figma 19. */
@@ -111,7 +121,7 @@ fun DashboardScreen(
 
     val icons by produceState(initialValue = emptyMap<String, ImageBitmap>(), pact) {
         val loaded = mutableMapOf<String, ImageBitmap>()
-        for (app in pact.apps) {
+        for (app in pact?.apps.orEmpty()) {
             InstalledApps.icon(context, app.packageName)?.let {
                 loaded[app.packageName] = it
                 value = loaded.toMap()
@@ -120,7 +130,6 @@ fun DashboardScreen(
     }
 
     val now = System.currentTimeMillis()
-    val progress = ChallengeProgress.of(pact.startedAtMillis, pact.durationDays, now)
     val hour = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
 
     Column(
@@ -140,7 +149,7 @@ fun DashboardScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Stay in control.",
+                    if (pact != null) "Stay in control." else "Ready when you are.",
                     style = AsrType.display(28),
                     color = AsrColors.TextPrimary,
                 )
@@ -156,7 +165,21 @@ fun DashboardScreen(
         // there, the loop is running, and the system is not dropping the
         // block screen. Anything less and this app is not doing its job,
         // which is a thing to say out loud rather than paper over.
-        val working = permissions.requiredGranted && state.loopLive && !state.blockDropped
+        //
+        // With no pact there is nothing to protect, and a NOT PROTECTED pill
+        // over an empty dashboard would be an alarm about nothing.
+        val working = pact == null ||
+            (permissions.requiredGranted && state.loopLive && !state.blockDropped)
+
+        if (pact == null) {
+            NoChallengeCard(onStart = onStartChallenge)
+            Spacer(Modifier.height(20.dp))
+            WhatAChallengeIs()
+            Spacer(Modifier.height(28.dp))
+            return@Column
+        }
+
+        val progress = ChallengeProgress.of(pact.startedAtMillis, pact.durationDays, now)
         ChallengeCard(
             progress = progress,
             protected = working,
@@ -241,6 +264,85 @@ fun DashboardScreen(
  * which is the point at which the exact figure stops changing what anybody
  * does about it.
  */
+/**
+ * The dashboard with no challenge on it.
+ *
+ * Not an error and not a nag. Somebody who signed up to witness a friend
+ * lives here permanently and is not doing anything wrong; the button is an
+ * offer, and the rest of the app — witnesses, notifications, profile —
+ * works around it without one.
+ */
+@Composable
+private fun NoChallengeCard(onStart: () -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AsrColors.Surface, shape)
+            .border(1.dp, AsrColors.FieldBorder, shape)
+            .padding(17.dp),
+    ) {
+        Text(
+            "NO CHALLENGE RUNNING",
+            style = AsrType.Eyebrow.copy(fontSize = 11.sp),
+            color = AsrColors.TextTertiary,
+        )
+        Spacer(Modifier.height(14.dp))
+        Text("Nothing is limited.", style = AsrType.display(28), color = AsrColors.TextPrimary)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Start a challenge to pick the apps, set a daily limit for each, and " +
+                "name who gets told if you break it.",
+            style = AsrType.Label.copy(fontSize = 13.sp),
+            color = AsrColors.TextSecondary,
+        )
+        Spacer(Modifier.height(18.dp))
+        AsrPrimaryButton(text = "Start a challenge", onClick = onStart)
+    }
+}
+
+/** What starting one actually involves, before anybody commits to six screens. */
+@Composable
+private fun WhatAChallengeIs() {
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AsrColors.SurfaceSunken, shape)
+            .border(1.dp, AsrColors.FieldBorder, shape)
+            .padding(17.dp),
+    ) {
+        Text(
+            "What it takes",
+            style = AsrType.Field.copy(fontSize = 15.sp),
+            color = AsrColors.TextPrimary,
+        )
+        Spacer(Modifier.height(12.dp))
+        for (line in listOf(
+            "Two permissions, so the app can see and block",
+            "The apps you want limited, and how long each gets",
+            "At least one witness, who is told if it breaks",
+        )) {
+            Row(verticalAlignment = Alignment.Top) {
+                Text("·", style = AsrType.display(16), color = AsrColors.Accent)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    line,
+                    style = AsrType.Label.copy(fontSize = 13.sp),
+                    color = AsrColors.TextSecondary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(9.dp))
+        }
+        Text(
+            "Nothing is limited until you finish, and the limits lock once it starts.",
+            style = AsrType.Legal.copy(fontSize = 12.sp),
+            color = AsrColors.TextTertiary,
+        )
+    }
+}
+
 @Composable
 private fun Bell(unread: Int, onClick: () -> Unit) {
     Box(contentAlignment = Alignment.TopEnd) {

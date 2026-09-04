@@ -32,6 +32,15 @@ whether protection is actually on — the "PROTECTED" pill reads the real
 permission state rather than always saying yes. Setup ends when the pact is
 committed, not on a flag, so the pact existing *is* what "set up" means.
 
+**Signing in lands on the dashboard.** Setup is entered from a button on
+it, not by having no pact. Half of this product's users never run a
+challenge at all — somebody invited to witness a friend signs up to answer
+the invitation — and sending them through six screens of permissions and app
+pickers to reach the one screen they came for was asking the wrong person
+for six answers. Every tab works with no pact: the dashboard offers to start
+one, Progress says there is nothing to track yet, Witnesses shows both
+directions, and notifications arrive regardless.
+
 **All 37 frames are built.** Four tabs — dashboard (13), progress (14),
 witnesses (15, now the first tab of 16) and profile (28) — with the bar from
 Figma 12 drawn once around them. Setup runs all six of its steps, ends on

@@ -34,6 +34,7 @@ import io.joinasr.app.enforcement.Pact
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.formatMinutes
 import io.joinasr.app.usage.UsageHistory
+import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
@@ -57,13 +58,15 @@ import java.util.Locale
  */
 @Composable
 fun ProgressScreen(
-    pact: Pact,
+    /** Null when no challenge is running, which is an ordinary state. */
+    pact: Pact?,
     /** Bonus minutes won today, per package. */
     earnedMinutes: Map<String, Int>,
+    onStartChallenge: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val limits = pact.limitsByPackage
+    val limits = pact?.limitsByPackage.orEmpty()
 
     // Read once when the screen opens. Yesterday does not change, and a
     // week of queries is not something to repeat every few seconds.
@@ -73,7 +76,7 @@ fun ProgressScreen(
     }
 
     val allowance = WeeklyProgress.dailyAllowance(limits)
-    val challenge = ChallengeProgress.of(pact.startedAtMillis, pact.durationDays)
+    val challenge = pact?.let { ChallengeProgress.of(it.startedAtMillis, it.durationDays) }
 
     Column(
         modifier = modifier
@@ -96,6 +99,17 @@ fun ProgressScreen(
             style = AsrType.Field.copy(fontSize = 14.sp),
             color = AsrColors.TextSecondary,
         )
+
+        // Nothing here can be computed from nothing: "days within limits"
+        // needs limits, and a week of grey bars against an allowance of zero
+        // would read as a week of failure rather than a week with no
+        // challenge in it.
+        if (pact == null) {
+            Spacer(Modifier.height(26.dp))
+            NothingToTrack(onStart = onStartChallenge)
+            Spacer(Modifier.height(24.dp))
+            return@Column
+        }
 
         Spacer(Modifier.height(26.dp))
         Text("This week", style = AsrType.display(20), color = AsrColors.TextPrimary)
@@ -138,7 +152,7 @@ fun ProgressScreen(
         Spacer(Modifier.height(26.dp))
         Text("Challenges", style = AsrType.display(19), color = AsrColors.TextPrimary)
         Spacer(Modifier.height(14.dp))
-        ChallengeRow(pact = pact, progress = challenge)
+        if (challenge != null) ChallengeRow(pact = pact, progress = challenge)
 
         Spacer(Modifier.height(24.dp))
     }
@@ -161,6 +175,30 @@ private fun StatCard(value: String, caption: String, modifier: Modifier = Modifi
             style = AsrType.Eyebrow.copy(fontSize = 10.sp),
             color = AsrColors.TextTertiary,
         )
+    }
+}
+
+@Composable
+private fun NothingToTrack(onStart: () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AsrColors.Surface, shape)
+            .border(1.dp, AsrColors.FieldBorder, shape)
+            .padding(17.dp),
+    ) {
+        Text("Nothing to track yet", style = AsrType.display(20), color = AsrColors.TextPrimary)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "This fills in once a challenge is running: the week's usage against " +
+                "your limits, the days you kept them, and every challenge you have " +
+                "finished.",
+            style = AsrType.Label.copy(fontSize = 13.sp),
+            color = AsrColors.TextSecondary,
+        )
+        Spacer(Modifier.height(18.dp))
+        AsrPrimaryButton(text = "Start a challenge", onClick = onStart)
     }
 }
 
@@ -366,6 +404,7 @@ private fun ProgressPreview() {
                 startedAtMillis = System.currentTimeMillis(),
             ),
             earnedMinutes = emptyMap(),
+            onStartChallenge = {},
         )
     }
 }

@@ -2,7 +2,7 @@ import { HttpError, notFound } from "@/lib/http";
 import { ImageRejected, isJpeg, readJpegInfo, stripJpegMetadata } from "@/lib/jpeg";
 import { newId } from "@/lib/uuid";
 import { db } from "./db/client";
-import { deleteObject, getObject, putObject, r2Config, type R2Config } from "./r2";
+import { deleteObject, getObject, putObject, r2Config, R2Error, type R2Config } from "./r2";
 
 
 /**
@@ -29,6 +29,27 @@ const tooLarge = (message: string) => new HttpError(413, "image_too_large", mess
 const unsupported = (code: string, message: string) => new HttpError(400, code, message);
 const notConfigured = () =>
   new HttpError(503, "storage_not_configured", "Photo uploads are not switched on yet.");
+
+/**
+ * An R2Error is not an HttpError, so route() was turning every storage
+ * refusal into a bare 500 "Something went wrong." — which is what a person
+ * choosing a photo actually saw, with the real reason left in a log nobody
+ * reads. The status R2 gave back is the whole diagnosis: 403 is a token
+ * without write permission on the bucket, 404 is a bucket that is not there
+ * under that name, 5xx is Cloudflare having a moment.
+ *
+ * R2's own body is logged and not returned. It names the bucket and the
+ * account, which is not something to hand to whoever is holding the phone.
+ */
+function storageRefused(stage: "upload" | "read", error: R2Error): HttpError {
+  console.error(`[r2] ${stage} refused with ${error.status}: ${error.message}`);
+  return new HttpError(
+    502,
+    "storage_refused",
+    `Storage refused the ${stage} (${error.status}). This is a server configuration ` +
+      "problem, not something you did.",
+  );
+}
 
 /**
  * The object key carries the owner's id.
@@ -81,7 +102,12 @@ export async function setAvatar(userId: string, bytes: Buffer) {
 
   const previous = await currentKey(userId);
   const key = keyFor(userId);
-  await putObject(config, key, clean, "image/jpeg");
+  try {
+    await putObject(config, key, clean, "image/jpeg");
+  } catch (error) {
+    if (error instanceof R2Error) throw storageRefused("upload", error);
+    throw error;
+  }
 
   // Stored after the upload succeeded, never before: a row pointing at an
   // object that is not there renders as a broken image with no way to tell
@@ -138,7 +164,13 @@ export async function readAvatar(key: string) {
 
   const config = r2Config();
   if (!config) throw notConfigured();
-  const object = await getObject(config, key);
+  let object;
+  try {
+    object = await getObject(config, key);
+  } catch (error) {
+    if (error instanceof R2Error) throw storageRefused("read", error);
+    throw error;
+  }
   if (!object) throw notFound("Image");
   return object;
 }
