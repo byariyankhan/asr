@@ -28,6 +28,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.joinasr.app.ui.components.AsrProfilePhoto
+import io.joinasr.app.witness.Reactions
 import io.joinasr.app.witness.Witness
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -205,7 +206,28 @@ private fun WitnessCard(witness: Witness) {
             )
         }
         Spacer(Modifier.width(10.dp))
-        StatusPill("ACTIVE", highlighted = true)
+        // Status above, what they have actually done below it.
+        //
+        // Reacting is the only thing a witness can do, and it was a push
+        // notification and then nothing: somebody's brother throws a tomato,
+        // the phone buzzes once, and by the evening there is no trace of it.
+        // This is the screen listing the people who did it.
+        Column(horizontalAlignment = Alignment.End) {
+            StatusPill("ACTIVE", highlighted = true)
+            if (witness.reactions.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row {
+                    for (reaction in witness.reactions) {
+                        val emoji = Reactions.of(reaction)?.emoji ?: continue
+                        Text(
+                            emoji,
+                            style = AsrType.Field.copy(fontSize = 15.sp),
+                            modifier = Modifier.padding(start = 3.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

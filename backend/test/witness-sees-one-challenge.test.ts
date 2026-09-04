@@ -107,6 +107,13 @@ describe.skipIf(!DATABASE_URL)("what a witness can see", async () => {
       .where("pact_id", "=", watchedPactId)
       .executeTakeFirstOrThrow();
     await expect(react(friend, witnessRowId, mine.id, "clap")).resolves.toMatchObject({ emoji: "clap" });
+
+    // And it stays. Reacting is the only thing a witness can do, and it was
+    // a push notification and then nothing -- by the evening there was no
+    // trace anybody had. It is on their card in the circle now.
+    const { listWitnesses } = await import("@/server/witnesses");
+    const card = (await listWitnesses(owner)).my_witnesses.find((w) => w.user?.id === friend);
+    expect(card?.reactions).toEqual(["clap"]);
   });
 
   it("counts a streak in days kept, not days elapsed", async () => {

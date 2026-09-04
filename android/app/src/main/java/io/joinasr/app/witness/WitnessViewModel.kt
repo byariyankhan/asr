@@ -194,6 +194,7 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
                         accepted = it.accepted,
                         name = it.user?.name,
                         image = it.user?.image,
+                        reactions = it.reactions,
                     )
                 },
             )

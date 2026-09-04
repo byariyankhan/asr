@@ -50,6 +50,14 @@ data class RemoteWitness(
     val user: RemoteUser? = null,
     /** True when they are also somebody I am a witness for. */
     val mutual: Boolean = false,
+    /**
+     * What they have reacted with, newest first, at most three.
+     *
+     * Reacting is the only thing a witness can actually do, and it used to
+     * be a push notification and then nothing -- by the evening there was no
+     * trace it had happened.
+     */
+    val reactions: List<String> = emptyList(),
     @SerialName("invited_at") val invitedAt: String? = null,
 ) {
     val accepted: Boolean get() = status == "accepted"

@@ -223,6 +223,18 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
     expect(after.longest_streak_days).toBe(0);
   });
 
+  it("says who each notification is about, with their face", async () => {
+    const { listInbox } = await import("@/server/inbox");
+    const { items } = await listInbox(alice, undefined, 20);
+    const accepted = items.find((i) => i.kind === "witness_accepted");
+    // Not just a name inside a sentence: the row itself carries the person,
+    // so the list shows a face rather than a green tick repeated four times.
+    expect(accepted?.about_user).toMatchObject({ id: bob, name: "Bob" });
+
+    // Nullable, because an account can be told things about nobody.
+    expect(items.every((i) => i.about_user_id == null || i.about_user != null)).toBe(true);
+  });
+
   it("removing ends the relationship for both sides", async () => {
     await removeWitness(bob, witnessRowId);
     // The invitations Alice sent are still hers to re-share; what is gone

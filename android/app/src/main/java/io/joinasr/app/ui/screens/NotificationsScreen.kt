@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.joinasr.app.data.InboxItem
 import io.joinasr.app.ui.components.AsrBackChevron
+import io.joinasr.app.ui.components.AsrProfilePhoto
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
@@ -169,11 +170,54 @@ private fun NotificationCard(item: InboxItem, onOpen: (InboxItem) -> Unit) {
             .padding(15.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Icon(
-            glyph = glyphFor(item.kind),
-            colour = if (warning) AsrColors.Warning else AsrColors.Accent,
-            fill = if (warning) AsrColors.WarningMuted else AsrColors.AccentMuted,
-        )
+        // Their face where the glyph was.
+        //
+        // Every one of these is a message about a person -- their mother
+        // accepted, their friend reacted -- and a green tick made them all
+        // look like the same event from nobody. The glyph stays for the ones
+        // that are genuinely about the account rather than about somebody:
+        // protection stopping, a limit going.
+        val about = item.aboutUser
+        if (about != null) {
+            Box {
+                AsrProfilePhoto(
+                    imagePath = about.image,
+                    fallback = about.name,
+                    size = 40.dp,
+                    initialSize = 15,
+                )
+                // The glyph does not disappear with the photo; it moves onto
+                // it, small, so a broken pact still reads as one at a
+                // glance.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(if (warning) AsrColors.WarningMuted else AsrColors.AccentMuted)
+                        .border(
+                            1.dp,
+                            AsrColors.SurfaceSunken,
+                            CircleShape,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        glyphFor(item.kind),
+                        style = AsrType.Legal.copy(fontSize = 10.sp),
+                        color = if (warning) AsrColors.Warning else AsrColors.Accent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                    )
+                }
+            }
+        } else {
+            Icon(
+                glyph = glyphFor(item.kind),
+                colour = if (warning) AsrColors.Warning else AsrColors.Accent,
+                fill = if (warning) AsrColors.WarningMuted else AsrColors.AccentMuted,
+            )
+        }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

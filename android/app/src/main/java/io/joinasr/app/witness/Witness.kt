@@ -28,6 +28,8 @@ data class Witness(
     val name: String? = null,
     /** Their photo, same condition. A path, never an absolute URL. */
     val image: String? = null,
+    /** What they have reacted with, newest first. At most three. */
+    val reactions: List<String> = emptyList(),
 ) {
     /**
      * What to call them. Their name once there is one, and the relationship

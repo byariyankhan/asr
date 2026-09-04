@@ -402,6 +402,30 @@ export async function listWitnesses(userId: string) {
     .orderBy("witness.responded_at", "desc")
     .execute();
 
+  // What each of them has reacted with, most recent first.
+  //
+  // A reaction was a push notification and then nothing: somebody's brother
+  // throws a tomato, the phone buzzes once, and by the evening there is no
+  // trace it ever happened. It is the only thing a witness can actually
+  // *do*, and the circle is where the people who did it are listed, so it
+  // belongs on their card.
+  const reactions = await db
+    .selectFrom("reaction")
+    .innerJoin("witness as w", "w.id", "reaction.witness_id")
+    .select(["reaction.witness_id", "reaction.emoji", "reaction.updated_at"])
+    .where("w.user_id", "=", userId)
+    .where("w.status", "=", "accepted")
+    .orderBy("reaction.updated_at", "desc")
+    .execute();
+  const byWitness = new Map<string, string[]>();
+  for (const r of reactions) {
+    const held = byWitness.get(r.witness_id) ?? [];
+    // Three is what the card has room for, and the newest are the ones
+    // worth having.
+    if (held.length < 3) held.push(r.emoji);
+    byWitness.set(r.witness_id, held);
+  }
+
   const iSupport = new Set(supporting.map((s) => s.person_id));
   const myWitnessIds = new Set(mine.filter((m) => m.status === "accepted").map((m) => m.witness_id));
 
@@ -423,6 +447,7 @@ export async function listWitnesses(userId: string) {
       roast_mode: m.roast_mode,
       views_progress: m.views_progress,
       mutual: m.witness_id !== null && iSupport.has(m.witness_id),
+      reactions: byWitness.get(m.id) ?? [],
       invited_at: m.invited_at,
       responded_at: m.responded_at,
     })),

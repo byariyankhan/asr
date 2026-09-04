@@ -313,7 +313,7 @@ Two lists: people witnessing me (pending and accepted), people I witness
 ```json
 {
   "my_witnesses": [ { "id": "…", "status": "accepted", "relationship": "sibling", "user": { "id": "…", "name": "…" },
-                      "invite_code": null, "invite_url": null, "notify_failure": true, "roast_mode": false,
+                      "invite_code": null, "invite_url": null, "reactions": ["shoe"], "notify_failure": true, "roast_mode": false,
                       "views_progress": true, "mutual": true, "invited_at": "…", "responded_at": "…" } ],
   "i_witness":    [ { "id": "…", "relationship": "friend", "user": { "id": "…", "name": "…" },
                       "notify_failure": true, "roast_mode": true, "views_progress": true, "mutual": false } ]

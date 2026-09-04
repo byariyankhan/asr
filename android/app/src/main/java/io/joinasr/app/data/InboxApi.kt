@@ -23,6 +23,14 @@ import java.io.IOException
 data class InboxItem(
     val id: String,
     @SerialName("about_user_id") val aboutUserId: String? = null,
+    /**
+     * The person it is about, when it is about one.
+     *
+     * Every message here is: their mother accepted, their friend reacted.
+     * A row that identifies that person only inside a sentence is a row you
+     * have to read to know who it is from.
+     */
+    @SerialName("about_user") val aboutUser: RemoteUser? = null,
     @SerialName("event_id") val eventId: String? = null,
     /** pact_started, pact_broken, pact_completed, witness_accepted, reaction, … */
     val kind: String,
