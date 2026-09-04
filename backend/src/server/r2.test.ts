@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { __testing, accountIdFrom, configProblem, r2Config } from "./r2";
+import { __testing, accountIdFrom, configProblem, r2Config, shapeOf } from "./r2";
 
 const { encodeKey, sign, signingKey } = __testing;
 
@@ -189,5 +189,21 @@ describe("accountIdFrom", () => {
     expect(configProblem({ ...config, accountId: accountIdFrom("https://example.com/x") })).toBe(
       "account_id_is_not_a_hex_id",
     );
+  });
+});
+
+describe("shapeOf", () => {
+  it("names the characters that are not letters or digits, and nothing else", () => {
+    expect(shapeOf("3f7a1c9e")).toEqual(["length=8", "unexpected=[]"]);
+    // A quoted value: the two quotes are the whole story and the id inside
+    // them never leaves the server.
+    expect(shapeOf('"3f7a"')).toEqual(["length=6", 'unexpected=["]']);
+    expect(shapeOf("3f7a-1c9e_2b")).toEqual(["length=12", "unexpected=[- _]"]);
+  });
+
+  it("renders what is invisible in the file it was pasted into", () => {
+    expect(shapeOf("3f7a\r")).toEqual(["length=5", "unexpected=[U+000D]"]);
+    // A non-breaking space, which looks exactly like a space in every editor.
+    expect(shapeOf("3f\u00a07a")).toEqual(["length=5", "unexpected=[U+00A0]"]);
   });
 });

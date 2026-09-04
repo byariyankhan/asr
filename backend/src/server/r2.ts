@@ -75,6 +75,29 @@ export function accountIdFrom(raw: string): string {
 }
 
 /**
+ * What is odd about a value, without saying what the value is.
+ *
+ * `account_id_is_not_a_hex_id` came back twice: once from the endpoint URL,
+ * and once more after that was parsed out — so the value is neither an id
+ * nor the documented endpoint, and no further guess from here is worth the
+ * round trip it costs. What settles it is which characters are in there and
+ * how many, and neither of those is the value.
+ *
+ * Only the characters outside [a-zA-Z0-9] are listed, deduplicated, with
+ * anything unprintable rendered as its code point — a stray CR, a smart
+ * quote or a non-breaking space is exactly the kind of thing that is
+ * invisible in the file it was pasted into and obvious the moment it is
+ * named. The alphanumerics themselves never leave the server.
+ */
+export function shapeOf(value: string): string[] {
+  const odd = [...new Set(Array.from(value).filter((c) => !/[a-zA-Z0-9]/.test(c)))].map((c) => {
+    const code = c.codePointAt(0) ?? 0;
+    return code >= 0x21 && code <= 0x7e ? c : `U+${code.toString(16).toUpperCase().padStart(4, "0")}`;
+  });
+  return [`length=${Array.from(value).length}`, `unexpected=[${odd.join(" ")}]`];
+}
+
+/**
  * What is wrong with the configuration itself, before a byte is sent.
  *
  * Trimming fixes the ends; it cannot fix a space in the middle, and every

@@ -1,7 +1,15 @@
 import { lookup } from "node:dns/promises";
 import { sql } from "kysely";
 import { db } from "./db/client";
-import { configProblem, deleteObject, putObject, r2Config, R2Error, type R2Config } from "./r2";
+import {
+  configProblem,
+  deleteObject,
+  putObject,
+  r2Config,
+  R2Error,
+  shapeOf,
+  type R2Config,
+} from "./r2";
 import { key, redis } from "./redis";
 
 export const WATCHDOG_LAST_RUN_KEY = key("watchdog", "last_run");
@@ -101,7 +109,16 @@ export async function probeStorage(): Promise<StorageProbe> {
   const problem = configProblem(config);
   if (problem) {
     console.error(`[health] storage configuration rejected: ${problem}`);
-    return { configured: true, writable: false, error: problem };
+    // The shape of the value, not the value: how long it is and which
+    // characters in it are not letters or digits. That is what tells a
+    // quoted string from a URL from a stray non-breaking space, and it is
+    // the difference between one more deploy and one more guess.
+    return {
+      configured: true,
+      writable: false,
+      error: problem,
+      detail: shapeOf(problem.startsWith("account_id") ? config.accountId : config.bucket),
+    };
   }
 
   const probeKey = "health/probe.txt";
