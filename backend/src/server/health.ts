@@ -57,6 +57,19 @@ export async function probeStorage(): Promise<StorageProbe> {
   return { configured: true, writable: true };
 }
 
+/**
+ * The commit this container was started from.
+ *
+ * Set by the deploy at `up -d` time, which makes it evidence rather than
+ * decoration: a deploy that builds an image and never recreates the
+ * container leaves the old value here, and the deploy's own health check
+ * refuses to pass. That exact failure ran silently for several releases —
+ * `docker compose run migrate` was reading the deploy script off stdin and
+ * swallowing every line after itself, so the API was never restarted while
+ * the workflow went green.
+ */
+const COMMIT = process.env.ASR_COMMIT?.trim() || null;
+
 export async function healthReport() {
   const [dbOk, redisOk, lastRun] = await Promise.all([
     sql`select 1`
@@ -74,6 +87,7 @@ export async function healthReport() {
   const lastRunMs = lastRun ? Number(lastRun) : NaN;
   return {
     ok: dbOk && redisOk,
+    commit: COMMIT,
     db: dbOk,
     redis: redisOk,
     watchdog_stale: !Number.isFinite(lastRunMs) || Date.now() - lastRunMs > WATCHDOG_STALE_MS,

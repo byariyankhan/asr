@@ -100,11 +100,27 @@ jobs:
       # side by side on a small VPS. Sequentially the second is a cache hit on
       # layers the first just produced.
       #
+      # The script is SHIPPED AS A FILE and run with stdin closed. It used to
+      # be piped into `bash -s` over the ssh connection, and `docker compose
+      # run --rm migrate` attaches stdin: it read the remainder of the deploy
+      # script as the migrator's input and swallowed it. Everything after that
+      # line — the restart, the release tag, the image retention — never ran,
+      # bash reached EOF, and the step exited 0. Several releases were built,
+      # tagged and never started; the API on the box stayed on an old image
+      # while every deploy went green. A script that lives in a file cannot be
+      # eaten by a command inside it.
+      #
       # The pg_dump between build and migrate is the pre-migration safety net:
       # every deploy runs migrations, so every deploy first snapshots the
       # database it is about to migrate. Under `set -e` a failed dump aborts
       # the deploy BEFORE migrate touches anything — a deploy that cannot take
       # its safety backup should not be migrating.
+      #
+      # ASR_COMMIT is what makes the restart provable: compose puts it in the
+      # container's environment, /v1/health reports it, and the next step
+      # refuses to pass until the public answer is this commit. It also
+      # guarantees the recreate, since the container's config differs from the
+      # running one on every deploy.
       #
       # Image retention runs last, in a `set +e` block ending in `|| true`, and
       # only after the new container is up: housekeeping must never fail a
@@ -124,11 +140,7 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
-          attempt=1
-          delay=20
-          while true; do
-            if ssh -i ~/.ssh/deploy_key -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
-                 root@"$VPS_HOST" "SHA=$SHA bash -s" <<'REMOTE'; then
+          cat > /tmp/asr-deploy.sh <<'REMOTE'
           set -e
           cd /opt/asr
           docker compose build api
@@ -136,8 +148,12 @@ jobs:
           mkdir -p /opt/asr/backups
           docker compose exec -T postgres pg_dump -U asr -d asr -Fc </dev/null > "/opt/asr/backups/pre-deploy-$(date -u +%Y%m%d-%H%M%S).dump"
           ls -t /opt/asr/backups/pre-deploy-*.dump | tail -n +6 | xargs -r rm
-          docker compose run --rm migrate
-          docker compose up -d api --force-recreate
+          docker compose run --rm -T migrate </dev/null
+          if ! ASR_COMMIT="$SHA" docker compose up -d api --force-recreate --wait --wait-timeout 180; then
+            echo "the new api container did not come up healthy. its logs:"
+            docker compose logs --tail 200 api || true
+            exit 1
+          fi
           {
             set +e
             cid=$(docker compose ps -q api)
@@ -150,7 +166,15 @@ jobs:
             docker image prune -f
             docker builder prune -f --keep-storage 5GB || docker builder prune -f --max-used-space 5GB || docker builder prune -af
           } || true
+          echo "deploy script finished"
           REMOTE
+
+          attempt=1
+          delay=20
+          while true; do
+            if scp -i ~/.ssh/deploy_key -o ConnectTimeout=30 /tmp/asr-deploy.sh root@"$VPS_HOST":/tmp/asr-deploy.sh \
+               && ssh -i ~/.ssh/deploy_key -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+                    root@"$VPS_HOST" "SHA=$SHA bash /tmp/asr-deploy.sh" </dev/null; then
               break
             fi
             status=$?
@@ -167,16 +191,25 @@ jobs:
       # From the public internet, not from inside the box: this is the thing
       # the Android app actually talks to. /v1/health checks Postgres and
       # Redis, so a green here means the whole stack is serving.
+      #
+      # And it must be serving THIS commit. "ok":true only says something is
+      # answering; it was answering happily for every release that was built
+      # and never started. The commit comes from the container's environment,
+      # so it can only be right if the container was recreated by this deploy.
       - name: Verify health
         run: |
-          for i in 1 2 3 4 5 6; do
+          for i in 1 2 3 4 5 6 7 8 9 10; do
             body=$(curl -fsS --max-time 10 https://api.joinasr.io/v1/health 2>/dev/null || true)
             echo "health: ${body:-<no answer>}"
-            if printf %s "$body" | grep -q "\"ok\":true"; then
-              echo "healthy"
+            if printf %s "$body" | grep -q "\"ok\":true" \
+               && printf %s "$body" | grep -q "\"commit\":\"$SHA\""; then
+              echo "healthy, and serving $SHA"
               exit 0
             fi
             sleep 5
           done
-          echo "the API did not report healthy after the deploy"
+          echo
+          echo "The API did not report healthy on commit $SHA after the deploy."
+          echo "A missing or older \"commit\" means the container was not recreated:"
+          echo "the build succeeded and the running process is still the old one."
           exit 1

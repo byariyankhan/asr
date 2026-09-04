@@ -45,6 +45,11 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      # Written by the deploy at `up -d` time. /v1/health reports it, and the
+      # deploy refuses to pass until the live answer matches the commit it
+      # just shipped — the check that would have caught the API silently not
+      # restarting for several releases.
+      ASR_COMMIT: ${ASR_COMMIT:-}
       DATABASE_URL: postgresql://asr:${PG_PASS}@postgres:5432/asr
       REDIS_URL: redis://:${REDIS_PASS}@redis:6379
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
