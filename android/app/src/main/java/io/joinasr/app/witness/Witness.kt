@@ -26,6 +26,8 @@ data class Witness(
     val accepted: Boolean = false,
     /** Their name, which only exists once they have accepted. */
     val name: String? = null,
+    /** Their photo, same condition. A path, never an absolute URL. */
+    val image: String? = null,
 ) {
     /**
      * What to call them. Their name once there is one, and the relationship
@@ -34,6 +36,16 @@ data class Witness(
      */
     val label: String get() = name?.takeIf { it.isNotBlank() }
         ?: Relationships.labelFor(relationship)
+
+    /**
+     * What they are to this person: Mother, Brother, Friend.
+     *
+     * Separate from [label] on purpose. The two were the same expression in
+     * one place and the card read "Jonny Harris / Relationship · Jonny
+     * Harris" -- the name twice, and the one thing that line exists to say
+     * missing.
+     */
+    val relationshipLabel: String get() = Relationships.labelFor(relationship)
 }
 
 /**

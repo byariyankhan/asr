@@ -21,9 +21,21 @@ data class WitnessInvite(
     val url: String,
 )
 
-/** Somebody with an account, as they appear inside another resource. */
+/**
+ * Somebody with an account, as they appear inside another resource.
+ *
+ * The photo travels with the name everywhere the name goes. A witness list
+ * is a list of people, and a column of coloured initials is a list of
+ * strangers -- which is the opposite of what a circle of people who agreed
+ * to hold somebody to something should look like.
+ */
 @Serializable
-data class RemoteUser(val id: String, val name: String)
+data class RemoteUser(
+    val id: String,
+    val name: String,
+    /** A path like /v1/media/avatars/..., or null. Never an absolute URL. */
+    val image: String? = null,
+)
 
 /** A witness of mine, as the server holds them. */
 @Serializable
@@ -80,6 +92,17 @@ data class InvitePeek(
     @SerialName("inviter_name") val inviterName: String,
     @SerialName("inviter_image") val inviterImage: String? = null,
     val relationship: String,
+    /** How long the challenge runs, when one is running. */
+    val days: Int? = null,
+    /**
+     * True when the person reading this is the one who sent it.
+     *
+     * Nobody witnesses themselves and the server refuses it, but refusing
+     * after the button is pressed is a worse way to learn that than never
+     * being offered the button. It happens by accident: testing your own
+     * link, or tapping it in the thread you just shared it to.
+     */
+    val own: Boolean = false,
 )
 
 @Serializable
@@ -125,12 +148,21 @@ class WitnessApi(
     }
 
     /**
-     * Figma 18, before accepting. No token: the person opening the link may
-     * not have an account yet, which is exactly who this screen is for.
+     * Figma 18, before accepting. The token is optional and sent when there
+     * is one.
+     *
+     * The route needs no session -- somebody deciding whether to vouch for a
+     * person has no account yet, which is the whole reason it is public --
+     * but with one it can also say whether the reader is the person who sent
+     * this invitation, so the app stops offering them a button that would be
+     * refused.
      */
-    suspend fun peekInvite(code: String): ApiResult<InvitePeek> = withContext(Dispatchers.IO) {
-        call<InvitePeek>(Request.Builder().url("$baseUrl/v1/witnesses/invites/$code").get().build())
-    }
+    suspend fun peekInvite(code: String, token: String? = null): ApiResult<InvitePeek> =
+        withContext(Dispatchers.IO) {
+            val builder = Request.Builder().url("$baseUrl/v1/witnesses/invites/$code").get()
+            if (!token.isNullOrBlank()) builder.header("Authorization", "Bearer $token")
+            call<InvitePeek>(builder.build())
+        }
 
     suspend fun acceptInvite(token: String, code: String): ApiResult<Unit> =
         withContext(Dispatchers.IO) {

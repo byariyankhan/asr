@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import io.joinasr.app.data.InvitePeek
 import io.joinasr.app.ui.components.AsrBackChevron
 import io.joinasr.app.ui.components.AsrPrimaryButton
+import io.joinasr.app.ui.components.AsrProfilePhoto
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
@@ -79,6 +80,7 @@ fun WitnessInviteScreen(
             when {
                 errorMessage != null -> "This invite is closed."
                 invite == null -> "Opening the invite…"
+                invite.own -> "Your invitation"
                 else -> "$name invited you"
             },
             style = AsrType.display(34),
@@ -89,6 +91,7 @@ fun WitnessInviteScreen(
             when {
                 errorMessage != null -> errorMessage
                 invite == null -> "One moment."
+                invite.own -> "This is the link you sent. Whoever opens it becomes your witness."
                 else -> "Become a witness for their challenge."
             },
             style = AsrType.Field,
@@ -97,7 +100,11 @@ fun WitnessInviteScreen(
 
         if (invite != null) {
             Spacer(Modifier.height(22.dp))
-            InviterCard(name = name, relationship = invite.relationship)
+            InviterCard(
+                name = name,
+                relationship = invite.relationship,
+                image = invite.inviterImage,
+            )
 
             Spacer(Modifier.height(24.dp))
             Text(
@@ -115,34 +122,44 @@ fun WitnessInviteScreen(
             Note("◎", "You'll get updates when they keep or break the pact.")
 
             Spacer(Modifier.height(24.dp))
-            AsrPrimaryButton(
-                text = when {
-                    busy -> "Accepting…"
-                    signedIn -> "Accept invitation"
-                    else -> "Sign in to accept"
-                },
-                onClick = onAccept,
-                enabled = !busy,
-            )
-            Spacer(Modifier.height(18.dp))
-            Text(
-                "Decline invitation",
-                style = AsrType.Label.copy(fontSize = 13.sp),
-                color = AsrColors.TextSecondary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(enabled = !busy && signedIn, role = Role.Button, onClick = onDecline)
-                    .padding(vertical = 10.dp),
-            )
+            if (invite.own) {
+                // Their own link, opened on their own phone. It happens by
+                // accident -- testing it, or tapping it in the thread they
+                // just shared it to -- and the only useful thing to say is
+                // that this one is for somebody else.
+                Note("↗", "This is your own invitation. Send it to the person you want as a witness.")
+                Spacer(Modifier.height(18.dp))
+                AsrPrimaryButton(text = "Back to Asr", onClick = onBack, enabled = true)
+            } else {
+                AsrPrimaryButton(
+                    text = when {
+                        busy -> "Accepting…"
+                        signedIn -> "Accept invitation"
+                        else -> "Sign in to accept"
+                    },
+                    onClick = onAccept,
+                    enabled = !busy,
+                )
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    "Decline invitation",
+                    style = AsrType.Label.copy(fontSize = 13.sp),
+                    color = AsrColors.TextSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(enabled = !busy && signedIn, role = Role.Button, onClick = onDecline)
+                        .padding(vertical = 10.dp),
+                )
+            }
         }
         Spacer(Modifier.height(28.dp))
     }
 }
 
 @Composable
-private fun InviterCard(name: String, relationship: String) {
+private fun InviterCard(name: String, relationship: String, image: String?) {
     val shape = RoundedCornerShape(20.dp)
     Row(
         modifier = Modifier
@@ -152,7 +169,7 @@ private fun InviterCard(name: String, relationship: String) {
             .padding(15.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Initial(name)
+        AsrProfilePhoto(imagePath = image, fallback = name, size = 52.dp, initialSize = 18)
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

@@ -149,6 +149,7 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
                         inviteUrl = it.inviteUrl,
                         accepted = it.accepted,
                         name = it.user?.name,
+                        image = it.user?.image,
                     )
                 },
             )
@@ -210,7 +211,7 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
             _invite.value = null
             _inviteError.value = null
             _inviteAnswered.value = false
-            when (val result = Api.witnesses.peekInvite(code)) {
+            when (val result = Api.witnesses.peekInvite(code, tokens.current())) {
                 is ApiResult.Ok -> _invite.value = result.value
                 is ApiResult.Failure -> _inviteError.value = if (result.code == 404) {
                     // 404 here means answered, withdrawn or never real, and

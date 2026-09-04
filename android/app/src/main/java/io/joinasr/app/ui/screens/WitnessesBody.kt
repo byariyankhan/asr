@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.joinasr.app.ui.components.AsrProfilePhoto
 import io.joinasr.app.witness.Witness
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -178,22 +179,12 @@ private fun WitnessCard(witness: Witness) {
             .padding(15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(contentAlignment = Alignment.BottomStart) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(AsrColors.Background)
-                    .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(24.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    witness.label.take(1).uppercase(),
-                    style = AsrType.Button.copy(fontSize = 16.sp),
-                    color = AsrColors.Accent,
-                )
-            }
-        }
+        AsrProfilePhoto(
+            imagePath = witness.image,
+            fallback = witness.label,
+            size = 48.dp,
+            initialSize = 16,
+        )
 
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -206,7 +197,7 @@ private fun WitnessCard(witness: Witness) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "Relationship · ${witness.label}",
+                "Relationship · ${witness.relationshipLabel}",
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,
                 maxLines = 1,

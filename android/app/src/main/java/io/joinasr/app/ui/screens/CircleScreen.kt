@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +28,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.joinasr.app.data.SupportedPerson
+import io.joinasr.app.ui.components.AsrProfilePhoto
 import io.joinasr.app.data.WitnessProgress
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -209,7 +209,12 @@ private fun SupportCard(
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Initial(person.user.name)
+            AsrProfilePhoto(
+                imagePath = person.user.image,
+                fallback = person.user.name,
+                size = 44.dp,
+                initialSize = 16,
+            )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -286,24 +291,6 @@ private fun SupportCard(
                 color = AsrColors.TextTertiary,
             )
         }
-    }
-}
-
-@Composable
-internal fun Initial(name: String) {
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(AsrColors.Background)
-            .border(1.dp, AsrColors.FieldBorder, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            name.trim().take(1).uppercase().ifBlank { "?" },
-            style = AsrType.display(16),
-            color = AsrColors.Accent,
-        )
     }
 }
 

@@ -126,7 +126,7 @@ export async function createInvite(userId: string, input: WitnessInvite) {
 }
 
 // What the accept screen may show before sign-in: who is asking, and as what.
-export async function peekInvite(code: string) {
+export async function peekInvite(code: string, viewerId?: string) {
   if (!isInviteCode(code)) throw notFound("Invite");
   const row = await db
     .selectFrom("witness")
@@ -163,6 +163,12 @@ export async function peekInvite(code: string) {
     inviter_image: imagePath(row.inviter_image),
     relationship: row.relationship,
     days: pact?.duration_days ?? null,
+    // Whether the person reading this is the one who sent it. acceptInvite
+    // already refuses -- nobody witnesses themselves -- but refusing after
+    // the button is pressed is a worse way to learn it than never being
+    // offered the button. It happens by accident: somebody tests their own
+    // link, or taps it in the thread they just shared it to.
+    own: viewerId != null && viewerId === row.user_id,
   };
 }
 
@@ -248,6 +254,7 @@ export async function listWitnesses(userId: string) {
       "witness.responded_at",
       "w.id as witness_id",
       "w.name as witness_name",
+      "w.image as witness_image",
     ])
     .where("witness.user_id", "=", userId)
     .where("witness.status", "in", ["invited", "accepted"])
@@ -269,6 +276,7 @@ export async function listWitnesses(userId: string) {
       "witness.responded_at",
       "u.id as person_id",
       "u.name as person_name",
+      "u.image as person_image",
     ])
     .where("witness.witness_user_id", "=", userId)
     .where("witness.status", "=", "accepted")
@@ -286,7 +294,9 @@ export async function listWitnesses(userId: string) {
       invite_code: m.status === "invited" ? m.invite_code : null,
       invite_url: m.status === "invited" ? inviteUrl(m.invite_code) : null,
       invite_email: m.invite_email,
-      user: m.witness_id ? { id: m.witness_id, name: m.witness_name } : null,
+      user: m.witness_id
+        ? { id: m.witness_id, name: m.witness_name, image: imagePath(m.witness_image) }
+        : null,
       notify_start: m.notify_start,
       notify_success: m.notify_success,
       notify_failure: m.notify_failure,
@@ -300,7 +310,7 @@ export async function listWitnesses(userId: string) {
     i_witness: supporting.map((s) => ({
       id: s.id,
       relationship: s.relationship,
-      user: { id: s.person_id, name: s.person_name },
+      user: { id: s.person_id, name: s.person_name, image: imagePath(s.person_image) },
       notify_start: s.notify_start,
       notify_success: s.notify_success,
       notify_failure: s.notify_failure,

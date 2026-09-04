@@ -99,12 +99,18 @@ fun PersonalDetailsScreen(
     }
     var photoError by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<Uri?>(null) }
-    var uploading by remember { mutableStateOf<ImageBitmap?>(null) }
+    // Chosen but not sent. This screen has a Save button and every other
+    // field on it waits for that button; a photo that uploaded itself the
+    // moment it was picked meant there was no way to change your mind, and
+    // no way to tell what "Save changes" was even for.
+    var picked by remember { mutableStateOf<ByteArray?>(null) }
+    var preview by remember { mutableStateOf<ImageBitmap?>(null) }
 
-    // Cleared by the new photo arriving, not by the call returning: the
-    // screen is handed a fresh `me` when the upload succeeds, and that is
-    // the moment the server's copy is the one worth showing.
-    LaunchedEffect(me.image) { uploading = null }
+    // The server's copy has arrived, so the local one has done its job.
+    LaunchedEffect(me.image) {
+        picked = null
+        preview = null
+    }
 
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -115,10 +121,13 @@ fun PersonalDetailsScreen(
         photoError = null
         when (val result = PhotoPrep.prepare(context, uri)) {
             is PhotoPrep.Result.Ok -> {
-                uploading = BitmapFactory
+                // Decoded from the bytes that will be sent, so what is on
+                // screen is exactly what will be saved -- crop, rotation and
+                // all -- rather than a hopeful preview of something else.
+                picked = result.jpeg
+                preview = BitmapFactory
                     .decodeByteArray(result.jpeg, 0, result.jpeg.size)
                     ?.asImageBitmap()
-                onPhotoPicked(result.jpeg)
             }
 
             is PhotoPrep.Result.Failed -> photoError = result.message
@@ -128,7 +137,8 @@ fun PersonalDetailsScreen(
 
     val changed = name.trim() != me.name ||
         country?.value != me.country ||
-        gender?.value != me.gender
+        gender?.value != me.gender ||
+        picked != null
     val ready = changed && name.isNotBlank() && country != null && gender != null && !submitting
 
     Column(
@@ -154,8 +164,8 @@ fun PersonalDetailsScreen(
                 // trip would leave the old photo on screen for a second
                 // after choosing a new one, which reads as nothing having
                 // happened -- which is exactly how this screen was reported.
-                val preview = uploading
-                if (preview == null) {
+                val chosen = preview
+                if (chosen == null) {
                     AsrProfilePhoto(imagePath = me.image, fallback = me.name, size = 70.dp)
                 } else {
                     Box(
@@ -167,16 +177,20 @@ fun PersonalDetailsScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Image(
-                            bitmap = preview,
-                            contentDescription = "The photo being uploaded",
+                            bitmap = chosen,
+                            contentDescription = "The photo you chose",
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().alpha(0.45f),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .alpha(if (submitting) 0.45f else 1f),
                         )
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = AsrColors.Accent,
-                            strokeWidth = 2.dp,
-                        )
+                        if (submitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = AsrColors.Accent,
+                                strokeWidth = 2.dp,
+                            )
+                        }
                     }
                 }
             }
@@ -251,6 +265,11 @@ fun PersonalDetailsScreen(
             onClick = {
                 val chosenCountry = country ?: return@AsrPrimaryButton
                 val chosenGender = gender ?: return@AsrPrimaryButton
+                // The photo first. It is the change that can fail on its own
+                // -- storage, size, a format the server refuses -- and
+                // sending it before the rest means a refusal is reported
+                // while the fields still hold what was typed.
+                picked?.let(onPhotoPicked)
                 onSave(name.trim(), chosenCountry.value, chosenGender.value)
             },
             enabled = ready,

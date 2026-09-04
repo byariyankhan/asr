@@ -430,7 +430,14 @@ fun AsrApp(
 
     LaunchedEffect(signedIn) { if (signedIn) inviteDeferred = false }
 
-    if (code != null && (signedIn || !inviteDeferred)) {
+    // Sign-up has no name field, so the email's local part stands in until
+    // About You. That placeholder was reaching the other person: the invite
+    // screen took priority over About You, so a witness could accept while
+    // still called "ariyanfiles", and the notification the inviter read said
+    // so. The invitation waits; it is still pending after.
+    val needsProfile = (session as? Session.SignedIn)?.me?.profileComplete == false
+
+    if (code != null && (signedIn || !inviteDeferred) && !needsProfile) {
         // Figma 18, over everything. Opening the link is the person saying
         // where they want to be, and it works signed out because the person
         // being asked to vouch usually has no account yet.
