@@ -71,7 +71,7 @@ Per user (or per IP before auth), enforced in Redis:
 `{ ok, db, redis, watchdog_stale }`. No auth; `200` when db and redis both
 answer, `503` otherwise. Polled by uptime monitors, so it is cheap.
 
-### `GET /health?probe=storage`
+### `GET /health/storage`
 
 The same, plus `storage: { configured, writable, status?, error? }` — which
 is answered by actually writing and deleting a small object in R2, because
@@ -81,7 +81,11 @@ hides. `status` is what R2 gave back: `403` is a token without write
 permission, `404` is a bucket that is not there under that name. No bucket
 name, account id, or R2 body is returned.
 
-Opt-in because it costs two round trips to Cloudflare.
+Its own path rather than a parameter on `/health`: a phone's address bar
+ate `?probe=storage` the first time somebody tried it, and a diagnostic that
+can be half-typed is a diagnostic that lies. `200` when the bucket takes a
+write, `503` otherwise. `/health` stays cheap, because uptime monitors poll
+it every minute and this costs two round trips to Cloudflare.
 
 ## Devices
 
