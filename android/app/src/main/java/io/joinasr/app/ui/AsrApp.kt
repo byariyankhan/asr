@@ -690,7 +690,10 @@ fun AsrApp(
                                 }
                             }
 
-                            AsrTab.Progress -> ProgressScreen(pact = activePact)
+                            AsrTab.Progress -> ProgressScreen(
+                                pact = activePact,
+                                earnedMinutes = earnedToday.minutesByPackage,
+                            )
 
                             AsrTab.Witnesses -> {
                                 val person = openPerson

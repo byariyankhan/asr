@@ -50,15 +50,16 @@ import java.util.Locale
  * would have to write, migrate and keep correct — and it comes back through
  * the same measurement the block screen uses, so the two can never disagree.
  *
- * Two things in the frame stay at zero until the features behind them exist:
- * earned time (Figma 21 to 24) and past challenges, which needs more than
- * the one pact this app stores. Both are drawn, because a card that says
- * nothing has happened yet is honest and a card that is missing looks like a
- * bug.
+ * One thing in the frame still stays at zero: past challenges, which needs
+ * more than the one pact this app stores. It is drawn anyway, because a card
+ * saying nothing has happened yet is honest and a card that is missing looks
+ * like a bug.
  */
 @Composable
 fun ProgressScreen(
     pact: Pact,
+    /** Bonus minutes won today, per package. */
+    earnedMinutes: Map<String, Int>,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -132,7 +133,7 @@ fun ProgressScreen(
         UsageTrend(days = days, allowance = allowance)
 
         Spacer(Modifier.height(18.dp))
-        EarnedTimeCard()
+        EarnedTimeCard(minutes = earnedMinutes.values.sum())
 
         Spacer(Modifier.height(26.dp))
         Text("Challenges", style = AsrType.display(19), color = AsrColors.TextPrimary)
@@ -257,7 +258,7 @@ private fun initialOf(dayStartMillis: Long): String =
         .getDisplayName(TextStyle.NARROW, Locale.getDefault())
 
 @Composable
-private fun EarnedTimeCard() {
+private fun EarnedTimeCard(minutes: Int) {
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
@@ -271,10 +272,13 @@ private fun EarnedTimeCard() {
             Text("Earned time", style = AsrType.Field, color = AsrColors.TextPrimary)
             Spacer(Modifier.height(4.dp))
             Text(
-                // Stays at nothing until the earn-time flow exists. Said
-                // plainly rather than left off the screen, because a missing
-                // card reads as a bug and a zero reads as a fact.
-                "Earning extra time is not built yet",
+                if (minutes > 0) {
+                    "Earned today, on top of your limits"
+                } else {
+                    // Zero is a fact, not a gap: nothing has been earned
+                    // today, and saying so beats an empty space.
+                    "Walk or focus to earn more time"
+                },
                 style = AsrType.Label.copy(fontSize = 12.sp),
                 color = AsrColors.TextSecondary,
             )
@@ -288,7 +292,11 @@ private fun EarnedTimeCard() {
                 .padding(horizontal = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text("0m", style = AsrType.Button.copy(fontSize = 13.sp), color = AsrColors.Accent)
+            Text(
+                "${minutes}m",
+                style = AsrType.Button.copy(fontSize = 13.sp),
+                color = if (minutes > 0) AsrColors.Accent else AsrColors.TextTertiary,
+            )
         }
     }
 }
@@ -357,6 +365,7 @@ private fun ProgressPreview() {
                 ),
                 startedAtMillis = System.currentTimeMillis(),
             ),
+            earnedMinutes = emptyMap(),
         )
     }
 }
