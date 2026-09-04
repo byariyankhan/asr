@@ -43,7 +43,12 @@ describe.skipIf(!DATABASE_URL)("account deletion and export", async () => {
   it("exports the ledger as one document", async () => {
     const data = await exportAccount(userId);
     expect(data.user.email).toBe(email);
-    expect(data.witnesses).toHaveLength(1);
+    // Two rows for one witness: the invitation that carries the link, which
+    // stays open because one link may be taken by several people, and the
+    // person who took it. Both are the account's own record and both belong
+    // in an export of it.
+    expect(data.witnesses).toHaveLength(2);
+    expect(data.witnesses.filter((w) => w.status === "accepted")).toHaveLength(1);
     // The challenge their witness was invited to. A witness belongs to one,
     // so an account with a witness has a pact by construction.
     expect(data.pacts).toHaveLength(1);

@@ -21,6 +21,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
@@ -857,6 +861,33 @@ fun AsrApp(
                             }
 
                             AsrTab.Witnesses -> {
+                                // Read again every time this screen is
+                                // opened.
+                                //
+                                // The list is the server's and was fetched
+                                // once, when the view model was made -- so
+                                // a friend accepting an invitation half an
+                                // hour later changed nothing on the phone
+                                // that sent it, and "My witnesses · 0" sat
+                                // there under somebody who had said yes.
+                                // Nothing is going to tell this screen; it
+                                // has to ask.
+                                LaunchedEffect(Unit) { witnessViewModel.refresh() }
+
+                                // And again on coming back to the app,
+                                // because the usual way to send an invite
+                                // is to leave for WhatsApp and return --
+                                // sometimes to somebody who accepted while
+                                // you were in there.
+                                val owner = LocalLifecycleOwner.current
+                                DisposableEffect(owner) {
+                                    val watch = LifecycleEventObserver { _, event ->
+                                        if (event == Lifecycle.Event.ON_RESUME) witnessViewModel.refresh()
+                                    }
+                                    owner.lifecycle.addObserver(watch)
+                                    onDispose { owner.lifecycle.removeObserver(watch) }
+                                }
+
                                 val person = openPerson
                                 if (person != null) {
                                     // Figma 17.

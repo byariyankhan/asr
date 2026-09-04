@@ -123,9 +123,11 @@ export async function createInvite(userId: string, input: WitnessInvite) {
           invite_email: input.email ?? null,
           relationship: input.relationship,
         })
-        .returning(["id", "invite_code", "relationship", "invite_email", "invited_at"])
+        .returning(["id", "relationship", "invite_email", "invited_at"])
         .executeTakeFirstOrThrow();
-      const url = inviteUrl(row.invite_code);
+      // From the code that was just written, not read back out of a column
+      // that is nullable because accepted rows carry none.
+      const url = inviteUrl(code);
       if (input.email) {
         const inviter = await db.selectFrom("user").select("name").where("id", "=", userId).executeTakeFirstOrThrow();
         const mail = inviteEmail(inviter.name, input.relationship, url);
@@ -133,7 +135,7 @@ export async function createInvite(userId: string, input: WitnessInvite) {
         // still shareable from the app.
         sendEmail(input.email, mail.subject, mail.text).catch((e) => console.error("[invite email]", e));
       }
-      return { ...row, url };
+      return { ...row, invite_code: code, url };
     } catch (error) {
       if (!isUniqueViolation(error, "witness_invite_code_key")) throw error;
     }
@@ -192,17 +194,35 @@ export async function peekInvite(code: string, viewerId?: string) {
   };
 }
 
+/**
+ * Somebody opens the link and says yes.
+ *
+ * One link, any number of people. The invitation is a row that holds the
+ * code and stays open; accepting inserts a *witness* beside it rather than
+ * consuming it, so the same link works for the second person and the tenth.
+ * That is what an invite link is for, and it is what every sentence the
+ * product sends about one already promised.
+ *
+ * It used to be one row for both jobs, so the first acceptance spent the
+ * link and everybody after was told the invitation had already been
+ * answered.
+ *
+ * The exception is a relationship only one person can hold. Nobody has two
+ * mothers, so a mother's link closes when a mother accepts -- and does not
+ * merely start refusing, because an invitation nothing can answer is not an
+ * open one.
+ */
 export async function acceptInvite(witnessUserId: string, code: string) {
   if (!isInviteCode(code)) throw notFound("Invite");
-  const row = await db
+  const invitation = await db
     .selectFrom("witness")
     .select(witnessColumns)
     .where("invite_code", "=", code)
     .executeTakeFirst();
-  if (!row) throw notFound("Invite");
-  if (row.user_id === witnessUserId) throw conflict("own_invite", "You cannot witness yourself.");
-  if (row.status !== "invited") throw conflict("invite_used", "This invite was already answered.");
-  const pactId = row.pact_id;
+  if (!invitation) throw notFound("Invite");
+  if (invitation.user_id === witnessUserId) throw conflict("own_invite", "You cannot witness yourself.");
+  if (invitation.status !== "invited") throw conflict("invite_used", "This invite is closed.");
+  const pactId = invitation.pact_id;
   if (!pactId) throw conflict("challenge_over", "That challenge is no longer running.");
   const invitedTo = await db
     .selectFrom("pact")
@@ -217,52 +237,82 @@ export async function acceptInvite(witnessUserId: string, code: string) {
   }
 
   const now = new Date();
+  const singular = invitation.relationship != null && SINGULAR.has(invitation.relationship);
   try {
     const accepted = await db.transaction().execute(async (trx) => {
-      // The real gate. The invite link is a code that travels through group
-      // chats, so the question is not who was invited but who is opening it,
-      // and this is the last moment anybody can be told no.
-      await assertSingularFree(trx, pactId, row.relationship, row.id);
-      const updated = await trx
-        .updateTable("witness")
-        .set({ witness_user_id: witnessUserId, status: "accepted", responded_at: now, updated_at: now })
-        .where("id", "=", row.id)
-        .where("status", "=", "invited")
+      // The real gate, and the last moment anybody can be told no: the code
+      // travels through group chats, so the question is never who was
+      // invited but who is opening it.
+      await assertSingularFree(trx, pactId, invitation.relationship);
+      const witnessRow = await trx
+        .insertInto("witness")
+        .values({
+          id: newId(),
+          user_id: invitation.user_id,
+          pact_id: pactId,
+          witness_user_id: witnessUserId,
+          // Nothing to share: this row is a person watching, not an
+          // invitation, and the link it came from is still the invitation.
+          invite_code: null,
+          invite_email: null,
+          relationship: invitation.relationship,
+          status: "accepted",
+          responded_at: now,
+        })
         .returning(witnessColumns)
-        .executeTakeFirst();
-      if (!updated) throw conflict("invite_used", "This invite was already answered.");
+        .executeTakeFirstOrThrow();
+
+      if (singular) {
+        await trx
+          .updateTable("witness")
+          .set({ status: "removed", responded_at: now, updated_at: now })
+          .where("id", "=", invitation.id)
+          .execute();
+      }
 
       const witness = await trx.selectFrom("user").select("name").where("id", "=", witnessUserId).executeTakeFirstOrThrow();
       await queueNotification(trx, {
-        recipientId: row.user_id,
+        recipientId: invitation.user_id,
         aboutUserId: witnessUserId,
         kind: "witness_accepted",
         title: `${witness.name} is your witness`,
         body: `${witness.name} accepted. They'll know if your pact breaks.`,
-        deepLink: `/witnesses/${row.id}`,
+        deepLink: `/witnesses/${witnessRow.id}`,
       });
-      return updated;
+      return witnessRow;
     });
     return accepted;
   } catch (error) {
     if (isUniqueViolation(error, "witness_pair_idx")) {
-      throw conflict("already_witness", "You already witness this person.");
+      throw conflict("already_witness", "You already witness this person for this challenge.");
     }
     throw error;
   }
 }
 
+/**
+ * Somebody opens the link and says no.
+ *
+ * Nothing is written. The link belongs to everybody it was sent to, and one
+ * person declining must not close it for the rest -- which is what marking
+ * the shared row `declined` would do. Nor is there anything to record about
+ * this person: they are not a witness, and "declined" is not a state the
+ * inviter is shown or notified about anywhere.
+ *
+ * So this exists to answer the screen: the code is real and open, you are
+ * not being counted, and the button may close. Somebody who changes their
+ * mind can open the same link again, which is the right answer for a link
+ * that is still open.
+ */
 export async function declineInvite(witnessUserId: string, code: string): Promise<void> {
   if (!isInviteCode(code)) throw notFound("Invite");
-  const now = new Date();
-  const result = await db
-    .updateTable("witness")
-    .set({ witness_user_id: witnessUserId, status: "declined", responded_at: now, updated_at: now })
+  const invitation = await db
+    .selectFrom("witness")
+    .select(["user_id", "status"])
     .where("invite_code", "=", code)
-    .where("status", "=", "invited")
-    .where("user_id", "!=", witnessUserId)
     .executeTakeFirst();
-  if (result.numUpdatedRows === 0n) throw notFound("Invite");
+  if (!invitation || invitation.status !== "invited") throw notFound("Invite");
+  if (invitation.user_id === witnessUserId) throw conflict("own_invite", "You cannot witness yourself.");
 }
 
 /**
@@ -339,7 +389,7 @@ export async function listWitnesses(userId: string) {
       status: m.status,
       relationship: m.relationship,
       invite_code: m.status === "invited" ? m.invite_code : null,
-      invite_url: m.status === "invited" ? inviteUrl(m.invite_code) : null,
+      invite_url: m.status === "invited" && m.invite_code ? inviteUrl(m.invite_code) : null,
       invite_email: m.invite_email,
       user: m.witness_id
         ? { id: m.witness_id, name: m.witness_name, image: imagePath(m.witness_image) }

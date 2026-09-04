@@ -156,7 +156,7 @@ export interface WitnessTable {
    *  0004 whose account never started one; those are read as ended. */
   pact_id: string | null;
   witness_user_id: string | null;
-  invite_code: string;
+  invite_code: string | null;
   invite_email: string | null;
   relationship: Relationship | null;
   status: Generated<"invited" | "accepted" | "declined" | "removed">;

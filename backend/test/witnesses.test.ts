@@ -18,6 +18,11 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
   const carol = newId(); // second witness who declines
   let deviceId = "";
   let inviteCode = "";
+  // The accepted row, which is not the invitation row: one link may be
+  // taken by several people, so accepting inserts a witness beside the
+  // invitation rather than consuming it. Everything about *being* a witness
+  // -- the relationship, the notification switches, the reactions -- lives
+  // on this one.
   let witnessRowId = "";
 
   beforeAll(async () => {
@@ -55,7 +60,6 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
     expect(invite.invite_code).toMatch(/^[A-HJ-NP-Z2-9]{10}$/);
     expect(invite.url).toBe(`https://joinasr.io/w/${invite.invite_code}`);
     inviteCode = invite.invite_code;
-    witnessRowId = invite.id;
   });
 
   it("lets anyone peek at who is asking, and nothing else", async () => {
@@ -86,27 +90,40 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
     expect(await peekInvite(inviteCode)).toMatchObject({ own: false });
   });
 
-  it("refuses self-acceptance, accepts once, then reports the invite used", async () => {
+  it("refuses self-acceptance, accepts, and stays open for the next person", async () => {
     await expect(acceptInvite(alice, inviteCode)).rejects.toMatchObject({ code: "own_invite" });
     const row = await acceptInvite(bob, inviteCode);
     expect(row.status).toBe("accepted");
     expect(row.witness_user_id).toBe(bob);
-    await expect(acceptInvite(carol, inviteCode)).rejects.toMatchObject({ code: "invite_used" });
-    await expect(peekInvite(inviteCode)).rejects.toMatchObject({ status: 404 });
+    witnessRowId = row.id;
+
+    // The link is not spent. It was sent to be forwarded, and the second
+    // person to open it is the whole point of sending it that way.
+    expect(await peekInvite(inviteCode)).toMatchObject({ relationship: "sibling" });
+    // Bob is already watching this challenge, though, whichever link he
+    // opens. One person is one witness.
+    await expect(acceptInvite(bob, inviteCode)).rejects.toMatchObject({ code: "already_witness" });
 
     const told = await db.selectFrom("notification").select(["recipient_id", "kind"]).where("about_user_id", "=", bob).execute();
     expect(told).toEqual([{ recipient_id: alice, kind: "witness_accepted" }]);
   });
 
-  it("a declined invite is gone", async () => {
+  it("declining takes nothing and closes nothing", async () => {
     const second = await createInvite(alice, { relationship: "friend", email: "carol@example.com" });
     await declineInvite(carol, second.invite_code);
-    await expect(peekInvite(second.invite_code)).rejects.toMatchObject({ status: 404 });
+    // Still open: one person saying no is not everybody saying no, and the
+    // link belongs to everybody it was sent to.
+    expect(await peekInvite(second.invite_code)).toMatchObject({ relationship: "friend" });
+    const accepted = (await listWitnesses(alice)).my_witnesses.filter((w) => w.status === "accepted");
+    expect(accepted.map((w) => w.user?.name)).toEqual(["Bob"]);
   });
 
   it("lists both directions with a mutual flag", async () => {
     const forAlice = await listWitnesses(alice);
-    expect(forAlice.my_witnesses.map((w) => [w.user?.name, w.status, w.mutual])).toEqual([["Bob", "accepted", false]]);
+    // Filtered, because open invitations are listed too: they are what the
+    // Share button re-sends, and they are not witnesses.
+    const watching = forAlice.my_witnesses.filter((w) => w.status === "accepted");
+    expect(watching.map((w) => [w.user?.name, w.status, w.mutual])).toEqual([["Bob", "accepted", false]]);
     expect(forAlice.i_witness).toEqual([]);
 
     const forBob = await listWitnesses(bob);
@@ -124,7 +141,8 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
     });
     const back = await createInvite(bob, { relationship: "sibling" });
     await acceptInvite(alice, back.invite_code);
-    expect((await listWitnesses(alice)).my_witnesses[0]?.mutual).toBe(true);
+    const bobRow = (await listWitnesses(alice)).my_witnesses.find((w) => w.user?.id === bob);
+    expect(bobRow?.mutual).toBe(true);
     expect((await listWitnesses(bob)).i_witness[0]?.mutual).toBe(true);
   });
 
@@ -194,7 +212,9 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
 
   it("removing ends the relationship for both sides", async () => {
     await removeWitness(bob, witnessRowId);
-    expect((await listWitnesses(alice)).my_witnesses).toEqual([]);
+    // The invitations Alice sent are still hers to re-share; what is gone
+    // is the person who was watching.
+    expect((await listWitnesses(alice)).my_witnesses.filter((w) => w.status === "accepted")).toEqual([]);
     await expect(requireWitnessView(bob, witnessRowId)).rejects.toMatchObject({ status: 404 });
   });
 });

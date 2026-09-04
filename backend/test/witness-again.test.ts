@@ -68,7 +68,7 @@ describe.skipIf(!DATABASE_URL)("witnessing the same person twice", async () => {
 
     // And the list is about the challenge that is running, not both.
     const { my_witnesses: mine } = await listWitnesses(owner);
-    expect(mine.map((w) => w.id)).toEqual([accepted.id]);
+    expect(mine.filter((w) => w.status === "accepted").map((w) => w.id)).toEqual([accepted.id]);
   });
 
   it("still refuses twice on the same challenge", async () => {

@@ -232,18 +232,26 @@ without completion; the app learns about it on next sync.
 
 `relationship` is one of `mother`, `father`, `brother`, `sister`, `husband`,
 `wife`, `partner`, `friend`, `mentor`, `colleague`, `other`; it personalises
-invite copy and notifications. Each names one person, because a witness is
-one person and the sender knows which.
+invite copy and notifications.
+
+**One link, any number of people.** The invitation is a row that holds the
+code and stays open; accepting inserts a *witness* row beside it rather than
+consuming it, so the same link works for the second person and the tenth.
+Send one "friend" link to a group and everybody in it may take it.
 
 `parent`, `sibling` and `spouse` are also accepted and are what the app used
 to send. They are not offered any more; rows carrying them still read back.
 
-`mother`, `father`, `husband` and `wife` are singular: one accepted witness
-each. A second invite for one already accepted is `409 relationship_taken`,
-and so is accepting one — the link is a code that travels through group
-chats, so the gate that matters is at accept, not at invite. An unanswered
-invite does not hold the slot, so a mother who has not opened her link yet
-can be sent another.
+The exception is `mother`, `father`, `husband` and `wife`: one accepted
+witness each, because nobody has two mothers. A singular link **closes** when
+somebody takes it. A second invite for one already accepted is `409
+relationship_taken`, and so is accepting one — the link is a code that
+travels through group chats, so the gate that matters is at accept, not at
+invite. An unanswered invite does not hold the slot, so a mother who has not
+opened her link yet can be sent another.
+
+One person is one witness on a challenge whichever link they open: a second
+acceptance from the same person is `409 already_witness`.
 `201`:
 
 ```json
@@ -255,19 +263,27 @@ If `email` is given the delivery worker also sends the link by email.
 ### `GET /witnesses/invites/{code}`
 
 Public (no auth, per-IP limit). Returns `{ "inviter_name", "inviter_image", "relationship" }`
-so the accept screen can say "Ariyan wants you as a witness". `404` once the
-invite is answered. Never returns anything else.
+so the accept screen can say "Ariyan wants you as a witness". `404` when the
+challenge has ended, when a singular link has been taken, or when the code is
+not real — deliberately the same answer to all three, because it answers to
+anybody holding a code. Never returns anything else.
 
 ### `POST /witnesses/invites/{code}/accept`
 
-Authenticated as the witness. `200` with the `witness` row. `409
-invite_used` if already answered, `409 own_invite` for your own code, `409
-already_witness` if you already witness this person. The inviter gets a
-`witness_accepted` notification.
+Authenticated as the witness. `200` with the newly created `witness` row.
+`409 own_invite` for your own code, `409 already_witness` if you already
+witness this person on this challenge, `409 relationship_taken` if it is a
+singular relationship somebody else has taken, `409 invite_used` once a
+singular link has closed, `409 challenge_over` if the challenge ended between
+the link being sent and opened. The inviter gets a `witness_accepted`
+notification.
 
 ### `POST /witnesses/invites/{code}/decline`
 
-`204`.
+`204`. Writes nothing: the link belongs to everybody it was sent to, so one
+person declining must not close it for the rest, and "declined" is not a
+state the inviter is shown anywhere. Somebody who changes their mind can open
+the same link again.
 
 ### `GET /witnesses`
 
