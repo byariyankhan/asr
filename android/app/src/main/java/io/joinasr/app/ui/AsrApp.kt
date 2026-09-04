@@ -61,6 +61,7 @@ import io.joinasr.app.ui.screens.DashboardScreen
 import io.joinasr.app.ui.screens.DeleteAccountScreen
 import io.joinasr.app.ui.screens.EarnedScreen
 import io.joinasr.app.ui.screens.ForgotPasswordScreen
+import io.joinasr.app.ui.screens.HelpAndSupportScreen
 import io.joinasr.app.legal.LegalTexts
 import io.joinasr.app.ui.screens.LegalScreen
 import io.joinasr.app.ui.screens.LogInScreen
@@ -144,6 +145,7 @@ private sealed interface SetupStep {
 private val ProfileRoutes = setOf(
     ProfileDestination.PersonalDetails,
     ProfileDestination.EmailAndPassword,
+    ProfileDestination.HelpAndSupport,
     ProfileDestination.PrivacyPolicy,
     ProfileDestination.TermsOfService,
 )
@@ -1064,6 +1066,12 @@ fun AsrApp(
                                     busy = accountBusy,
                                     errorMessage = accountError,
                                     notice = accountNotice,
+                                )
+
+                                // Figma 35.
+                                ProfileDestination.HelpAndSupport -> HelpAndSupportScreen(
+                                    onBack = { profileRoute = null },
+                                    accountEmail = current.me.email,
                                 )
 
                                 // Figma 36 and 37.
