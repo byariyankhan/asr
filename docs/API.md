@@ -366,7 +366,8 @@ changes one function and no data.
   "user": { "id": "…", "name": "…" },
   "current": {
     "pact_id": "…", "day": 3, "of": 7, "status": "active", "starts_at": "…", "ends_at": "…",
-    "apps": [ { "label": "Instagram", "package": "com.instagram.android", "limit_min": 30 } ],
+    "apps": [ { "label": "Instagram", "package": "com.instagram.android", "limit_min": 30,
+                "minutes_used": 14, "earned_min": 0 } ],
     "apps_within_limits_today": { "within": 2, "total": 3 }
   },
   "streak_days": 3,
@@ -381,6 +382,11 @@ changes one function and no data.
 the active pact; `longest_streak_days` the most days any pact survived.
 `apps_within_limits_today` comes from today's daily summary if the phone
 sent one, otherwise from today's `limit_hit` events.
+
+`minutes_used` is today's figure from the daily summary, and is `null` when
+the phone has not sent one yet. Null rather than zero on purpose: a witness
+reading "0 / 20 min" would take it as somebody who has not opened the app,
+which is a different fact from not having heard from that phone today.
 
 ### `GET /me/reactions?limit=`
 

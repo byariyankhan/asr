@@ -21,7 +21,11 @@ data class WitnessInvite(
     val url: String,
 )
 
-/** A witness as the server holds them. */
+/** Somebody with an account, as they appear inside another resource. */
+@Serializable
+data class RemoteUser(val id: String, val name: String)
+
+/** A witness of mine, as the server holds them. */
 @Serializable
 data class RemoteWitness(
     val id: String,
@@ -29,14 +33,49 @@ data class RemoteWitness(
     val status: String,
     val relationship: String,
     @SerialName("invite_code") val inviteCode: String? = null,
-    @SerialName("witness_name") val witnessName: String? = null,
+    @SerialName("invite_url") val inviteUrl: String? = null,
+    /** Null until they accept: an invite has no person behind it yet. */
+    val user: RemoteUser? = null,
+    /** True when they are also somebody I am a witness for. */
+    val mutual: Boolean = false,
     @SerialName("invited_at") val invitedAt: String? = null,
 ) {
     val accepted: Boolean get() = status == "accepted"
 }
 
+/** Somebody I am a witness for. The other direction. */
+@Serializable
+data class SupportedPerson(
+    val id: String,
+    val relationship: String,
+    val user: RemoteUser,
+    val mutual: Boolean = false,
+    @SerialName("views_progress") val viewsProgress: Boolean = true,
+)
+
+/**
+ * GET /v1/witnesses, whole.
+ *
+ * The route has always answered with two lists and this app decoded it as
+ * one array, so every refresh failed to parse and was reported as "the
+ * server sent something unexpected" -- which is why the witness list only
+ * ever showed what this phone had added locally. Both directions are read
+ * now, which is also what Figma 16 draws.
+ */
+@Serializable
+data class WitnessLists(
+    @SerialName("my_witnesses") val myWitnesses: List<RemoteWitness> = emptyList(),
+    @SerialName("i_witness") val iWitness: List<SupportedPerson> = emptyList(),
+)
+
 @Serializable
 private data class InviteRequest(val relationship: String)
+
+@Serializable
+private data class ReactionRequest(
+    @SerialName("event_id") val eventId: String,
+    val emoji: String,
+)
 
 /**
  * The witness half of the API: creating an invite and reading the list back.
@@ -62,13 +101,55 @@ class WitnessApi(
             call<WitnessInvite>(request)
         }
 
-    suspend fun list(token: String): ApiResult<List<RemoteWitness>> = withContext(Dispatchers.IO) {
+    suspend fun list(token: String): ApiResult<WitnessLists> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$baseUrl/v1/witnesses")
             .header("Authorization", "Bearer $token")
             .get()
             .build()
-        call<List<RemoteWitness>>(request)
+        call<WitnessLists>(request)
+    }
+
+    /** Figma 17: what somebody I am a witness for is doing. */
+    suspend fun progress(token: String, witnessId: String): ApiResult<WitnessProgress> =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/v1/witnesses/$witnessId/progress")
+                .header("Authorization", "Bearer $token")
+                .get()
+                .build()
+            call<WitnessProgress>(request)
+        }
+
+    /**
+     * Reacts to one of their events. One reaction per witness per event;
+     * sending again replaces it, which is what "you can change it later" on
+     * Figma 25 means.
+     */
+    suspend fun react(
+        token: String,
+        witnessId: String,
+        eventId: String,
+        emoji: String,
+    ): ApiResult<Unit> = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$baseUrl/v1/witnesses/$witnessId/reactions")
+            .header("Authorization", "Bearer $token")
+            .post(
+                ApiJson.encodeToString(ReactionRequest(eventId, emoji)).toRequestBody(JSON_MEDIA),
+            )
+            .build()
+        try {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    ApiResult.Ok(Unit)
+                } else {
+                    parseFailure(response.code, response.body?.string(), response.header("Retry-After"))
+                }
+            }
+        } catch (e: IOException) {
+            ApiResult.Offline(OFFLINE)
+        }
     }
 
     suspend fun remove(token: String, id: String): ApiResult<Unit> = withContext(Dispatchers.IO) {

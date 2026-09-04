@@ -41,6 +41,7 @@ export async function progressFor(userId: string) {
       .where("day", "=", today)
       .execute();
     const apps = current.snapshot.apps;
+    const today_by_app = new Map(summary.map((s) => [s.app_package, s]));
     let within: number;
     if (summary.length > 0) {
       const over = new Set(summary.filter((s) => s.minutes_used > s.limit_min + s.earned_min).map((s) => s.app_package));
@@ -63,7 +64,20 @@ export async function progressFor(userId: string) {
       status: current.status,
       starts_at: current.starts_at,
       ends_at: current.ends_at,
-      apps: apps.map((a) => ({ label: a.label, package: a.package, limit_min: a.daily_limit_min })),
+      // minutes_used is null rather than 0 when the phone has not sent
+      // today's summary yet. A witness looking at "0 / 20 min" would read it
+      // as somebody who has not opened the app, which is a different fact
+      // from "we have not heard from that phone today".
+      apps: apps.map((a) => {
+        const today = today_by_app.get(a.package);
+        return {
+          label: a.label,
+          package: a.package,
+          limit_min: a.daily_limit_min,
+          minutes_used: today ? today.minutes_used : null,
+          earned_min: today ? today.earned_min : 0,
+        };
+      }),
       apps_within_limits_today: { within, total: apps.length },
     };
   }

@@ -24,8 +24,16 @@ data class Witness(
     val inviteUrl: String? = null,
     /** True once the other person has opened the link and accepted. */
     val accepted: Boolean = false,
+    /** Their name, which only exists once they have accepted. */
+    val name: String? = null,
 ) {
-    val label: String get() = Relationships.labelFor(relationship)
+    /**
+     * What to call them. Their name once there is one, and the relationship
+     * until then — which is not a placeholder but the truth: an invite that
+     * has not been accepted has no person behind it yet.
+     */
+    val label: String get() = name?.takeIf { it.isNotBlank() }
+        ?: Relationships.labelFor(relationship)
 }
 
 /**

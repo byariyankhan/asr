@@ -38,6 +38,21 @@ data class PactCreate(
     val snapshot: PactSnapshot,
 )
 
+@Serializable
+data class SummaryApp(
+    @SerialName("package") val packageName: String,
+    @SerialName("minutes_used") val minutesUsed: Int,
+    @SerialName("limit_min") val limitMinutes: Int,
+    @SerialName("earned_min") val earnedMinutes: Int = 0,
+)
+
+@Serializable
+data class SummaryCreate(
+    /** The local day these figures belong to, as YYYY-MM-DD. */
+    val day: String,
+    val apps: List<SummaryApp>,
+)
+
 /** The server's copy of a challenge. Only the id is used by this app. */
 @Serializable
 data class RemotePact(val id: String, val status: String? = null)
@@ -102,6 +117,35 @@ class PactApi(
                     )
                 } else {
                     parseFailure(response.code, body, response.header("Retry-After"))
+                }
+            }
+        } catch (e: IOException) {
+            ApiResult.Offline("No connection.")
+        }
+    }
+
+    /**
+     * Today's figures, so a witness sees numbers rather than only breaches.
+     *
+     * An upsert on (pact, day, app), so sending it again through the day is
+     * how the witness's screen stays current rather than a duplicate.
+     */
+    suspend fun postSummary(
+        token: String,
+        pactId: String,
+        body: SummaryCreate,
+    ): ApiResult<Unit> = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$baseUrl/v1/pacts/$pactId/summary")
+            .header("Authorization", "Bearer $token")
+            .post(ApiJson.encodeToString(body).toRequestBody(JSON_MEDIA))
+            .build()
+        try {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    ApiResult.Ok(Unit)
+                } else {
+                    parseFailure(response.code, response.body?.string(), null)
                 }
             }
         } catch (e: IOException) {

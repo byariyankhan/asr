@@ -175,7 +175,7 @@ class EnforcementService : Service() {
             return Enforcement.IDLE_MILLIS
         }
 
-        flushIfDue(current, now)
+        flushIfDue(current, now, snapshot.minutesByPackage)
 
         when (val decision = Enforcement.decide(current, snapshot)) {
             Decision.Allow -> blocking = null
@@ -243,11 +243,19 @@ class EnforcementService : Service() {
      * Empties the outbox now and then while a challenge is running, so an
      * event queued during a tunnel is not still sitting there a day later.
      */
-    private suspend fun flushIfDue(pact: Pact, nowMillis: Long) {
+    private suspend fun flushIfDue(
+        pact: Pact,
+        nowMillis: Long,
+        minutesByPackage: Map<String, Int>,
+    ) {
         if (nowMillis - lastFlushMillis < FLUSH_EVERY_MILLIS) return
         lastFlushMillis = nowMillis
         runCatching {
             sync.drain(pact)
+            // Today's figures, so a witness sees a challenge being kept and
+            // not only the moment one breaks. An upsert, so sending it again
+            // through the day is what keeps their screen current.
+            sync.sendSummary(pact, minutesByPackage)
             // Measured, not assumed. A heartbeat that always says true is
             // worse than none: it is what a witness would be trusting.
             sync.heartbeat(protectionEnabled = Permissions.canDrawOverlays(this))

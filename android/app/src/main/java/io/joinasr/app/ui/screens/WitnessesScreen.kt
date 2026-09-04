@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,72 +39,55 @@ import io.joinasr.app.ui.theme.AsrType
  * holds: INVITED until the other person opens the link and accepts, ACTIVE
  * afterwards.
  *
+ * It has no header and no scroller of its own, because Figma 16 puts it
+ * under a tab bar. Two nested scrolling columns is a thing Compose will
+ * happily let you build and a thing no scroll gesture survives.
+ *
  * The reaction badge the frame draws over each avatar is not here yet. The
  * endpoint exists; nothing in this app reads it, and an empty badge on every
  * row would be three pixels of decoration pretending to be data.
  */
 @Composable
-fun WitnessesScreen(
+fun ColumnScope.WitnessesBody(
     witnesses: List<Witness>,
     onAdd: () -> Unit,
     addEnabled: Boolean,
-    modifier: Modifier = Modifier,
 ) {
     val accepted = witnesses.count { it.accepted }
+    Spacer(Modifier.height(20.dp))
+    SummaryCard(count = witnesses.size, accepted = accepted)
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(AsrColors.Background)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp),
-    ) {
-        Spacer(Modifier.height(24.dp))
-        Text("ACCOUNTABILITY", style = AsrType.Eyebrow, color = AsrColors.Accent)
-        Spacer(Modifier.height(12.dp))
-        Text("Witnesses", style = AsrType.display(34), color = AsrColors.TextPrimary)
-        Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(26.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            "People who keep your challenge honest.",
-            style = AsrType.Field,
+            "Your witnesses",
+            style = AsrType.display(22),
+            color = AsrColors.TextPrimary,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            if (witnesses.isEmpty()) "none yet" else "${witnesses.size} invited",
+            style = AsrType.Label.copy(fontSize = 13.sp),
             color = AsrColors.TextSecondary,
         )
-
-        Spacer(Modifier.height(20.dp))
-        SummaryCard(count = witnesses.size, accepted = accepted)
-
-        Spacer(Modifier.height(26.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Your witnesses",
-                style = AsrType.display(22),
-                color = AsrColors.TextPrimary,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                if (witnesses.isEmpty()) "none yet" else "${witnesses.size} invited",
-                style = AsrType.Label.copy(fontSize = 13.sp),
-                color = AsrColors.TextSecondary,
-            )
-        }
-
-        Spacer(Modifier.height(14.dp))
-        if (witnesses.isEmpty()) {
-            EmptyState()
-        } else {
-            for (witness in witnesses) {
-                WitnessCard(witness)
-                Spacer(Modifier.height(12.dp))
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-        AddWitnessButton(onClick = onAdd, enabled = addEnabled)
-
-        Spacer(Modifier.height(16.dp))
-        LockNote()
-        Spacer(Modifier.height(24.dp))
     }
+
+    Spacer(Modifier.height(14.dp))
+    if (witnesses.isEmpty()) {
+        EmptyState()
+    } else {
+        for (witness in witnesses) {
+            WitnessCard(witness)
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+
+    Spacer(Modifier.height(14.dp))
+    AddWitnessButton(onClick = onAdd, enabled = addEnabled)
+
+    Spacer(Modifier.height(16.dp))
+    LockNote()
+    Spacer(Modifier.height(24.dp))
 }
 
 @Composable
@@ -296,21 +280,23 @@ private fun LockNote() {
 
 @Preview(widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
-private fun WitnessesEmptyPreview() {
-    AsrTheme { WitnessesScreen(witnesses = emptyList(), onAdd = {}, addEnabled = true) }
-}
-
-@Preview(widthDp = 393, heightDp = 852, showBackground = true)
-@Composable
 private fun WitnessesPreview() {
     AsrTheme {
-        WitnessesScreen(
-            witnesses = listOf(
-                Witness("1", "mother", 0, accepted = true),
-                Witness("2", "brother", 0),
-            ),
-            onAdd = {},
-            addEnabled = true,
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(AsrColors.Background)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
+        ) {
+            WitnessesBody(
+                witnesses = listOf(
+                    Witness("1", "parent", 0, accepted = true, name = "Mum"),
+                    Witness("2", "sibling", 0),
+                ),
+                onAdd = {},
+                addEnabled = true,
+            )
+        }
     }
 }

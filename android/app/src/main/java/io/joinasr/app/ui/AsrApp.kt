@@ -34,6 +34,8 @@ import io.joinasr.app.ui.screens.BlockingDisclosureScreen
 import io.joinasr.app.ui.screens.ChallengeStartedScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ChallengeEndedScreen
+import io.joinasr.app.ui.screens.CircleScreen
+import io.joinasr.app.ui.screens.CircleTab
 import io.joinasr.app.ui.screens.ChooseAppsScreen
 import io.joinasr.app.ui.screens.CheckEmailScreen
 import io.joinasr.app.ui.screens.DailyLimitsScreen
@@ -43,6 +45,7 @@ import io.joinasr.app.ui.screens.ForgotPasswordScreen
 import io.joinasr.app.legal.LegalTexts
 import io.joinasr.app.ui.screens.LegalScreen
 import io.joinasr.app.ui.screens.LogInScreen
+import io.joinasr.app.ui.screens.PersonDetailScreen
 import io.joinasr.app.ui.screens.PersonalDetailsScreen
 import io.joinasr.app.ui.screens.ProfileDestination
 import io.joinasr.app.ui.screens.ProfileScreen
@@ -55,7 +58,7 @@ import io.joinasr.app.ui.screens.SecurityScreen
 import io.joinasr.app.ui.screens.SignUpScreen
 import io.joinasr.app.ui.screens.UsageAccessScreen
 import io.joinasr.app.ui.screens.WelcomeScreen
-import io.joinasr.app.ui.screens.WitnessesScreen
+import io.joinasr.app.data.SupportedPerson
 import io.joinasr.app.witness.Relationships
 import io.joinasr.app.witness.WitnessViewModel
 import io.joinasr.app.ui.theme.AsrColors
@@ -130,6 +133,9 @@ fun AsrApp(
     val pendingShare by witnessViewModel.pendingShare.collectAsStateWithLifecycle()
     val inviting by witnessViewModel.inviting.collectAsStateWithLifecycle()
     val witnessError by witnessViewModel.error.collectAsStateWithLifecycle()
+    val supporting by witnessViewModel.supporting.collectAsStateWithLifecycle()
+    val witnessProgress by witnessViewModel.progress.collectAsStateWithLifecycle()
+    val reactions by witnessViewModel.reactions.collectAsStateWithLifecycle()
     val submitting by viewModel.submitting.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val accountBusy by accountViewModel.busy.collectAsStateWithLifecycle()
@@ -149,6 +155,9 @@ fun AsrApp(
     // need a navigation library.
     var profileRoute by remember { mutableStateOf<ProfileDestination?>(null) }
     var addingWitness by remember { mutableStateOf(false) }
+    // Figma 16's two halves, and Figma 17 stacked on the second of them.
+    var circleTab by remember { mutableStateOf(CircleTab.Mine) }
+    var openPerson by remember { mutableStateOf<SupportedPerson?>(null) }
     // Figma 31, which sits on top of Personal Details rather than in the
     // profile's row list: the design puts it at the bottom of that screen.
     var deletingAccount by remember { mutableStateOf(false) }
@@ -231,12 +240,13 @@ fun AsrApp(
     // which is what a bottom bar implies and what every app with one does.
     BackHandler(
         enabled = tab != AsrTab.Home || profileRoute != null || addingWitness ||
-            deletingAccount || showingProtectionLost,
+            deletingAccount || showingProtectionLost || openPerson != null,
     ) {
         when {
             showingProtectionLost -> showingProtectionLost = false
             deletingAccount -> deletingAccount = false
             profileRoute != null -> profileRoute = null
+            openPerson != null -> openPerson = null
             addingWitness -> addingWitness = false
             else -> tab = AsrTab.Home
         }
@@ -411,29 +421,54 @@ fun AsrApp(
 
                             AsrTab.Progress -> ProgressScreen(pact = activePact)
 
-                            AsrTab.Witnesses -> if (addingWitness) {
-                                AddWitnessesScreen(
-                                    fromName = current.me.name,
-                                    challengeDays = activePact.durationDays,
-                                    witnesses = witnesses,
-                                    onBack = { addingWitness = false },
-                                    onInvite = witnessViewModel::invite,
-                                    onContinue = { addingWitness = false },
-                                    pendingShare = pendingShare,
-                                    onShared = witnessViewModel::shared,
-                                    inviting = inviting,
-                                    errorMessage = witnessError,
-                                    // Not a setup step here: the eyebrow
-                                    // would be counting a flow the person is
-                                    // not in.
-                                    showStepNumber = false,
-                                )
-                            } else {
-                                WitnessesScreen(
-                                    witnesses = witnesses,
-                                    onAdd = { addingWitness = true },
-                                    addEnabled = witnesses.size < Relationships.SLOTS,
-                                )
+                            AsrTab.Witnesses -> {
+                                val person = openPerson
+                                if (person != null) {
+                                    // Figma 17.
+                                    PersonDetailScreen(
+                                        person = person,
+                                        progress = witnessProgress[person.id],
+                                        reactions = reactions,
+                                        onBack = { openPerson = null },
+                                        onReact = { eventId, emoji ->
+                                            witnessViewModel.react(person.id, eventId, emoji)
+                                        },
+                                    )
+                                } else if (addingWitness) {
+                                    AddWitnessesScreen(
+                                        fromName = current.me.name,
+                                        challengeDays = activePact.durationDays,
+                                        witnesses = witnesses,
+                                        onBack = { addingWitness = false },
+                                        onInvite = witnessViewModel::invite,
+                                        onContinue = { addingWitness = false },
+                                        pendingShare = pendingShare,
+                                        onShared = witnessViewModel::shared,
+                                        inviting = inviting,
+                                        errorMessage = witnessError,
+                                        // Not a setup step here: the eyebrow
+                                        // would be counting a flow the person is
+                                        // not in.
+                                        showStepNumber = false,
+                                    )
+                                } else {
+                                    // Figma 16, which contains Figma 15 as its
+                                    // first tab.
+                                    CircleScreen(
+                                        tab = circleTab,
+                                        onTab = { circleTab = it },
+                                        witnesses = witnesses,
+                                        supporting = supporting,
+                                        progress = witnessProgress,
+                                        onLoadProgress = witnessViewModel::loadProgress,
+                                        onOpenPerson = {
+                                            openPerson = it
+                                            witnessViewModel.loadProgress(it.id)
+                                        },
+                                        onAdd = { addingWitness = true },
+                                        addEnabled = witnesses.size < Relationships.SLOTS,
+                                    )
+                                }
                             }
 
                             AsrTab.Profile -> when (profileRoute) {

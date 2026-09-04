@@ -10,8 +10,11 @@ import io.joinasr.app.data.EventCreate
 import io.joinasr.app.data.PactCreate
 import io.joinasr.app.data.PactSnapshot
 import io.joinasr.app.data.SnapshotApp
+import io.joinasr.app.data.SummaryApp
+import io.joinasr.app.data.SummaryCreate
 import io.joinasr.app.enforcement.Pact
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -163,6 +166,32 @@ class Sync(context: Context) {
         val token = tokens.current() ?: return
         val device = deviceId() ?: return
         Api.devices.heartbeat(token, device, protectionEnabled, BuildConfig.VERSION_NAME)
+    }
+
+    /**
+     * Sends today's usage figures for [pact].
+     *
+     * This is what makes a witness's screen show numbers rather than only
+     * the moment something broke. It carries only the apps the person chose
+     * to limit, and only their totals -- never what else is on the phone,
+     * and never anything under an app they did not put in the challenge.
+     */
+    suspend fun sendSummary(pact: Pact, minutesByPackage: Map<String, Int>) {
+        val token = tokens.current() ?: return
+        val pactId = remotePactId(pact) ?: return
+        val apps = pact.apps.map {
+            SummaryApp(
+                packageName = it.packageName,
+                minutesUsed = (minutesByPackage[it.packageName] ?: 0).coerceIn(0, 1440),
+                limitMinutes = it.limitMinutes,
+            )
+        }
+        if (apps.isEmpty()) return
+        Api.pacts.postSummary(
+            token = token,
+            pactId = pactId,
+            body = SummaryCreate(day = LocalDate.now(ZoneId.systemDefault()).toString(), apps = apps),
+        )
     }
 
     /** Whether everything queued has gone through. */
