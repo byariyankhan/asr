@@ -87,6 +87,10 @@ export async function queueWitnessNotifications(
       "witness.roast_mode",
       "witness.relationship",
       "u.name as user_name",
+      // Asked for at sign-up and required before the profile counts as
+      // complete, so these messages say "he", "she" or "they" about the
+      // right person instead of guessing at one.
+      "u.gender as user_gender",
     ])
     .where("witness.user_id", "=", args.userId)
     // The witnesses of *this* challenge. Somebody who watched a pact that
@@ -109,6 +113,7 @@ export async function queueWitnessNotifications(
     const copy = event
       ? relationshipCopy(event, w.relationship, {
           userName: w.user_name,
+          gender: w.user_gender,
           appName: args.appName ?? "daily",
           extraMinutes: args.minutes ?? 0,
         })

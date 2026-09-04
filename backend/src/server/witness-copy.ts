@@ -1,4 +1,4 @@
-import type { Relationship } from "./db/schema";
+import type { Gender, Relationship } from "./db/schema";
 
 /**
  * What a witness is told, in the words of the relationship they hold.
@@ -48,6 +48,16 @@ export type WitnessEvent = "time_earned" | "challenge_abandoned" | "challenge_gi
 export type CopyVars = {
   /** The person being witnessed. */
   userName: string;
+  /**
+   * Theirs, from the profile. Sign-up asks for it and the profile is not
+   * complete without it, so this is a thing the product knows rather than a
+   * thing it guesses -- and half these messages are about a son, a husband
+   * or a sister, where getting it wrong is the whole message ruined.
+   *
+   * Null, "other" and "prefer_not_to_say" all read as they/them, which is
+   * the right answer to a question somebody declined to answer.
+   */
+  gender?: Gender | null;
   /** The app the limit was reached on, by its label: "TikTok", not a
    *  package name. Only `time_earned` uses it. */
   appName: string;
@@ -60,33 +70,96 @@ export type Copy = { title: string; body: string };
 type Template = { title: string; body: string };
 
 /**
- * `{userName}`, `{appName}` and `{extraMinutes}`, and nothing else.
+ * The words that change with who is being talked about.
+ *
+ * Verbs as well as pronouns, because "they is still playing by the rules" is
+ * not English. `{is}`, `{was}`, `{has}` and `{does}` exist for that, and
+ * belong only where the *pronoun* is the subject. Where `{userName}` is the
+ * subject the verb is singular whatever the pronoun -- "Ariyan is using them
+ * now", never "are" -- so those stay written out.
+ *
+ * `Their` and `They` are the capitalised forms, for the start of a sentence.
+ */
+type Pronouns = {
+  they: string;
+  them: string;
+  their: string;
+  themself: string;
+  is: string;
+  was: string;
+  has: string;
+  does: string;
+};
+
+const HE: Pronouns = {
+  they: "he", them: "him", their: "his", themself: "himself",
+  is: "is", was: "was", has: "has", does: "does",
+};
+const SHE: Pronouns = {
+  they: "she", them: "her", their: "her", themself: "herself",
+  is: "is", was: "was", has: "has", does: "does",
+};
+const THEY: Pronouns = {
+  they: "they", them: "them", their: "their", themself: "themselves",
+  is: "are", was: "were", has: "have", does: "do",
+};
+
+/**
+ * Singular "they" for anybody who did not say, which includes "other" and
+ * "prefer_not_to_say". Somebody who declined to answer has not thereby
+ * become a "he".
+ */
+export function pronounsFor(gender?: Gender | null): Pronouns {
+  if (gender === "male") return HE;
+  if (gender === "female") return SHE;
+  return THEY;
+}
+
+const KEYS = [
+  "userName", "appName", "extraMinutes",
+  "they", "them", "their", "themself",
+  "They", "Them", "Their",
+  "is", "was", "has", "does",
+] as const;
+
+const PATTERN = new RegExp(`\\{(${KEYS.join("|")})\\}`, "g");
+
+/**
+ * The placeholders above, and nothing else.
  *
  * Unknown placeholders are left alone rather than replaced with "undefined":
  * a typo in a template should look like a typo, not like a bug in whoever's
  * account it landed in.
  */
 function fill(template: string, vars: CopyVars): string {
-  return template.replace(/\{(userName|appName|extraMinutes)\}/g, (_, key: string) => {
-    if (key === "userName") return vars.userName;
-    if (key === "appName") return vars.appName;
-    return String(vars.extraMinutes);
+  const p = pronounsFor(vars.gender);
+  const capital = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+  return template.replace(PATTERN, (_, key: string) => {
+    switch (key) {
+      case "userName": return vars.userName;
+      case "appName": return vars.appName;
+      case "extraMinutes": return String(vars.extraMinutes);
+      case "They": return capital(p.they);
+      case "Them": return capital(p.them);
+      case "Their": return capital(p.their);
+      default: return p[key as keyof Pronouns];
+    }
   });
 }
 
 const TABLE: Record<string, Record<WitnessEvent, Template>> = {
   mother: {
     time_earned: {
-      title: "He earned a little more time 👀",
+      title: "{They} earned a little more time 👀",
       body:
         "Hey Mom, {userName} reached the {appName} limit, earned {extraMinutes} extra minutes, " +
-        "and is using them now. Don’t worry, he’s still playing by the rules.",
+        "and is using them now. Don’t worry, {they} {is} still playing by the rules.",
     },
     challenge_abandoned: {
       title: "The challenge ended early",
       body:
         "Hey Mom, {userName} removed Asr before finishing the challenge. The pact is now broken. " +
-        "You may want to have a little talk with him. 😅",
+        "You may want to have a little talk with {them}. 😅",
     },
     challenge_given_up: {
       title: "{userName} ended the challenge",
@@ -98,7 +171,7 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
   },
   father: {
     time_earned: {
-      title: "He earned his way back in.",
+      title: "{They} earned {their} way back in.",
       body:
         "Hey Dad, {userName} hit the {appName} limit, earned {extraMinutes} more minutes, and is " +
         "using them now. Still within the rules.",
@@ -127,13 +200,13 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     challenge_abandoned: {
       title: "{userName} found the emergency exit. 🏳️",
       body:
-        "Hey bro, {userName} couldn’t change the rules, so he deleted Asr instead. The challenge " +
+        "Hey bro, {userName} couldn’t change the rules, so {they} deleted Asr instead. The challenge " +
         "is officially over. You know what to do. 💀",
     },
     challenge_given_up: {
       title: "Tapped out. Voluntarily. 🏳️",
       body:
-        "Hey bro, {userName} opened the app and pressed Give up with their own thumb. " +
+        "Hey bro, {userName} opened the app and pressed Give up with {their} own thumb. " +
         "Nothing broke and nothing went missing — that was a choice, made on purpose, " +
         "in writing.",
     },
@@ -146,7 +219,7 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
         "immediately went back in. At least the scrolling had to be earned.",
     },
     challenge_abandoned: {
-      title: "Well… he actually deleted it. 💀",
+      title: "Well… {they} actually deleted it. 💀",
       body:
         "Hey sis, {userName} removed Asr before finishing the challenge. The pact is broken. This " +
         "information is now yours to use responsibly. Or not.",
@@ -154,7 +227,7 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     challenge_given_up: {
       title: "{userName} surrendered on purpose 🏳️",
       body:
-        "Hey sis, {userName} didn’t get caught and didn’t sneak off. They walked in and " +
+        "Hey sis, {userName} didn’t get caught and didn’t sneak off. {They} walked in and " +
         "quit, on purpose. Somehow that is worse. Over to you.",
     },
   },
@@ -215,7 +288,7 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     challenge_given_up: {
       title: "Withdrawn from the competition. 🏳️",
       body:
-        "{userName} ended the challenge themselves. Didn’t break it, didn’t sneak off — " +
+        "{userName} ended the challenge {themself}. Didn’t break it, didn’t sneak off — " +
         "just looked accountability in the eye and pressed Give up.",
     },
   },
@@ -230,7 +303,7 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
       title: "The commitment was ended early.",
       body:
         "{userName} removed Asr before completing the challenge, so the pact has been marked as " +
-        "broken. Your encouragement may help them reset and try again.",
+        "broken. Your encouragement may help {them} reset and try again.",
     },
     challenge_given_up: {
       title: "The challenge was ended.",

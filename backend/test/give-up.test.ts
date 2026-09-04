@@ -25,6 +25,7 @@ describe.skipIf(!DATABASE_URL)("giving up", async () => {
 
   const quitter = newId();
   const mother = newId();
+  const mate = newId();
   const snapshot = {
     apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }],
     reset_time: "00:00",
@@ -38,8 +39,12 @@ describe.skipIf(!DATABASE_URL)("giving up", async () => {
       .insertInto("user")
       .values(
         [
-          { id: quitter, name: "Ariyan" },
-          { id: mother, name: "Rehana" },
+          // The gender the profile actually holds. Sign-up asks for it and
+          // the profile is not complete without it, so the messages below
+          // have no reason to guess.
+          { id: quitter, name: "Ariyan", gender: "male" as const },
+          { id: mother, name: "Rehana", gender: null },
+          { id: mate, name: "Sabbir", gender: null },
         ].map((u) => ({ ...u, email: `${u.id}@test.local`, emailVerified: false, createdAt: now, updatedAt: now })),
       )
       .execute();
@@ -48,10 +53,12 @@ describe.skipIf(!DATABASE_URL)("giving up", async () => {
     pactId = pact.id;
     const invite = await createInvite(quitter, { relationship: "mother" });
     await acceptInvite(mother, invite.invite_code);
+    const mates = await createInvite(quitter, { relationship: "friend" });
+    await acceptInvite(mate, mates.invite_code);
   });
 
   afterAll(async () => {
-    await db.deleteFrom("user").where("id", "in", [quitter, mother]).execute();
+    await db.deleteFrom("user").where("id", "in", [quitter, mother, mate]).execute();
   });
 
   it("closes the challenge and tells the witness", async () => {
@@ -73,6 +80,15 @@ describe.skipIf(!DATABASE_URL)("giving up", async () => {
       .execute();
     expect(queued).toHaveLength(1);
     expect(queued[0]!.kind).toBe("pact_broken");
+
+    // And the friend's, which is where the pronoun shows: the profile says
+    // male, so it is "himself", not a hedge.
+    const toMate = await db
+      .selectFrom("notification")
+      .select(["title", "body"])
+      .where("recipient_id", "=", mate)
+      .executeTakeFirstOrThrow();
+    expect(`${toMate.title} ${toMate.body}`).toContain("himself");
 
     // The whole point of having a door. Every line of the abandoned copy
     // says the person removed the app; this person opened it and pressed

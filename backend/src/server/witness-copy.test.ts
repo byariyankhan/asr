@@ -179,3 +179,72 @@ describe("giving up, in nine voices", () => {
     expect(`${legacy.title} ${legacy.body}`).not.toMatch(/remov|delet/i);
   });
 });
+
+/**
+ * Whose challenge this is, said correctly.
+ *
+ * The profile asks for gender at sign-up and is not complete without it, so
+ * there is nothing to guess at here. Half these messages are about somebody's
+ * son, husband or sister; a message to a mother that calls her daughter "he"
+ * is the whole message ruined.
+ */
+describe("pronouns", () => {
+  const say = (event: WitnessEvent, relationship: string, gender: string | null) => {
+    const copy = relationshipCopy(event, relationship as never, {
+      userName: "Ariyan",
+      gender: gender as never,
+      appName: "Instagram",
+      extraMinutes: 15,
+    });
+    return `${copy.title} ${copy.body}`;
+  };
+
+  it("a man is he, a woman is she", () => {
+    expect(say("time_earned", "mother", "male")).toContain("he is still playing");
+    expect(say("time_earned", "mother", "female")).toContain("she is still playing");
+    expect(say("challenge_given_up", "friend", "male")).toContain("himself");
+    expect(say("challenge_given_up", "friend", "female")).toContain("herself");
+  });
+
+  it("anybody who did not say is they, and the verbs follow", () => {
+    for (const gender of [null, "other", "prefer_not_to_say"]) {
+      expect(say("time_earned", "mother", gender)).toContain("they are still playing");
+      expect(say("challenge_given_up", "friend", gender)).toContain("themselves");
+    }
+  });
+
+  /**
+   * Where the name is the subject the verb is singular whatever the pronoun.
+   * "Ariyan are using them now" was the first thing this got wrong.
+   */
+  it("keeps the verb singular after a name", () => {
+    for (const gender of [null, "male", "female"]) {
+      expect(say("time_earned", "mother", gender)).toContain("Ariyan reached");
+      expect(say("time_earned", "mother", gender)).toContain("and is using them now");
+    }
+  });
+
+  it("leaves no pronoun hardcoded anywhere in the table", () => {
+    for (const relationship of RELATIONSHIPS_WITH_COPY) {
+      for (const event of EVENTS) {
+        // Read as a woman's. Any "he", "his" or "him" left in a template
+        // would surface here and nowhere else until somebody's mother read
+        // it.
+        const asHers = say(event, relationship, "female");
+        expect(asHers).not.toMatch(/\b(he|his|him|himself)\b/i);
+        const asHis = say(event, relationship, "male");
+        expect(asHis).not.toMatch(/\b(she|herself)\b/i);
+      }
+    }
+  });
+
+  it("no placeholder survives into a message", () => {
+    for (const relationship of RELATIONSHIPS_WITH_COPY) {
+      for (const event of EVENTS) {
+        for (const gender of [null, "male", "female"]) {
+          expect(say(event, relationship, gender)).not.toMatch(/\{[A-Za-z]+\}/);
+        }
+      }
+    }
+  });
+});

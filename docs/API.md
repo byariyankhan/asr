@@ -295,6 +295,13 @@ one challenge cannot read another by id.
 `streak_days` is days in a row, ending yesterday, on which every limit held.
 Today never counts, and a day the phone never reported breaks it.
 
+Witness notification copy is composed on the server, per relationship and
+per event, and pushed as a finished title and body — so the voice of this
+product changes with a deploy, not an app update. Pronouns come from the
+profile's `gender`, which sign-up asks for and without which the profile is
+not complete; anyone who chose `other` or `prefer_not_to_say`, or has none
+recorded, is written about as they/them, verbs included.
+
 ### `GET /witnesses`
 
 Two lists: people witnessing me (pending and accepted), people I witness
