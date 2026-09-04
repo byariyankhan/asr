@@ -59,10 +59,14 @@ Per user (or per IP before auth), enforced in Redis:
 | Scope | Limit |
 |---|---|
 | sign up / sign in / password reset | 10 per 15 min per IP |
-| invite creation | 20 per day |
+| invites created | 20 per day (charged on the invite, not on the attempt) |
 | public invite lookup | 60 per minute per IP |
 | event ingestion | 120 per hour per device |
 | everything else | 300 per minute |
+
+A 429 carries `Retry-After` and says the wait in its message, because a
+refusal that does not say whether to come back in a minute or tomorrow
+leaves nothing to do but press the button again.
 
 ## Health
 
