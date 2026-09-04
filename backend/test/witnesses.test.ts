@@ -49,16 +49,30 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
   });
 
   it("lets anyone peek at who is asking, and nothing else", async () => {
-    // The name, the photo and the relationship. Nothing about the pact, the
-    // apps, or the email the invite went to -- whoever holds this code is a
-    // stranger until they accept. toEqual rather than toMatchObject on
-    // purpose: this is the boundary where a field added carelessly leaks.
+    // The name, the photo, the relationship, and how long the challenge
+    // runs. Nothing about the apps, the limits, or the email the invite went
+    // to -- whoever holds this code is a stranger until they accept.
+    // toEqual rather than toMatchObject on purpose: this is the boundary
+    // where a field added carelessly leaks, and it has already caught two.
     expect(await peekInvite(inviteCode)).toEqual({
       inviter_name: "Alice",
       inviter_image: null,
       relationship: "sibling",
+      // Alice has no active pact in this suite, so there is no duration to
+      // name and the page says "a challenge" rather than inventing a length.
+      days: null,
+      own: false,
     });
     await expect(peekInvite("NOPE")).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("tells the sender it is their own invitation, and tells nobody else", async () => {
+    // Not a permission -- anybody holding the code sees the same thing --
+    // it is so the app can stop offering Accept to the one person
+    // acceptInvite is guaranteed to refuse.
+    expect(await peekInvite(inviteCode, alice)).toMatchObject({ own: true });
+    expect(await peekInvite(inviteCode, bob)).toMatchObject({ own: false });
+    expect(await peekInvite(inviteCode)).toMatchObject({ own: false });
   });
 
   it("refuses self-acceptance, accepts once, then reports the invite used", async () => {

@@ -38,6 +38,22 @@ Add four repository secrets (Settings → Secrets and variables → Actions):
 | `ANDROID_CERT_SHA256` | optional; the app's signing certificate fingerprints, comma-separated. Served at `/.well-known/assetlinks.json`, and without it an invitation link opens a browser instead of the app. The Android CI job prints the debug one at the end of every run |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | optional; Cloudflare R2 for profile photos. Without them `POST /v1/me/avatar` answers 503. **See the shapes below** — three of these four are hex strings of different lengths and the page they are copied from also shows an API token, which is none of them |
 
+### Before pushing backend changes
+
+```
+cd backend && pnpm test:db
+```
+
+`pnpm test` alone skips every test that needs a database — `describe.skipIf`
+reports them as *skipped* and exits 0, which is more than a third of the
+suite. `test:db` starts a throwaway Postgres, migrates it and runs
+everything, so it fails where CI fails.
+
+And **look at CI, not only at Deploy**. Deploy is gated on CI passing, so a
+red CI shows up as a deploy that was *skipped* rather than one that failed —
+which is easy to read as "nothing to deploy". Five commits once went out
+that way.
+
 ### What the four R2 values look like
 
 Cloudflare's "Manage API token" page shows four things at once and only two

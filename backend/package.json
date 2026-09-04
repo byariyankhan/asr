@@ -15,7 +15,8 @@
     "db:migrate": "tsx src/server/db/migrate.ts up",
     "db:migrate:down": "tsx src/server/db/migrate.ts down",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:db": "./tools/test-with-db.sh"
   },
   "dependencies": {
     "better-auth": "^1.7.1",
