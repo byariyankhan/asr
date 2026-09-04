@@ -35,6 +35,7 @@ import io.joinasr.app.enforcement.Breach
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.enforcement.PactOutcome
 import io.joinasr.app.enforcement.PactResult
+import io.joinasr.app.ui.components.AsrAppIcon
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -164,20 +165,12 @@ private fun BreachCard(breach: Breach) {
             .padding(15.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AsrColors.Background)
-                    .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(14.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    breach.label.take(1).uppercase(),
-                    style = AsrType.display(18),
-                    color = AsrColors.Breach,
-                )
-            }
+            AsrAppIcon(
+                packageName = breach.packageName,
+                label = breach.label,
+                size = 48.dp,
+                corner = 14.dp,
+            )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(

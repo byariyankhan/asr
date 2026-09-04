@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import io.joinasr.app.earn.EarnActivity
 import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.enforcement.PactApp
+import io.joinasr.app.ui.components.AsrAppIcon
 import io.joinasr.app.ui.components.AsrBackChevron
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
@@ -498,7 +499,7 @@ fun EarnedScreen(
                 .padding(15.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AppInitial(activity.appLabel)
+            AsrAppIcon(activity.packageName, activity.appLabel)
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -579,7 +580,7 @@ private fun TargetApp(app: PactApp, earnedSoFar: Int) {
             .padding(15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AppInitial(app.label)
+        AsrAppIcon(app.packageName, app.label)
         Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -615,7 +616,7 @@ private fun RewardContext(activity: EarnActivity) {
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AppInitial(activity.appLabel)
+        AsrAppIcon(activity.packageName, activity.appLabel)
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -772,23 +773,6 @@ private fun RewardNote(title: String, body: String) {
     }
 }
 
-@Composable
-private fun AppInitial(label: String) {
-    Box(
-        modifier = Modifier
-            .size(52.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(AsrColors.Background)
-            .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(16.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            label.trim().take(1).uppercase().ifBlank { "?" },
-            style = AsrType.display(18),
-            color = AsrColors.Accent,
-        )
-    }
-}
 
 /** Thousands separated, because 2500 steps reads as a part number. */
 private fun format(value: Int): String = String.format(Locale.US, "%,d", value)

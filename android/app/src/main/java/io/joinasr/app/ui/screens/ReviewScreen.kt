@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.limits.DailyLimit
 import io.joinasr.app.ui.components.AsrBackChevron
+import io.joinasr.app.ui.components.AsrAppIcon
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -82,6 +83,7 @@ fun ReviewScreen(
         Spacer(Modifier.height(12.dp))
         for (app in apps) {
             LimitRow(
+                packageName = app.packageName,
                 label = app.label,
                 minutes = limits[app.packageName] ?: DailyLimit.DEFAULT_MINUTES,
             )
@@ -150,7 +152,7 @@ private fun SummaryCard(days: Int, apps: Int, witnesses: Int) {
 }
 
 @Composable
-private fun LimitRow(label: String, minutes: Int) {
+private fun LimitRow(packageName: String, label: String, minutes: Int) {
     val shape = RoundedCornerShape(15.dp)
     Row(
         modifier = Modifier
@@ -161,19 +163,7 @@ private fun LimitRow(label: String, minutes: Int) {
             .padding(horizontal = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .background(AsrColors.Background, RoundedCornerShape(10.dp))
-                .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                label.take(1).uppercase(),
-                style = AsrType.Field.copy(fontSize = 14.sp),
-                color = AsrColors.Accent,
-            )
-        }
+        AsrAppIcon(packageName = packageName, label = label, size = 32.dp, corner = 10.dp)
         Spacer(Modifier.width(12.dp))
         Text(
             label,
