@@ -785,7 +785,12 @@ fun AsrApp(
                                             witnessViewModel.loadProgress(it.id)
                                         },
                                         onAdd = { addingWitness = true },
-                                        addEnabled = witnesses.size < Relationships.SLOTS,
+                                        // On who accepted, not on who was
+                                        // invited: a pending invite must not
+                                        // stop somebody inviting anybody
+                                        // else while they wait.
+                                        addEnabled = witnesses.count { it.accepted } <
+                                            Relationships.SLOTS,
                                         hasChallenge = activePact != null,
                                     )
                                 }

@@ -92,4 +92,47 @@ class RelationshipsTest {
         assertEquals("Mother", Relationships.labelFor("mother"))
         assertEquals("Witness", Relationships.labelFor("nonsense"))
     }
+
+    // ---- who can hold a relationship ----
+
+    private fun accepted(relationship: String) =
+        Witness("1", relationship, 0, accepted = true)
+
+    private fun invited(relationship: String) = Witness("2", relationship, 0)
+
+    @Test
+    fun `a relationship only one person can hold disappears once taken`() {
+        val left = Relationships.available(listOf(accepted("mother")))
+        assertFalse(left.any { it.value == "mother" })
+        // The other singular ones are untouched: one mother does not mean
+        // one father.
+        assertTrue(left.any { it.value == "father" })
+        assertTrue(left.any { it.value == "wife" })
+    }
+
+    @Test
+    fun `a relationship several people can hold stays on the list`() {
+        val left = Relationships.available(listOf(accepted("brother"), accepted("friend")))
+        assertTrue(left.any { it.value == "brother" })
+        assertTrue(left.any { it.value == "friend" })
+        assertEquals(Relationships.all.size, left.size)
+    }
+
+    @Test
+    fun `an unanswered invite does not take the slot`() {
+        // The common case is a mother who has not opened the link yet.
+        // Hiding "Mother" then would stop somebody re-sending it to her.
+        val left = Relationships.available(listOf(invited("mother")))
+        assertTrue(left.any { it.value == "mother" })
+    }
+
+    @Test
+    fun `the singular set is exactly the four nobody has two of`() {
+        for (one in listOf("mother", "father", "husband", "wife")) {
+            assertTrue(one, Relationships.isSingular(one))
+        }
+        for (many in listOf("brother", "sister", "friend", "mentor", "colleague")) {
+            assertFalse(many, Relationships.isSingular(many))
+        }
+    }
 }

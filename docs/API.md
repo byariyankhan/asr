@@ -233,6 +233,13 @@ one person and the sender knows which.
 
 `parent`, `sibling` and `spouse` are also accepted and are what the app used
 to send. They are not offered any more; rows carrying them still read back.
+
+`mother`, `father`, `husband` and `wife` are singular: one accepted witness
+each. A second invite for one already accepted is `409 relationship_taken`,
+and so is accepting one — the link is a code that travels through group
+chats, so the gate that matters is at accept, not at invite. An unanswered
+invite does not hold the slot, so a mother who has not opened her link yet
+can be sent another.
 `201`:
 
 ```json

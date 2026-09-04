@@ -93,6 +93,30 @@ object Relationships {
     const val SLOTS = 3
 
     /**
+     * Relationships only one person can hold.
+     *
+     * Nobody has two mothers. The server refuses a second person accepting
+     * as one; this list is so the app does not offer the choice in the first
+     * place, because being told no after choosing and sharing is a worse way
+     * to learn a rule than never seeing the option.
+     */
+    private val singular = setOf("mother", "father", "husband", "wife")
+
+    fun isSingular(value: String): Boolean = value in singular
+
+    /**
+     * What is left to choose, given who has already accepted.
+     *
+     * Pending invites do not take a slot: the common case is a mother who
+     * has not opened the link yet, and hiding "Mother" because of an
+     * unanswered invite would stop somebody re-sending it to her.
+     */
+    fun available(witnesses: List<Witness>): List<Relationship> {
+        val taken = witnesses.filter { it.accepted }.map { it.relationship }.toSet()
+        return all.filterNot { isSingular(it.value) && it.value in taken }
+    }
+
+    /**
      * What the share sheet sends.
      *
      * One message per relationship, because the person receiving it is a

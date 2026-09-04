@@ -1,4 +1,6 @@
+import type { Kysely, Transaction } from "kysely";
 import { imagePath } from "./avatar";
+import type { Database } from "./db/schema";
 import { db, isUniqueViolation } from "./db/client";
 import { inviteEmail, sendEmail } from "./email";
 import { queueNotification } from "./notifications";
@@ -27,15 +29,71 @@ export const witnessColumns = [
   "updated_at",
 ] as const;
 
+type Db = Kysely<Database> | Transaction<Database>;
+
 const SITE_URL = () => process.env.PUBLIC_SITE_URL ?? "https://joinasr.io";
 
 export function inviteUrl(code: string): string {
   return `${SITE_URL()}/w/${code}`;
 }
 
+/**
+ * Relationships only one person can hold.
+ *
+ * Nobody has two mothers. A second person accepting as "mother" is not a
+ * second witness, it is a wrong one — and since the invite link is a code
+ * that gets forwarded through WhatsApp, "whoever opens it first" is exactly
+ * how a stranger ends up listed as somebody's wife.
+ *
+ * Brother, sister, friend, mentor and colleague are plural: several people
+ * can hold each, and each gets their own invite.
+ */
+const SINGULAR = new Set(["mother", "father", "husband", "wife"]);
+
+const ARTICLE: Record<string, string> = {
+  mother: "a mother",
+  father: "a father",
+  husband: "a husband",
+  wife: "a wife",
+};
+
+/**
+ * Refuses a second holder of a singular relationship.
+ *
+ * Checked against accepted rows only, so an invite that was never answered
+ * can be sent again — the common case is a mother who has not opened the
+ * link yet, and refusing to re-send to her would be the app enforcing a rule
+ * against the wrong person.
+ */
+async function assertSingularFree(
+  db_: Db,
+  userId: string,
+  relationship: string | null,
+  excludeWitnessId?: string,
+): Promise<void> {
+  if (!relationship || !SINGULAR.has(relationship)) return;
+  let query = db_
+    .selectFrom("witness")
+    .select("id")
+    .where("user_id", "=", userId)
+    .where("relationship", "=", relationship as never)
+    .where("status", "=", "accepted");
+  if (excludeWitnessId) query = query.where("id", "!=", excludeWitnessId);
+  const taken = await query.executeTakeFirst();
+  if (taken) {
+    throw conflict(
+      "relationship_taken",
+      `You already have ${ARTICLE[relationship] ?? "one"} as a witness.`,
+    );
+  }
+}
+
 // A new invite row. The email, if given, is sent by the delivery worker;
 // here it is only stored.
 export async function createInvite(userId: string, input: WitnessInvite) {
+  // Refused before a code is allocated, so the app can say why instead of
+  // handing somebody a link that will be rejected when it is opened.
+  await assertSingularFree(db, userId, input.relationship);
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateInviteCode();
     try {
@@ -107,6 +165,10 @@ export async function acceptInvite(witnessUserId: string, code: string) {
   const now = new Date();
   try {
     const accepted = await db.transaction().execute(async (trx) => {
+      // The real gate. The invite link is a code that travels through group
+      // chats, so the question is not who was invited but who is opening it,
+      // and this is the last moment anybody can be told no.
+      await assertSingularFree(trx, row.user_id, row.relationship, row.id);
       const updated = await trx
         .updateTable("witness")
         .set({ witness_user_id: witnessUserId, status: "accepted", responded_at: now, updated_at: now })

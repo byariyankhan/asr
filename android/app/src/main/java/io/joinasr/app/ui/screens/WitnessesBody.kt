@@ -55,9 +55,18 @@ fun ColumnScope.WitnessesBody(
     /** False when no challenge is running: there is nothing to witness yet. */
     hasChallenge: Boolean = true,
 ) {
-    val accepted = witnesses.count { it.accepted }
+    // Only the people who accepted.
+    //
+    // An invite that has been sent is not a witness, it is a message
+    // somebody may never open, and a list of them is a list of things the
+    // person cannot act on: they already know who they sent it to. Worse,
+    // three rows reading "Partner · INVITED" look like three witnesses,
+    // which is the one number on this screen that has to be true — it is
+    // what decides whether anybody finds out if the pact breaks.
+    val joined = witnesses.filter { it.accepted }
+
     Spacer(Modifier.height(20.dp))
-    SummaryCard(count = witnesses.size, accepted = accepted)
+    SummaryCard(count = joined.size, pending = witnesses.size - joined.size)
 
     Spacer(Modifier.height(26.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -68,17 +77,17 @@ fun ColumnScope.WitnessesBody(
             modifier = Modifier.weight(1f),
         )
         Text(
-            if (witnesses.isEmpty()) "none yet" else "${witnesses.size} invited",
+            if (joined.isEmpty()) "none yet" else "${joined.size} active",
             style = AsrType.Label.copy(fontSize = 13.sp),
             color = AsrColors.TextSecondary,
         )
     }
 
     Spacer(Modifier.height(14.dp))
-    if (witnesses.isEmpty()) {
-        EmptyState()
+    if (joined.isEmpty()) {
+        EmptyState(pendingInvites = witnesses.size)
     } else {
-        for (witness in witnesses) {
+        for (witness in joined) {
             WitnessCard(witness)
             Spacer(Modifier.height(12.dp))
         }
@@ -101,7 +110,7 @@ fun ColumnScope.WitnessesBody(
 }
 
 @Composable
-private fun SummaryCard(count: Int, accepted: Int) {
+private fun SummaryCard(count: Int, pending: Int) {
     val shape = RoundedCornerShape(20.dp)
     Column(
         modifier = Modifier
@@ -121,19 +130,19 @@ private fun SummaryCard(count: Int, accepted: Int) {
             )
             StatusPill(
                 text = when {
-                    count == 0 -> "NONE YET"
-                    accepted == count -> "ALL ACTIVE"
-                    else -> "INVITED"
+                    count > 0 -> "ACTIVE"
+                    pending > 0 -> "WAITING"
+                    else -> "NONE YET"
                 },
-                highlighted = count > 0 && accepted == count,
+                highlighted = count > 0,
             )
         }
         Spacer(Modifier.height(12.dp))
         Text(
             when {
-                count == 0 -> "Nobody is watching this challenge yet."
-                accepted == count -> "They'll be notified if you break the pact."
-                else -> "Invitations are out. They'll be notified once they accept."
+                count > 0 -> "They'll be notified if you break the pact."
+                pending > 0 -> "Nobody has accepted yet, so nobody would be told."
+                else -> "Nobody is watching this challenge yet."
             },
             style = AsrType.Field.copy(fontSize = 14.sp),
             color = AsrColors.TextSecondary,
@@ -212,7 +221,7 @@ private fun WitnessCard(witness: Witness) {
 }
 
 @Composable
-private fun EmptyState() {
+private fun EmptyState(pendingInvites: Int) {
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier = Modifier
@@ -221,12 +230,24 @@ private fun EmptyState() {
             .border(1.dp, AsrColors.FieldBorder, shape)
             .padding(18.dp),
     ) {
-        Text("No witnesses yet", style = AsrType.CardTitle, color = AsrColors.TextPrimary)
+        Text(
+            if (pendingInvites > 0) "Nobody has accepted yet" else "No witnesses yet",
+            style = AsrType.CardTitle,
+            color = AsrColors.TextPrimary,
+        )
         Spacer(Modifier.height(8.dp))
         Text(
-            "A witness is somebody who is told when you break your pact. " +
-                "Add one and Asr issues an invite link, then hands it to " +
-                "whatever you already use to talk to them.",
+            if (pendingInvites > 0) {
+                // Said once, as a number, because the alternative is a list
+                // of rows nobody can do anything with. Sending again is the
+                // only action there is, and the button below is it.
+                "You have sent $pendingInvites ${if (pendingInvites == 1) "invite" else "invites"}. " +
+                    "They appear here by name once somebody opens the link and accepts."
+            } else {
+                "A witness is somebody who is told when you break your pact. " +
+                    "Add one and Asr issues an invite link, then hands it to " +
+                    "whatever you already use to talk to them."
+            },
             style = AsrType.Legal,
             color = AsrColors.TextSecondary,
         )

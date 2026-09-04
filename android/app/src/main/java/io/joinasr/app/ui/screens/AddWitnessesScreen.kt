@@ -127,12 +127,19 @@ fun AddWitnessesScreen(
         Spacer(Modifier.height(20.dp))
         RuleCard()
 
+        // What is still choosable. A relationship only one person can hold
+        // disappears once somebody has accepted it: being refused after
+        // choosing and sharing is a worse way to learn the rule than never
+        // being offered it.
+        val options = Relationships.available(witnesses)
+
         Spacer(Modifier.height(18.dp))
         for (slot in 0 until Relationships.SLOTS) {
             val invited = witnesses.getOrNull(slot)
             WitnessSlot(
                 number = slot + 1,
                 invited = invited,
+                options = options,
                 selected = chosen[slot],
                 onSelect = { chosen[slot] = it },
                 busy = inviting,
@@ -201,6 +208,7 @@ private fun RuleCard() {
 private fun WitnessSlot(
     number: Int,
     invited: Witness?,
+    options: List<Relationship>,
     selected: Relationship?,
     onSelect: (Relationship) -> Unit,
     onShare: () -> Unit,
@@ -264,7 +272,7 @@ private fun WitnessSlot(
                     label = "",
                     selected = selected,
                     placeholder = "Select relationship",
-                    options = Relationships.all,
+                    options = options,
                     optionLabel = Relationship::label,
                     onSelect = onSelect,
                 )

@@ -93,7 +93,9 @@ fun CircleScreen(
         Tabs(
             tab = tab,
             onTab = onTab,
-            mine = witnesses.size,
+            // Accepted only, like the list under it. A tab reading "3" over
+            // a list of nobody is the app disagreeing with itself.
+            mine = witnesses.count { it.accepted },
             supporting = supporting.size,
         )
 
