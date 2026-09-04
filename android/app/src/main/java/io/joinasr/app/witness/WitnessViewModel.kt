@@ -11,6 +11,7 @@ import io.joinasr.app.data.WitnessProgress
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -33,6 +34,20 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
 
     val witnesses: StateFlow<List<Witness>> =
         store.witnesses.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Whether [witnesses] has answered yet.
+     *
+     * It is read from disk, so its first value is an empty list that means
+     * "not yet" rather than "nobody". Anything that acts on emptiness --
+     * and the app refuses to leave a running challenge with no witnesses --
+     * has to be able to tell those two apart, or it fires at everybody for
+     * the moment before the store replies.
+     */
+    val witnessesLoaded: StateFlow<Boolean> =
+        store.witnesses
+            .map { true }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val _inviting = MutableStateFlow(false)
     val inviting: StateFlow<Boolean> = _inviting.asStateFlow()

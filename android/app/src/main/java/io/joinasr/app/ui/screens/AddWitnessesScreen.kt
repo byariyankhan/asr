@@ -93,6 +93,15 @@ fun AddWitnessesScreen(
     modifier: Modifier = Modifier,
     /** The setup step shows its number and requires one; the tab does not. */
     showStepNumber: Boolean = true,
+    /**
+     * False while a challenge is running with nobody invited to it.
+     *
+     * There is nothing behind this screen then: the pact is committed, and
+     * a back chevron would offer to leave a challenge nobody is watching --
+     * which is a challenge in name only. Continue is already gated on
+     * having invited somebody; this closes the other way out.
+     */
+    showBack: Boolean = true,
 ) {
     val context = LocalContext.current
 
@@ -128,7 +137,7 @@ fun AddWitnessesScreen(
             .padding(horizontal = 24.dp),
     ) {
         Spacer(Modifier.height(20.dp))
-        AsrBackChevron(onBack)
+        if (showBack) AsrBackChevron(onBack) else Spacer(Modifier.height(48.dp))
 
         Spacer(Modifier.height(22.dp))
         if (showStepNumber) {
@@ -179,8 +188,10 @@ fun AddWitnessesScreen(
                 "Invitation shared. Invite as many people as you like — they " +
                     "appear in your circle once they accept."
             } else {
-                "Pick who they are to you, then Share hands the invitation to " +
-                    "whatever you already use to talk to them."
+                "A challenge nobody is watching is a challenge in name only, so " +
+                    "at least one invitation goes out before this one starts. Pick " +
+                    "who they are to you, and Share hands it to whatever you " +
+                    "already use to talk to them."
             },
             style = AsrType.Legal.copy(fontSize = 12.sp),
             color = if (enough) AsrColors.Accent else AsrColors.TextTertiary,

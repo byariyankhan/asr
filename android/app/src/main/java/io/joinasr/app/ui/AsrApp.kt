@@ -163,6 +163,7 @@ fun AsrApp(
     val supporting by witnessViewModel.supporting.collectAsStateWithLifecycle()
     val witnessProgress by witnessViewModel.progress.collectAsStateWithLifecycle()
     val reactions by witnessViewModel.reactions.collectAsStateWithLifecycle()
+    val witnessesLoaded by witnessViewModel.witnessesLoaded.collectAsStateWithLifecycle()
     val invite by witnessViewModel.invite.collectAsStateWithLifecycle()
     val inviteError by witnessViewModel.inviteError.collectAsStateWithLifecycle()
     val inviteBusy by witnessViewModel.inviteBusy.collectAsStateWithLifecycle()
@@ -239,8 +240,8 @@ fun AsrApp(
     // Figma 12. Not stored: it is a moment, not a state of the challenge,
     // and a person who closes the app during it has still started.
     var justStarted by remember { mutableStateOf(false) }
-    /** Whether the "add your witnesses" screen has been through once since
-     *  the challenge started. It is offered, not required. */
+    /** Whether Continue has been pressed on the witness screen since this
+     *  challenge started. Enabled only once an invitation has gone out. */
     var witnessesOffered by remember { mutableStateOf(false) }
 
     /**
@@ -606,18 +607,29 @@ fun AsrApp(
                         onSkip = { setupStep = SetupStep.Protection },
                     )
                 }
-            } else if (justStarted && pactState is PactState.Active) {
+            } else if (
+                pactState is PactState.Active &&
+                (justStarted || (witnessesLoaded && witnesses.isEmpty()))
+            ) {
+                // A challenge nobody is watching is a challenge in name only.
+                // The pact is committed by now -- it has to be, or there is
+                // nothing to invite anybody to -- so this is the one screen
+                // between starting and using the app, and it does not let go
+                // until an invitation has gone out.
+                //
+                // `witnessesLoaded` matters: the list is read from disk and
+                // its first emission is empty, which would flash this screen
+                // at somebody who has witnesses already.
                 val started = (pactState as PactState.Active).pact
-                if (!witnessesOffered) {
-                    // Figma 08, on the way out rather than on the way in. The
-                    // challenge exists now, so the links it issues point at
-                    // something real -- and skipping is allowed, because the
-                    // pact is already running and refusing to let somebody
-                    // past this screen would not un-start it.
+                if (witnesses.isEmpty() || !witnessesOffered) {
+                    // Figma 08, on the way out rather than on the way in.
+                    // The challenge exists now, so the links it issues point
+                    // at something real -- which is the whole reason it
+                    // moved, and the reason it cannot come before Review.
                     AddWitnessesScreen(
                         challengeDays = started.durationDays,
                         witnesses = witnesses,
-                        onBack = { witnessesOffered = true },
+                        onBack = {},
                         onInvite = witnessViewModel::invite,
                         onContinue = { witnessesOffered = true },
                         pendingShare = pendingShare,
@@ -625,6 +637,7 @@ fun AsrApp(
                         inviting = inviting,
                         errorMessage = witnessError,
                         showStepNumber = false,
+                        showBack = false,
                     )
                 } else {
                     // Figma 12.
