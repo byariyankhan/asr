@@ -25,6 +25,13 @@ import type { Relationship } from "./db/schema";
  *   protection switched off, or given up. This is the one that is allowed
  *   to bite.
  *
+ * Every message here is addressed to the witness, about the person being
+ * witnessed — because `relationship` is what the *witness* is: "Invited you
+ * as · Brother" means the reader is the brother. Four of these were written
+ * the other way round ("Your brother deleted Asr", sent to the brother), so
+ * they open the way that relationship is actually spoken to: Hey Mom, Hey
+ * Dad, Hey bro, Hey sis, Hey love.
+ *
  * Everything else a witness hears keeps the older, plainer copy in
  * notifications.ts: those events were not part of this spec, and inventing
  * nine voices for them would be guessing at a tone nobody asked for.
@@ -91,57 +98,57 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
   },
   brother: {
     time_earned: {
-      title: "Your brother worked for the scroll. 💀",
+      title: "{userName} worked for the scroll. 💀",
       body:
-        "{userName} ran out of {appName} time, earned {extraMinutes} more minutes, and went " +
-        "straight back in. Technically legal. Unfortunately.",
+        "Hey bro, {userName} ran out of {appName} time, earned {extraMinutes} more minutes, and " +
+        "went straight back in. Technically legal. Unfortunately.",
     },
     challenge_abandoned: {
-      title: "Your brother found the emergency exit. 🏳️",
+      title: "{userName} found the emergency exit. 🏳️",
       body:
-        "{userName} couldn’t change the rules, so he deleted Asr instead. The challenge is " +
-        "officially over. You know what to do. 💀",
+        "Hey bro, {userName} couldn’t change the rules, so he deleted Asr instead. The challenge " +
+        "is officially over. You know what to do. 💀",
     },
   },
   sister: {
     time_earned: {
-      title: "Your sibling is back at it 👀",
+      title: "{userName} is back at it 👀",
       body:
-        "{userName} hit the {appName} limit, earned {extraMinutes} extra minutes, and immediately " +
-        "went back in. At least the scrolling had to be earned.",
+        "Hey sis, {userName} hit the {appName} limit, earned {extraMinutes} extra minutes, and " +
+        "immediately went back in. At least the scrolling had to be earned.",
     },
     challenge_abandoned: {
       title: "Well… he actually deleted it. 💀",
       body:
-        "{userName} removed Asr before finishing the challenge. The pact is broken. This " +
+        "Hey sis, {userName} removed Asr before finishing the challenge. The pact is broken. This " +
         "information is now yours to use responsibly. Or not.",
     },
   },
   husband: {
     time_earned: {
-      title: "He earned a little extra time ❤️",
+      title: "Extra time, fairly earned ❤️",
       body:
-        "Your husband {userName} reached his {appName} limit, earned {extraMinutes} more minutes, " +
-        "and is using them now. He’s still keeping his commitment.",
+        "Hey love, {userName} reached the {appName} limit, earned {extraMinutes} more minutes, " +
+        "and is using them now. Still keeping the commitment.",
     },
     challenge_abandoned: {
-      title: "He gave up on this one.",
+      title: "{userName} gave up on this one.",
       body:
-        "Your husband {userName} removed Asr before the challenge ended. The pact is broken. A " +
+        "Hey love, {userName} removed Asr before the challenge ended. The pact is broken. A " +
         "gentle reminder from you may be more effective than anything Asr can send. 😶",
     },
   },
   wife: {
     time_earned: {
-      title: "She earned a little extra time ❤️",
+      title: "A little extra time, earned ❤️",
       body:
-        "Your wife {userName} reached her {appName} limit, earned {extraMinutes} more minutes, " +
-        "and is using them now. She’s still keeping her commitment.",
+        "Hey love, {userName} hit the {appName} limit, earned {extraMinutes} more minutes, and is " +
+        "using them now. The commitment still stands.",
     },
     challenge_abandoned: {
-      title: "She ended the challenge early.",
+      title: "{userName} ended the challenge early.",
       body:
-        "Your wife {userName} removed Asr before completing the challenge. The pact is broken. " +
+        "Hey love, {userName} removed Asr before completing the challenge. The pact is broken. " +
         "Asr will leave the rest of this conversation to you. 😶",
     },
   },

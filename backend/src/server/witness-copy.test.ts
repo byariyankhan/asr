@@ -64,8 +64,8 @@ describe("relationshipCopy", () => {
     const earned = (r: (typeof EXPECTED)[number]) => relationshipCopy("time_earned", r, vars).body;
     // Earning time is not a failure, so the warm relationships say so.
     expect(earned("mother")).toContain("still playing by the rules");
-    expect(earned("husband")).toContain("still keeping his commitment");
-    expect(earned("wife")).toContain("still keeping her commitment");
+    expect(earned("husband")).toContain("Still keeping the commitment");
+    expect(earned("wife")).toContain("The commitment still stands");
     expect(earned("mentor")).toContain("commitment is still intact");
     // And the roast ones do not.
     expect(relationshipCopy("time_earned", "brother", vars).title).toContain("💀");
@@ -94,5 +94,34 @@ describe("relationshipCopy", () => {
     expect(copy.body).toContain("Jonny");
     expect(copy.body).toContain("Instagram");
     expect(copy.body).toContain("25");
+  });
+
+  it("addresses the witness, never talks about them in the third person", () => {
+    // `relationship` is what the *witness* is, so "Your brother deleted
+    // Asr" sent to the brother is about himself. Four of these were written
+    // that way round. Each of them opens the way that relationship is
+    // actually spoken to instead.
+    const opener: Record<string, string> = {
+      mother: "Hey Mom,",
+      father: "Hey Dad,",
+      brother: "Hey bro,",
+      sister: "Hey sis,",
+      husband: "Hey love,",
+      wife: "Hey love,",
+    };
+    for (const [relationship, hello] of Object.entries(opener)) {
+      for (const event of EVENTS) {
+        const copy = relationshipCopy(event, relationship as never, vars);
+        expect(copy.body.startsWith(hello)).toBe(true);
+        expect(`${copy.title} ${copy.body}`).not.toMatch(/Your (brother|sister|husband|wife|sibling)/);
+      }
+    }
+    // Friend, mentor and colleague address nobody by title and never did.
+    for (const relationship of ["friend", "mentor", "colleague"] as const) {
+      for (const event of EVENTS) {
+        const copy = relationshipCopy(event, relationship, vars);
+        expect(copy.body.startsWith("Ariyan")).toBe(true);
+      }
+    }
   });
 });
