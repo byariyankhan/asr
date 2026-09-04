@@ -106,18 +106,41 @@ fun BlockedScreen(
         // offers is to stop, and earning more is the second thought — an app
         // whose block screen leads with a way around itself is a slot
         // machine with extra steps.
-        Text(
-            "Earn ${'$'}{EarnRules.REWARD_MINUTES} more minutes",
-            style = AsrType.Label.copy(fontSize = 14.sp),
-            color = AsrColors.Accent,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable(role = Role.Button, onClick = onEarnTime)
-                .padding(vertical = 10.dp),
-        )
+        EarnMore(onClick = onEarnTime)
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/**
+ * The way out, under the way to stop.
+ *
+ * Two lines rather than one. The question is what a person standing here is
+ * already asking themselves, and putting it in their words first makes the
+ * offer an answer instead of a sales line; the second line is the only thing
+ * on this screen that is tappable and green apart from the close button, so
+ * it does not need to shout to be found.
+ */
+@Composable
+private fun EarnMore(onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "Need more time?",
+            style = AsrType.Label.copy(fontSize = 13.sp),
+            color = AsrColors.TextSecondary,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Earn ${EarnRules.REWARD_MINUTES} minutes",
+            style = AsrType.Button.copy(fontSize = 15.sp),
+            color = AsrColors.Accent,
+        )
     }
 }
 

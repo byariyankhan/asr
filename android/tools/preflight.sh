@@ -64,6 +64,21 @@ else
   while IFS= read -r line; do fail "$line"; done < /tmp/preflight.err
 fi
 
+# A literal ${'$'}{...} in a Kotlin string.
+#
+# It compiles, it is not a warning, and it renders on the phone as the
+# expression's own source code. It happens when a file is written through a
+# shell heredoc and the $ is escaped to stop the shell eating it -- which
+# shipped once, as "Earn ${'$'}{EarnRules.REWARD_MINUTES} more minutes" on the
+# block screen, in front of the person it was meant to help.
+if grep -rn "\${'\$'}{" "$here/app/src" --include="*.kt" >/tmp/preflight.err 2>&1; then
+  while IFS= read -r line; do
+    fail "escaped \$ in a Kotlin string, so the phone shows the source: $line"
+  done < /tmp/preflight.err
+else
+  pass "no escaped interpolations"
+fi
+
 # Every screen must be reachable. A Composable nobody calls compiles fine and
 # ships as nothing at all, which is exactly the sort of thing that gets
 # noticed a week later.
