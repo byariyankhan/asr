@@ -8,9 +8,27 @@ file metadata, so it is written down once, here. The names are verbatim
 from the file; rename a frame in Figma and this table is what goes stale,
 not the code.
 
-Grouped by the order they get built, which is not their numbering: the
+Grouped by the order they got built, which is not their numbering: the
 loop a person lives in daily (13, 20-24) matters more than the account
-screens, and nothing can be tried at all until 01-02 exist.
+screens, and nothing could be tried at all until 01-02 existed.
+
+All 37 are built. Three of them do not match what the API or the platform
+allows, and the code says so where it deviates:
+
+- **17** draws Respect, Strong, Push and Roast. The API takes `laugh`,
+  `haha`, `shoe`, `tomato` and `clap`; the drawn four do not exist and would
+  be a 400 on every tap. The server's set is offered.
+- **18** lists the inviter's apps, days and limits. That lookup takes no
+  session — it answers to anybody holding a code — so returning somebody's
+  app list there would hand the most personal thing in the product to
+  whoever forwarded the message. The card says what a witness will see once
+  they accept.
+- **27** names Accessibility. This build blocks with a full-screen activity,
+  which Android permits only with "display over other apps", so that is what
+  the button opens.
+
+And one frame is missing: there is no completed-challenge screen. 26's
+structure is drawn with the result reversed until one exists.
 
 ## Onboarding and authentication
 

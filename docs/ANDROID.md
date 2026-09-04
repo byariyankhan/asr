@@ -32,25 +32,48 @@ whether protection is actually on — the "PROTECTED" pill reads the real
 permission state rather than always saying yes. Setup ends when the pact is
 committed, not on a flag, so the pact existing *is* what "set up" means.
 
-All four tabs exist — dashboard (13), progress (14), witnesses (15) and
-profile (28) — with the bar from Figma 12 drawn once around them. Setup runs
-all six of its steps, ends on the review screen (11) where the pact is
-committed, and passes through the started screen (12). Personal details
-(29), the privacy policy (36) and the terms (37) are built.
+**All 37 frames are built.** Four tabs — dashboard (13), progress (14),
+witnesses (15, now the first tab of 16) and profile (28) — with the bar from
+Figma 12 drawn once around them. Setup runs all six of its steps, ends on
+the review screen (11) where the pact is committed, and passes through the
+started screen (12).
 
-Witness invites are real: the app asks the server for an invite link and
-hands it to Android's share sheet. Acceptance is the other person's half and
-is not built here.
+**A challenge can end.** A breach is the block *failing to hold* — an app
+used three minutes past a limit that should have stopped it — and it is the
+only definition this architecture can measure. Reaching a limit is not a
+breach; that is the block working. Completion ends a challenge the same way.
+Either writes a `PactOutcome`, queues the event and clears the pact, in that
+order, so a phone that dies halfway comes back with a finished challenge and
+an event still to send. Figma 26 shows it.
 
-What does not exist yet: earning extra time (Figma 21–24), the two-way
-witness screens (16–18), the notification inbox (19), the breach and
-protection-lost screens (25–27), email and password (30), delete account
-(31), and password reset (33–35). Nothing about usage is sent to the server
-yet: the pact lives only on the phone, and `POST /v1/pacts` is unused.
+**The server is told.** `Sync` registers the device, creates the pact,
+reports events from an outbox and posts today's summary from the enforcement
+loop's flush. None of it is on the path of a limit: a challenge starts,
+enforces and breaks with no signal at all. Events carry a UUIDv7 made when
+they happened, so a week in flight mode reports a week-old breach with the
+time it occurred.
+
+**Witnesses work in both directions.** Invites are shared through Android's
+share sheet and opened by an App Link on `joinasr.io/w/` (Figma 18, which
+works signed out — the person being asked to vouch usually has no account).
+Figma 16 lists both halves, 17 shows what a witness may see, 19 is the
+inbox, 25 reacts to an event.
+
+**Earning time** (21–24) uses `TYPE_STEP_COUNTER` for walks, which the
+sensor hub keeps whether or not this app is running, and the enforcement
+loop itself for focus sessions — it is the only thing on the phone that can
+see a controlled app come to the front. Earned minutes raise today's
+allowance in `decide`, `pollDelayMillis` and `breach`, and never the pact.
 
 Storage is DataStore, not Room. The pact is one small immutable value read
-at service start and written once; Room earns its place with the usage
-history and the outbox, and that is the change that will bring it in.
+at service start and written once, and the outbox is a short list of events
+that have not been sent. Room earns its place with a real usage history, and
+that is the change that will bring it in.
+
+What is still missing is not a screen. Push notifications (no FCM token is
+ever registered, so witness alerts arrive only by email), the subscription
+and Play Billing, and the block screen not appearing on some devices despite
+the service running — that last one is a live bug, deferred deliberately.
 
 None of Hilt, Room, WorkManager or Play Billing is a dependency yet. They are
 named below because that is what this document is: the design of the app to
