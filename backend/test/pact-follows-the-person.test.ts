@@ -89,7 +89,7 @@ describe.skipIf(!DATABASE_URL)("a challenge outliving a phone", async () => {
       .where("kind", "=", "pact_moved")
       .execute();
     expect(moved).toHaveLength(1);
-    expect(moved[0].title).toContain("Ariyan");
+    expect(moved[0]?.title).toContain("Ariyan");
 
     // Claiming again from the phone that already owns it says nothing: a
     // heartbeat is not news, and a witness told twice stops reading them.
