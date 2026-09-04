@@ -328,7 +328,30 @@ class EnforcementService : Service() {
             // Measured, not assumed. A heartbeat that always says true is
             // worse than none: it is what a witness would be trusting.
             sync.heartbeat(protectionEnabled = Permissions.canDrawOverlays(this))
+            standDownIfHandedOver(pact)
         }
+    }
+
+    /**
+     * Lets go of a challenge that is being run somewhere else now.
+     *
+     * A challenge runs on one handset. When somebody moves it to another
+     * phone that phone says so, and this one has to actually stop -- two
+     * phones enforcing the same thirty minutes is sixty minutes, and two
+     * phones reporting the same day is a witness watching one number
+     * overwrite the other all day long.
+     *
+     * Clearing the pact is the whole stand-down: the flow this service reads
+     * it from stops the loop. It is not an ending -- no outcome is written,
+     * no event is queued, nobody is told anything -- because nothing ended.
+     * The challenge is still running; it is running over there.
+     *
+     * Only ever on a definite yes. [Sync.handedOver] answers false for no
+     * signal, and a phone in a tunnel must not drop the limits it is
+     * enforcing.
+     */
+    private suspend fun standDownIfHandedOver(pact: Pact) {
+        if (sync.handedOver(pact)) store.clear()
     }
 
     /**

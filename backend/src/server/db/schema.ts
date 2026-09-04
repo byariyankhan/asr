@@ -104,6 +104,7 @@ export type EventType =
   | "protection_lost"
   | "uninstalled"
   | "restored"
+  | "moved"
   | "limit_hit"
   | "activity_completed"
   | "activity_failed";

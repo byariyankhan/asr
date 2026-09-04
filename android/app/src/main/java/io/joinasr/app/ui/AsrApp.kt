@@ -49,6 +49,7 @@ import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ActivityProgressScreen
 import io.joinasr.app.ui.screens.ActivityTrackingScreen
 import io.joinasr.app.challenge.ChallengeProgress
+import io.joinasr.app.ui.screens.ChallengeElsewhereScreen
 import io.joinasr.app.ui.screens.ChallengeEndedScreen
 import io.joinasr.app.ui.screens.GiveUpScreen
 import io.joinasr.app.ui.screens.ChooseActivityScreen
@@ -165,6 +166,8 @@ fun AsrApp(
     val session by viewModel.session.collectAsStateWithLifecycle()
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
     val restoringPact by pactViewModel.restoring.collectAsStateWithLifecycle()
+    val challengeElsewhere by pactViewModel.elsewhere.collectAsStateWithLifecycle()
+    val takingOver by pactViewModel.takingOver.collectAsStateWithLifecycle()
     val endedUnseen by pactViewModel.endedUnseen.collectAsStateWithLifecycle()
     val witnesses by witnessViewModel.witnesses.collectAsStateWithLifecycle()
     val pendingShare by witnessViewModel.pendingShare.collectAsStateWithLifecycle()
@@ -280,6 +283,18 @@ fun AsrApp(
      */
     var startingChallenge by remember { mutableStateOf(false) }
 
+    /**
+     * Whether the person is moving a challenge from another phone onto this
+     * one, and how far through the permissions they are.
+     *
+     * The same two screens as setup, for the same two grants, because taking
+     * a challenge over needs them exactly as much as starting one does --
+     * and a phone that has just reinstalled the app has neither. Not stored:
+     * backing out leaves the challenge where it was.
+     */
+    var movingHere by remember { mutableStateOf(false) }
+    var moveStep by remember { mutableStateOf<SetupStep>(SetupStep.UsageAccess) }
+
     // Held here and nowhere else, for the length of the setup flow only. A
     // half-made challenge is not something the app should remember: it is
     // committed whole on the last step, or it never existed. After that it
@@ -293,6 +308,13 @@ fun AsrApp(
     // stops itself when there is no pact, so there is nothing to guard.
     LaunchedEffect(pactState) {
         if (pactState is PactState.Active) EnforcementService.start(context)
+        // A challenge can also go the other way: somebody moved it to
+        // another phone, the loop here stood down and cleared it. Asking
+        // again is what turns that into "it is running over there" rather
+        // than into an offer to start a second one the server would refuse.
+        if (pactState is PactState.None && session is Session.SignedIn) {
+            pactViewModel.restoreFromServer()
+        }
     }
 
     // Moving between the forms drops whatever the last one was refused for.
@@ -479,6 +501,7 @@ fun AsrApp(
     // property cannot be, and `!!` on the thing that tells somebody their
     // challenge broke is not where to be casual.
     val ended = endedUnseen
+    val elsewhere = challengeElsewhere
     val code = inviteCode
     val signedIn = session is Session.SignedIn
 
@@ -571,6 +594,53 @@ fun AsrApp(
                     },
                     onDismiss = pactViewModel::acknowledgeEnded,
                 )
+            } else if (elsewhere != null && pactState is PactState.None) {
+                // The account has a challenge and this phone is not the one
+                // running it: a second handset, or the same one after a
+                // reinstall. Not a dashboard, because a dashboard here would
+                // be drawn from numbers this phone cannot measure -- and not
+                // an offer to start one, because starting a second challenge
+                // is the one thing that must not happen.
+                if (!movingHere) {
+                    ChallengeElsewhereScreen(
+                        challenge = elsewhere,
+                        busy = takingOver,
+                        onContinueHere = {
+                            // Straight through when the grants are already
+                            // here, which is the phone that has run a
+                            // challenge before. A reinstall has neither, and
+                            // an uninstall is exactly how they were lost.
+                            if (PermissionState.read(context).requiredGranted) {
+                                pactViewModel.takeOverOnThisPhone()
+                            } else {
+                                moveStep = SetupStep.UsageAccess
+                                movingHere = true
+                            }
+                        },
+                    )
+                } else when (moveStep) {
+                    SetupStep.BlockingDisclosure -> BlockingDisclosureScreen(
+                        onBack = { moveStep = SetupStep.Protection },
+                        onGranted = { moveStep = SetupStep.Protection },
+                        onSkip = { moveStep = SetupStep.Protection },
+                    )
+
+                    SetupStep.Protection -> ProtectionScreen(
+                        onBack = { moveStep = SetupStep.UsageAccess },
+                        onReviewBlocking = { moveStep = SetupStep.BlockingDisclosure },
+                        // The challenge moves here on this press and not
+                        // before: everything up to it can be backed out of.
+                        onContinue = {
+                            movingHere = false
+                            pactViewModel.takeOverOnThisPhone()
+                        },
+                    )
+
+                    else -> UsageAccessScreen(
+                        onBack = { movingHere = false },
+                        onGranted = { moveStep = SetupStep.Protection },
+                    )
+                }
             } else if (startingChallenge && pactState is PactState.None) {
                 when (setupStep) {
                     // Figma 04. Its frame has no chevron, drawn when setup

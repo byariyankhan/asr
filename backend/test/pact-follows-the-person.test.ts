@@ -39,7 +39,7 @@ describe.skipIf(!DATABASE_URL)("a challenge outliving a phone", async () => {
         ].map((u) => ({ ...u, email: `${u.id}@test.local`, emailVerified: false, createdAt: now, updatedAt: now })),
       )
       .execute();
-    oldPhone = (await registerDevice(owner, { install_id: "old-phone", app_version: "1.0.0", fcm_token: "tok-old" })).id;
+    oldPhone = (await registerDevice(owner, { install_id: "old-phone", model: "Galaxy A54", app_version: "1.0.0", fcm_token: "tok-old" })).id;
     await createPact(owner, { device_id: oldPhone, duration_days: 30, timezone: "Asia/Dhaka", snapshot });
     const invite = await createInvite(owner, { relationship: "friend" });
     await acceptInvite(friend, invite.invite_code);
@@ -60,16 +60,48 @@ describe.skipIf(!DATABASE_URL)("a challenge outliving a phone", async () => {
     expect(current.duration_days).toBe(30);
     expect(current.starts_at).toBeInstanceOf(Date);
     expect(current.timezone).toBe("Asia/Dhaka");
+    // And the name of the handset running it. One challenge runs on one
+    // phone, so a second one has to be able to say which -- "running on your
+    // Galaxy A54" rather than on a uuid nobody recognises.
+    expect(current.device_model).toBe("Galaxy A54");
   });
 
   it("a new phone takes it over, and the old one no longer owns it", async () => {
-    const newPhone = (await registerDevice(owner, { install_id: "new-phone", app_version: "1.0.0", fcm_token: "tok-new" })).id;
+    const newPhone = (await registerDevice(owner, { install_id: "new-phone", model: "Pixel 8", app_version: "1.0.0", fcm_token: "tok-new" })).id;
     const pact = (await getCurrentPact(owner))!;
     expect(pact.device_id).toBe(oldPhone);
 
     const claimed = await claimPact(owner, pact.id, newPhone);
     expect(claimed.device_id).toBe(newPhone);
     expect((await getCurrentPact(owner))!.id).toBe(pact.id);
+    // The name follows the ownership, so the phone that just let go of it is
+    // told where it went rather than being told about itself.
+    expect((await getCurrentPact(owner))!.device_model).toBe("Pixel 8");
+
+    // And the people watching are told, because this is the one move that
+    // could be an escape: a challenge runs on one phone, so parking it on a
+    // handset nobody uses would leave the real one unblocked and reporting
+    // nothing. Somebody replacing a broken phone has nothing to hide by it.
+    const moved = await db
+      .selectFrom("notification")
+      .select(["kind", "title", "body"])
+      .where("recipient_id", "=", friend)
+      .where("kind", "=", "pact_moved")
+      .execute();
+    expect(moved).toHaveLength(1);
+    expect(moved[0].title).toContain("Ariyan");
+
+    // Claiming again from the phone that already owns it says nothing: a
+    // heartbeat is not news, and a witness told twice stops reading them.
+    await claimPact(owner, pact.id, newPhone);
+    expect(
+      await db
+        .selectFrom("notification")
+        .select("id")
+        .where("recipient_id", "=", friend)
+        .where("kind", "=", "pact_moved")
+        .execute(),
+    ).toHaveLength(1);
 
     // Which is what makes the old phone's death mean nothing: it is not the
     // one running this challenge any more.

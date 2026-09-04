@@ -12,6 +12,7 @@ export type WitnessKind =
   | "pact_broken"
   | "protection_lost"
   | "uninstalled"
+  | "pact_moved"
   | "time_earned";
 export type NotificationKind = WitnessKind | "witness_accepted" | "witness_removed" | "reaction" | "activity_failed";
 
@@ -28,6 +29,13 @@ const PREF_FOR_KIND: Record<
   // running as designed. It goes to the witnesses who asked to see progress,
   // and to nobody who only wanted to hear about the ending.
   time_earned: "views_progress",
+  // Moving a challenge to another phone is not a failure and not an ending,
+  // so it does not go to somebody who only asked to hear how it turned out.
+  // It goes to the witnesses watching it happen -- because it is the one
+  // move that could be an escape. A challenge runs on one phone, and taking
+  // it onto a handset nobody uses would leave the real one unblocked with
+  // nothing on the record. This is that record.
+  pact_moved: "views_progress",
 };
 
 /**
@@ -185,6 +193,16 @@ export function witnessCopy(kind: WitnessKind, name: string, roast: boolean): { 
       return roast
         ? { title: `${name} deleted the app`, body: `${name} removed Asr mid-pact. Bold move.` }
         : { title: `${name} removed Asr`, body: `${name} uninstalled the app during their pact, so it ended as broken.` };
+    case "pact_moved":
+      return roast
+        ? {
+            title: `${name} changed phones`,
+            body: `${name} moved the challenge to another phone. Same days, same limits, new handset.`,
+          }
+        : {
+            title: `${name} moved to another phone`,
+            body: `${name}'s challenge is being kept on a different phone now. The days and the limits are unchanged.`,
+          };
     case "protection_lost":
       return roast
         ? { title: `${name} went dark`, body: `${name}'s protection has been off for a day. Suspicious.` }

@@ -75,13 +75,29 @@ export async function createPact(userId: string, input: PactCreate) {
   }
 }
 
+/**
+ * The active challenge, and which handset is running it.
+ *
+ * `device_model` is here because the answer a second phone has to give its
+ * owner is not "this pact is owned by 0191ab...", it is "your challenge is
+ * running on your Galaxy A54". A phone signed into an account it has just
+ * signed into cannot know that name any other way -- the row belongs to a
+ * device it has never met.
+ */
 export async function getCurrentPact(userId: string) {
-  return db
+  const pact = await db
     .selectFrom("pact")
     .select(pactColumns)
     .where("user_id", "=", userId)
     .where("status", "=", "active")
     .executeTakeFirst();
+  if (!pact) return undefined;
+  const device = await db
+    .selectFrom("device")
+    .select("model")
+    .where("id", "=", pact.device_id)
+    .executeTakeFirst();
+  return { ...pact, device_model: device?.model ?? null };
 }
 
 /**
@@ -104,12 +120,43 @@ export async function claimPact(userId: string, pactId: string, deviceId: string
   }
   await requireOwnedDevice(userId, deviceId);
   if (pact.device_id === deviceId) return pact;
-  return db
-    .updateTable("pact")
-    .set({ device_id: deviceId, updated_at: new Date() })
-    .where("id", "=", pactId)
-    .returning(pactColumns)
-    .executeTakeFirstOrThrow();
+
+  const now = new Date();
+  return db.transaction().execute(async (trx) => {
+    const moved = await trx
+      .updateTable("pact")
+      .set({ device_id: deviceId, updated_at: now })
+      .where("id", "=", pactId)
+      .returning(pactColumns)
+      .executeTakeFirstOrThrow();
+
+    // On the record, and the witnesses are told.
+    //
+    // Not because moving phones is suspicious -- somebody replacing a broken
+    // handset is doing the honest thing and the copy says so. It is because
+    // this is the only move that could be an escape and leave nothing
+    // behind: a challenge runs on one phone, so taking it onto a tablet in a
+    // drawer would leave the phone they actually use unblocked, reporting
+    // nothing, looking perfect. That has to cost a message, exactly like
+    // pressing Give up does.
+    const eventId = newId();
+    await trx
+      .insertInto("pact_event")
+      .values({
+        id: eventId,
+        pact_id: pactId,
+        device_id: deviceId,
+        type: "moved",
+        reason: null,
+        app_package: null,
+        minutes: null,
+        occurred_at: now,
+        source: "server",
+      })
+      .execute();
+    await queueWitnessNotifications(trx, { userId, eventId, kind: "pact_moved", pactId });
+    return moved;
+  });
 }
 
 export async function requireOwnedPact(userId: string, pactId: string) {

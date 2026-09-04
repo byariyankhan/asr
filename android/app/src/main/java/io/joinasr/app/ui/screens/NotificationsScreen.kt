@@ -277,6 +277,10 @@ private val WARNING_KINDS = setOf("pact_broken", "protection_lost", "protection_
 private fun glyphFor(kind: String): String = when (kind) {
     "pact_broken", "protection_lost", "protection_issue" -> "!"
     "activity_completed", "earned_time" -> "+"
+    // A challenge that changed phones. Not a warning and not an achievement,
+    // and a tick beside "moved to another phone" would read as approval of
+    // something nobody has approved of yet.
+    "pact_moved" -> "→"
     "reaction" -> "♥"
     else -> "✓"
 }

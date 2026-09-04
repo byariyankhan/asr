@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.joinasr.app.apps.AppEntry
+import io.joinasr.app.sync.RemoteChallenge
 import io.joinasr.app.sync.Sync
 import io.joinasr.app.sync.Uuid7
 import io.joinasr.app.witness.WitnessStore
@@ -56,6 +57,21 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
     private val _restoring = MutableStateFlow(false)
     val restoring: StateFlow<Boolean> = _restoring.asStateFlow()
 
+    /**
+     * The account's challenge, when it is running on a different handset.
+     *
+     * Not folded into [state]: this phone has no pact and is enforcing
+     * nothing, which is exactly what [PactState.None] means to everything
+     * below. What is different is what to put on screen, and that is a
+     * question for one screen rather than for the enforcement loop.
+     */
+    private val _elsewhere = MutableStateFlow<RemoteChallenge?>(null)
+    val elsewhere: StateFlow<RemoteChallenge?> = _elsewhere.asStateFlow()
+
+    /** True while the hand-over is in flight, so the button cannot be pressed twice. */
+    private val _takingOver = MutableStateFlow(false)
+    val takingOver: StateFlow<Boolean> = _takingOver.asStateFlow()
+
     val state: StateFlow<PactState> = store.pact
         .map { if (it == null) PactState.None else PactState.Active(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PactState.Loading)
@@ -69,15 +85,20 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
         outcomes.unseen.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /**
-     * Brings back a challenge this install does not have.
+     * Asks whether this account has a challenge this phone knows nothing
+     * about.
      *
      * Called when somebody signs in. It does nothing at all in the ordinary
      * case -- there is a pact on the phone and the first line returns -- and
      * everything in the cases that used to lose one: a reinstall, a new
      * handset, a second phone on the same account. Those all looked
      * identical to "no challenge" and were treated as such, which is how
-     * deleting the app became a way out of a pact that nobody was told
-     * about.
+     * deleting the app became a way out of a pact nobody was told about.
+     *
+     * The answer is a question, not a challenge that starts running here.
+     * Only [takeOverOnThisPhone] does that, and only after the permissions
+     * are in place -- an uninstall takes them away, so a challenge restored
+     * without asking again would be a challenge that blocks nothing.
      *
      * Never overwrites. A challenge on this phone is the one being enforced
      * here, and the server's copy is bookkeeping about it.
@@ -86,11 +107,49 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (store.current() != null) return@launch
             _restoring.value = true
-            val restored = runCatching { sync.restorePact() }.getOrNull()
+            val remote = runCatching { sync.remoteChallenge() }.getOrNull()
             // Checked again: committing a challenge while this was in flight
             // is rare and the local one wins.
-            if (restored != null && store.current() == null) store.save(restored)
+            if (remote != null && store.current() == null) {
+                if (remote.onThisPhone) {
+                    // The server already says this handset is the one running
+                    // it, and only the local copy went missing. Nothing is
+                    // being taken from anybody, so nothing needs asking --
+                    // but the pact's server id still has to be written down
+                    // here, or the next event would go looking for a
+                    // challenge this phone thinks it has never created.
+                    runCatching { sync.takeOver(remote) }
+                    store.save(remote.pact)
+                } else {
+                    _elsewhere.value = remote
+                }
+            }
             _restoring.value = false
+        }
+    }
+
+    /**
+     * Moves the challenge to this phone, and starts enforcing it here.
+     *
+     * The other handset finds out on its next pass and stands down. Until it
+     * does there is a window where both are enforcing, which costs a
+     * duplicate summary and nothing else -- the alternative is waiting for a
+     * phone that may be at the bottom of a river.
+     */
+    fun takeOverOnThisPhone(onDone: () -> Unit = {}) {
+        val challenge = _elsewhere.value ?: return
+        if (_takingOver.value) return
+        viewModelScope.launch {
+            _takingOver.value = true
+            // The claim is best effort and the pact is not. Somebody who has
+            // just said "run it here" with no signal should end up with a
+            // challenge running here; the server hears about it from the
+            // heartbeat that follows.
+            runCatching { sync.takeOver(challenge) }
+            store.save(challenge.pact)
+            _elsewhere.value = null
+            _takingOver.value = false
+            onDone()
         }
     }
 

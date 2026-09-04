@@ -1,5 +1,6 @@
 package io.joinasr.app.data
 
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -68,6 +69,39 @@ class WireShapeTest {
             """{"reward_min":15,"daily_cap_min":60,"target":6000}""",
             ApiJson.encodeToString(walk),
         )
+    }
+
+    /**
+     * The other direction: what the app has to be able to read back.
+     *
+     * A challenge runs on one phone, and the only way a second phone knows
+     * whether it is looking at its own challenge or at one in somebody's
+     * other pocket is `device_id` -- with `device_model` for saying so on
+     * screen. Both were added to the response after the app already shipped,
+     * so a build that ignored them would silently show every phone a
+     * challenge it could take over by accident.
+     */
+    @Test
+    fun `the current pact says which phone is running it`() {
+        val json = """{"id":"p1","user_id":"u1","device_id":"d9","device_model":"Galaxy A54",""" +
+            """"duration_days":30,"timezone":"Asia/Dhaka","starts_at":"2026-09-01T10:00:00.000Z",""" +
+            """"status":"active","snapshot":{"apps":[{"package":"com.instagram.android",""" +
+            """"label":"Instagram","daily_limit_min":30}],"reset_time":"00:00","activities":{}}}"""
+
+        val pact = ApiJson.decodeFromString<RemotePact>(json)
+
+        assertEquals("d9", pact.deviceId)
+        assertEquals("Galaxy A54", pact.deviceModel)
+        assertEquals(30, pact.durationDays)
+        assertEquals(1, pact.snapshot?.apps?.size)
+    }
+
+    /** A pact from a server that does not send them is readable, not fatal. */
+    @Test
+    fun `a response without the device fields still parses`() {
+        val pact = ApiJson.decodeFromString<RemotePact>("""{"id":"p1"}""")
+        assertEquals(null, pact.deviceId)
+        assertEquals(null, pact.deviceModel)
     }
 
     private companion object {

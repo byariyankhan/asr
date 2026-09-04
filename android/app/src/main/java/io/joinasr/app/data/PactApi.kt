@@ -95,6 +95,14 @@ data class RemotePact(
     val snapshot: PactSnapshot? = null,
     @SerialName("starts_at") val startsAt: String? = null,
     @SerialName("duration_days") val durationDays: Int? = null,
+    /**
+     * The handset enforcing it. One challenge runs on one phone, so this is
+     * how a second one knows whether it is looking at its own challenge or
+     * at somebody else's -- its own, on a phone in another pocket.
+     */
+    @SerialName("device_id") val deviceId: String? = null,
+    /** That handset's name, for saying so on screen rather than an id. */
+    @SerialName("device_model") val deviceModel: String? = null,
 )
 
 @Serializable
