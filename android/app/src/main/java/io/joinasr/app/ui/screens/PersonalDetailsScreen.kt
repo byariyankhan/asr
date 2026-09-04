@@ -1,9 +1,11 @@
 package io.joinasr.app.ui.screens
 
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -44,6 +51,7 @@ import io.joinasr.app.profile.Choice
 import io.joinasr.app.profile.Countries
 import io.joinasr.app.profile.Genders
 import io.joinasr.app.profile.PhotoPrep
+import io.joinasr.app.ui.components.AsrProfilePhoto
 import io.joinasr.app.ui.components.AsrBackChevron
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.components.AsrSelectField
@@ -91,6 +99,12 @@ fun PersonalDetailsScreen(
     }
     var photoError by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<Uri?>(null) }
+    var uploading by remember { mutableStateOf<ImageBitmap?>(null) }
+
+    // Cleared by the new photo arriving, not by the call returning: the
+    // screen is handed a fresh `me` when the upload succeeds, and that is
+    // the moment the server's copy is the one worth showing.
+    LaunchedEffect(me.image) { uploading = null }
 
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -100,7 +114,13 @@ fun PersonalDetailsScreen(
         val uri = pending ?: return@LaunchedEffect
         photoError = null
         when (val result = PhotoPrep.prepare(context, uri)) {
-            is PhotoPrep.Result.Ok -> onPhotoPicked(result.jpeg)
+            is PhotoPrep.Result.Ok -> {
+                uploading = BitmapFactory
+                    .decodeByteArray(result.jpeg, 0, result.jpeg.size)
+                    ?.asImageBitmap()
+                onPhotoPicked(result.jpeg)
+            }
+
             is PhotoPrep.Result.Failed -> photoError = result.message
         }
         pending = null
@@ -128,19 +148,37 @@ fun PersonalDetailsScreen(
 
         Spacer(Modifier.height(24.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(70.dp)
-                    .clip(CircleShape)
-                    .background(AsrColors.Field)
-                    .border(1.dp, AsrColors.FieldBorder, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    me.name.trim().take(1).uppercase().ifBlank { "?" },
-                    style = AsrType.display(20),
-                    color = AsrColors.Accent,
-                )
+            Box(contentAlignment = Alignment.Center) {
+                // The locally decoded bytes while the upload is in flight,
+                // the server's copy once it lands. Waiting for the round
+                // trip would leave the old photo on screen for a second
+                // after choosing a new one, which reads as nothing having
+                // happened -- which is exactly how this screen was reported.
+                val preview = uploading
+                if (preview == null) {
+                    AsrProfilePhoto(imagePath = me.image, fallback = me.name, size = 70.dp)
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(70.dp)
+                            .clip(CircleShape)
+                            .background(AsrColors.Field)
+                            .border(1.dp, AsrColors.FieldBorder, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            bitmap = preview,
+                            contentDescription = "The photo being uploaded",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().alpha(0.45f),
+                        )
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = AsrColors.Accent,
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                }
             }
             Spacer(Modifier.width(18.dp))
             Box(

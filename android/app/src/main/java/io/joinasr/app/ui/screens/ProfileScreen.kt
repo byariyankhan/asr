@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.joinasr.app.data.Me
 import io.joinasr.app.permissions.PermissionState
+import io.joinasr.app.ui.components.AsrProfilePhoto
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
@@ -137,23 +138,7 @@ private fun Summary(me: Me, onEdit: () -> Unit, editEnabled: Boolean) {
             .padding(15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(32.dp))
-                .background(AsrColors.Background)
-                .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(32.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            // The photo is on the server and is fetched over the network,
-            // which this app has no image loader for yet. The initial is
-            // what the design falls back to anyway when there is no photo.
-            Text(
-                me.name.trim().take(1).uppercase().ifBlank { "?" },
-                style = AsrType.display(20),
-                color = AsrColors.Accent,
-            )
-        }
+        AsrProfilePhoto(imagePath = me.image, fallback = me.name, size = 64.dp)
 
         Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {

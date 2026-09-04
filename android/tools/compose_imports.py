@@ -42,6 +42,13 @@ CALLS = {
     "LaunchedEffect": "androidx.compose.runtime.LaunchedEffect",
     "produceState": "androidx.compose.runtime.produceState",
     "Spacer": "androidx.compose.foundation.layout.Spacer",
+    # Both of these were used without their import in the same commit, and
+    # this file did not know them: a checklist only catches what is on it,
+    # so anything it misses goes on it the same day.
+    "Image": "androidx.compose.foundation.Image",
+    "CircularProgressIndicator": "androidx.compose.material3.CircularProgressIndicator",
+    "asImageBitmap": "androidx.compose.ui.graphics.asImageBitmap",
+    "rememberLauncherForActivityResult": "androidx.activity.compose.rememberLauncherForActivityResult",
 }
 
 problems = []
