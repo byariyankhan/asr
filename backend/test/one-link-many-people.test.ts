@@ -96,6 +96,21 @@ describe.skipIf(!DATABASE_URL)("one link, many witnesses", async () => {
     await expect(peekInvite(invite.invite_code)).rejects.toThrow();
   });
 
+  it("tells somebody who already took it, so they are not asked twice", async () => {
+    // The link stays open for everybody else it reaches, so somebody who
+    // accepted an hour ago and taps it again in the same chat must not be
+    // handed the whole "will you be a witness" page with an error under the
+    // button. The app reads this and takes them to their circle instead.
+    const invite = await createInvite(owner, { relationship: "colleague" });
+    expect(await peekInvite(invite.invite_code, spare[2]!)).toMatchObject({ already: false });
+    await acceptInvite(spare[2]!, invite.invite_code);
+    expect(await peekInvite(invite.invite_code, spare[2]!)).toMatchObject({ already: true });
+    // Still an open question for anybody else, and for a stranger with no
+    // account at all.
+    expect(await peekInvite(invite.invite_code, friends[0]!)).toMatchObject({ already: true });
+    expect(await peekInvite(invite.invite_code)).toMatchObject({ already: false });
+  });
+
   it("nobody witnesses themselves, however open the link is", async () => {
     const invite = await createInvite(owner, { relationship: "friend" });
     await expect(acceptInvite(owner, invite.invite_code)).rejects.toThrow(/yourself/);

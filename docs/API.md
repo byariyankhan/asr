@@ -263,7 +263,10 @@ If `email` is given the delivery worker also sends the link by email.
 ### `GET /witnesses/invites/{code}`
 
 Public (no auth, per-IP limit). Returns `{ "inviter_name", "inviter_image", "relationship" }`
-so the accept screen can say "Ariyan wants you as a witness". `404` when the
+so the accept screen can say "Ariyan wants you as a witness", plus `gender`
+(for the page's own pronouns), `own` (the reader sent it) and `already` (the
+reader has accepted this challenge — the app takes them to their circle
+rather than asking twice). `404` when the
 challenge has ended, when a singular link has been taken, or when the code is
 not real — deliberately the same answer to all three, because it answers to
 anybody holding a code. Never returns anything else.

@@ -156,6 +156,7 @@ export async function peekInvite(code: string, viewerId?: string) {
       "witness.pact_id",
       "u.name as inviter_name",
       "u.image as inviter_image",
+      "u.gender as inviter_gender",
     ])
     .where("witness.invite_code", "=", code)
     .where("u.deleted_at", "is", null)
@@ -191,6 +192,27 @@ export async function peekInvite(code: string, viewerId?: string) {
     // offered the button. It happens by accident: somebody tests their own
     // link, or taps it in the thread they just shared it to.
     own: viewerId != null && viewerId === row.user_id,
+    // Whose challenge it is, so the page and the link preview say "his"
+    // rather than a hedge. The profile holds it; sign-up asks for it.
+    gender: row.inviter_gender,
+    // Whether the person reading this already said yes to this challenge.
+    //
+    // The link stays open after somebody takes it -- that is the point of
+    // one link -- so somebody who accepted an hour ago and taps it again in
+    // the same chat gets the whole "will you be a witness" page a second
+    // time, and an error under the button when they press it. The answer is
+    // not to explain that; it is to take them where the link was always
+    // going to take them once they had said yes.
+    already:
+      viewerId != null &&
+      row.pact_id != null &&
+      (await db
+        .selectFrom("witness")
+        .select("id")
+        .where("witness_user_id", "=", viewerId)
+        .where("pact_id", "=", row.pact_id)
+        .where("status", "=", "accepted")
+        .executeTakeFirst()) !== undefined,
   };
 }
 

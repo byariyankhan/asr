@@ -367,18 +367,25 @@ fun AsrApp(
         }
     }
 
-    // Their own link, opened on their own phone. It happens by accident --
-    // testing it, or tapping it in the thread they just shared it to -- and
-    // nobody witnesses themselves, so there is nothing to decide. The
-    // witness list is where they were going anyway.
-    LaunchedEffect(invite?.own) {
-        if (invite?.own != true) return@LaunchedEffect
+    // A link with nothing left to decide.
+    //
+    // Their own, opened on their own phone -- testing it, or tapping it in
+    // the thread they just shared it to -- or one they already accepted,
+    // which happens because the link stays open for everybody else it was
+    // sent to. Either way there is no question to put to them, and the
+    // circle is where they were going.
+    val settled = invite?.own == true || invite?.already == true
+    LaunchedEffect(settled) {
+        if (!settled) return@LaunchedEffect
         inviteCode = null
         inviteDeferred = false
         PendingInvite.clear(context)
+        // Their own witnesses if it was their link; the people they support
+        // if they are one of somebody else's.
+        val mine = invite?.own == true
         witnessViewModel.clearInvite()
         tab = AsrTab.Witnesses
-        circleTab = CircleTab.Mine
+        circleTab = if (mine) CircleTab.Mine else CircleTab.Supporting
     }
 
     // Answered, so the screen has done its job. Accepting leaves the person

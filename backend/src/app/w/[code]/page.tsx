@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { peekInvite } from "@/server/witnesses";
+import { pronounsFor } from "@/server/witness-copy";
 
 /**
  * The page a witness invitation actually opens.
@@ -71,7 +72,8 @@ async function load(code: string): Promise<Invite | null> {
 
 function sentence(invite: Invite): string {
   const days = invite.days ? `${invite.days}-day ` : "";
-  return `${invite.inviter_name} is starting a ${days}challenge to cut down their screen time, and wants you to hold them to it.`;
+  const p = pronounsFor(invite.gender);
+  return `${invite.inviter_name} is starting a ${days}challenge to cut down ${p.their} screen time, and wants you to hold ${p.them} to it.`;
 }
 
 export async function generateMetadata(
@@ -83,7 +85,10 @@ export async function generateMetadata(
     return { title: "Asr", description: "Screen time you actually commit to." };
   }
 
-  const title = `${invite.inviter_name} asked you to be their witness`;
+  // "his witness", not "their witness". The profile holds the gender and
+  // this is the first thing anybody sees of this product -- a preview card
+  // in a chat, about somebody the reader knows personally.
+  const title = `${invite.inviter_name} asked you to be ${pronounsFor(invite.gender).their} witness`;
   const description = sentence(invite);
   // Same origin as this page, which is why it can be built by joining the
   // path the API stored: the apex and the API are the same application
@@ -119,6 +124,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
   const invite = await load(code);
   if (!invite) notFound();
 
+  const them = pronounsFor(invite.gender);
   const relationship = invite.relationship
     ? RELATIONSHIP_LABEL[invite.relationship] ?? "someone they trust"
     : "someone they trust";
@@ -142,16 +148,16 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
 
         <h1 style={S.name}>{invite.inviter_name}</h1>
         <p style={S.lead}>
-          asked you, as {relationship}, to be their witness
+          asked you, as {relationship}, to be {them.their} witness
           {invite.days ? ` for a ${invite.days}-day challenge` : ""}.
         </p>
 
         <div style={S.what}>
           <p style={S.whatTitle}>What that means</p>
           <p style={S.whatBody}>
-            You are told when they start, when they finish, and if they break the limits they set
-            for themselves. You are not shown what they do on their phone — only whether they kept
-            the promise they made.
+            You are told when the challenge starts, when it finishes, and if {them.they}{" "}
+            {them.has} broken the limits {them.they} set. You are not shown what {them.they}{" "}
+            {them.does} on {them.their} phone — only whether the promise was kept.
           </p>
         </div>
 

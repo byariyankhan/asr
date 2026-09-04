@@ -103,6 +103,16 @@ data class InvitePeek(
      * link, or tapping it in the thread you just shared it to.
      */
     val own: Boolean = false,
+    /**
+     * True when the reader already accepted this challenge.
+     *
+     * One link serves everybody it is sent to, so it stays open after
+     * somebody takes it — and somebody who accepted an hour ago and taps it
+     * again in the same chat was getting the whole "will you be a witness"
+     * page a second time, with an error under the button. They are already
+     * a witness; the circle is where the link was taking them.
+     */
+    val already: Boolean = false,
 )
 
 @Serializable

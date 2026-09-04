@@ -77,6 +77,17 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
       // runs and a different thing the moment it does not.
       days: 14,
       own: false,
+      // Their gender, and nothing more of them. It is what makes the page
+      // and the link preview say "his witness" instead of hedging, and the
+      // card already carries their name and their face -- so this discloses
+      // nothing to a stranger holding the code that the photo above it does
+      // not. Anybody who chose not to say reads as null here and as
+      // they/them on the page.
+      gender: null,
+      // False for a stranger: it needs a signed-in reader to mean anything,
+      // and it exists so somebody who already said yes is taken to their
+      // circle instead of being asked again.
+      already: false,
     });
     await expect(peekInvite("NOPE")).rejects.toMatchObject({ status: 404 });
   });

@@ -74,6 +74,10 @@ class EnforcementService : Service() {
     @Volatile
     private var ending = false
 
+    /** What the foreground notification currently says, so it is not re-posted to say it again. */
+    private var showingApps = -1
+    private var foregrounded = false
+
     /**
      * Spent limits already reported, by event id. Cleared with the process;
      * the ids are derived from the day, so a restart re-reports at most one
@@ -367,13 +371,25 @@ class EnforcementService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        // A new id, because Android will not let an existing channel's
+        // importance be lowered -- only the person can, in settings. On an
+        // install that already has the noisier one, creating a quieter
+        // channel beside it is the only way the change reaches them; the old
+        // one goes so it does not sit in their settings meaning nothing.
+        getSystemService<NotificationManager>()?.deleteNotificationChannel(LEGACY_CHANNEL_ID)
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.protection_channel_name),
-            // Low: it must be visible and permanent, and it must never make
-            // a sound. A commitment app that pings all day gets muted, and a
-            // muted foreground notification is one nobody reads.
-            NotificationManager.IMPORTANCE_LOW,
+            // The quietest a foreground service is allowed to be.
+            //
+            // Android will not run one without a notification, and without a
+            // foreground service the limits stop being enforced the moment
+            // the phone decides to sleep. So it has to exist. What it does
+            // not have to do is behave like news: MIN keeps it out of the
+            // status bar entirely and at the bottom of the shade, under
+            // "Silent", where somebody who wants to check finds it and
+            // nobody else is interrupted by it.
+            NotificationManager.IMPORTANCE_MIN,
         ).apply {
             description = getString(R.string.protection_channel_description)
             setShowBadge(false)
@@ -382,6 +398,15 @@ class EnforcementService : Service() {
     }
 
     private fun startInForeground(apps: Int) {
+        // Only when the sentence changes.
+        //
+        // The pact store re-emits on every write to it, and each emission
+        // re-posted this -- which resets the notification's timestamp, so
+        // the shade showed "Asr · 2m" as though something had just happened.
+        // Nothing had. It has been on all day.
+        if (foregrounded && apps == showingApps) return
+        showingApps = apps
+        foregrounded = true
         val notification = buildNotification(apps)
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -411,13 +436,20 @@ class EnforcementService : Service() {
             .setContentIntent(open)
             .setOngoing(true)
             .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            // No timestamp. There is no moment for it to be relative to --
+            // protection has been on since the challenge started -- and the
+            // one it showed made a permanent thing read as a fresh one.
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
 
     companion object {
-        private const val CHANNEL_ID = "protection"
+        private const val CHANNEL_ID = "protection-quiet"
+
+        /** The IMPORTANCE_LOW channel this replaced. See [createChannel]. */
+        private const val LEGACY_CHANNEL_ID = "protection"
         private const val NOTIFICATION_ID = 1
         private const val DAY_MILLIS = 24L * 60 * 60 * 1000
 
