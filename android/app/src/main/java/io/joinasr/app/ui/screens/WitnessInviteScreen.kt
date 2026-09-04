@@ -76,10 +76,20 @@ fun WitnessInviteScreen(
         Spacer(Modifier.height(18.dp))
         Text("ACCOUNTABILITY INVITE", style = AsrType.Eyebrow, color = AsrColors.Accent)
         Spacer(Modifier.height(16.dp))
+        // Two different failures were sharing one field and one headline.
+        //
+        // An invitation that cannot be opened is closed, and there is
+        // nothing else to say. An invitation that opened and then refused
+        // the answer is not: it produced "This invite is closed." above a
+        // live Accept button and a full card describing what the person
+        // would witness, which is the screen contradicting itself twice on
+        // the way down. The headline speaks for the lookup; a refusal to
+        // accept belongs next to the button that was pressed.
+        val unopened = invite == null
         Text(
             when {
-                errorMessage != null -> "This invite is closed."
-                invite == null -> "Opening the invite…"
+                unopened && errorMessage != null -> "This invite is closed."
+                unopened -> "Opening the invite…"
                 else -> "$name invited you"
             },
             style = AsrType.display(34),
@@ -88,8 +98,8 @@ fun WitnessInviteScreen(
         Spacer(Modifier.height(12.dp))
         Text(
             when {
-                errorMessage != null -> errorMessage
-                invite == null -> "One moment."
+                unopened && errorMessage != null -> errorMessage
+                unopened -> "One moment."
                 else -> "Become a witness for their challenge."
             },
             style = AsrType.Field,
@@ -118,6 +128,11 @@ fun WitnessInviteScreen(
 
             Spacer(Modifier.height(14.dp))
             Note("◎", "You'll get updates when they keep or break the pact.")
+
+            errorMessage?.let {
+                Spacer(Modifier.height(20.dp))
+                Text(it, style = AsrType.Field.copy(fontSize = 14.sp), color = AsrColors.Error)
+            }
 
             Spacer(Modifier.height(24.dp))
             AsrPrimaryButton(
