@@ -30,11 +30,21 @@ const PREF_FOR_KIND: Record<
   time_earned: "views_progress",
 };
 
-/** Reasons that mean the pact was ended on purpose rather than simply lost. */
+/**
+ * Reasons that mean the person got out from under the pact rather than
+ * failing it in the open.
+ *
+ * `user_gave_up` is deliberately not one of them, and the copy is why. Every
+ * line of the abandoned set says some version of "they removed Asr" -- it
+ * was written about somebody deleting the app mid-challenge, which is what
+ * `app_removed` and `protection_disabled` are. Somebody who opened the app
+ * and pressed Give up did the opposite of that, and telling their mother
+ * they uninstalled it would be false about the one person who was honest.
+ * They fall through to the plain broken-pact copy, which is true.
+ */
 const ABANDONED: ReadonlySet<string> = new Set<EventReason>([
   "app_removed",
   "protection_disabled",
-  "user_gave_up",
 ]);
 
 /**

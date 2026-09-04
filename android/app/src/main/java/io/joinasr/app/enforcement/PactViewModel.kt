@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.sync.Sync
+import io.joinasr.app.sync.Uuid7
+import io.joinasr.app.witness.WitnessStore
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -38,6 +40,7 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
     private val store = PactStore(application)
     private val outcomes = OutcomeStore(application)
     private val sync = Sync(application)
+    private val witnesses = WitnessStore(application)
 
     val state: StateFlow<PactState> = store.pact
         .map { if (it == null) PactState.None else PactState.Active(it) }
@@ -85,12 +88,44 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Ends the challenge. Not reachable from any screen yet: the designs put
-     * it behind the review and dashboard screens, and an app that can drop a
-     * commitment from an unlabelled code path is not one.
+     * Ends the challenge because the person said so.
+     *
+     * There has to be a way out. Without one the only way out is to
+     * uninstall, and that is the worst ending available to everybody in it:
+     * the person loses their history and does not come back, and their
+     * witnesses are told the harshest thing there is to be told -- that the
+     * app was removed -- about somebody who was merely tired. Walking out
+     * the front door costs less than going through the wall.
+     *
+     * It is not free, though, and nothing here pretends it is. This is a
+     * failed challenge, it is reported as one, and the witnesses hear about
+     * it in the same breath they would have heard about a broken limit. A
+     * quiet exit would leave the word "witness" meaning nothing.
+     *
+     * The order is [EnforcementService]'s order, for [EnforcementService]'s
+     * reason: outcome first, event queued second, pact cleared last. A phone
+     * that dies in the middle comes back with a finished challenge and
+     * something still to send, rather than with a challenge that stopped
+     * being enforced and was never recorded.
      */
-    fun abandon() {
-        viewModelScope.launch { store.clear() }
+    fun giveUp() {
+        viewModelScope.launch {
+            val pact = store.current() ?: return@launch
+            val now = System.currentTimeMillis()
+            val ending = Endings.gaveUp(
+                pact = pact,
+                witnesses = runCatching { witnesses.current().count { it.accepted } }
+                    .getOrDefault(0),
+                eventId = Uuid7.next(now),
+                nowMillis = now,
+            )
+            outcomes.save(ending.outcome)
+            runCatching {
+                sync.report(pact, ending.event)
+                if (sync.isDrained()) outcomes.markReported()
+            }
+            store.clear()
+        }
     }
 }
 

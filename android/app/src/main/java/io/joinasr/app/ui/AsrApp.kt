@@ -43,7 +43,9 @@ import io.joinasr.app.ui.screens.ChallengeStartedScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ActivityProgressScreen
 import io.joinasr.app.ui.screens.ActivityTrackingScreen
+import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.ui.screens.ChallengeEndedScreen
+import io.joinasr.app.ui.screens.GiveUpScreen
 import io.joinasr.app.ui.screens.ChooseActivityScreen
 import io.joinasr.app.ui.screens.CircleScreen
 import io.joinasr.app.ui.screens.CircleTab
@@ -194,6 +196,16 @@ fun AsrApp(
     // need a navigation library.
     var profileRoute by remember { mutableStateOf<ProfileDestination?>(null) }
     var addingWitness by remember { mutableStateOf(false) }
+
+    /**
+     * Whether the way out is open on screen.
+     *
+     * Not remembered across a kill on purpose, unlike the witness gate. That
+     * gate holds because a challenge with nobody watching it must not be
+     * left running; this is a question somebody was in the middle of being
+     * asked, and coming back to the app should not be coming back to it.
+     */
+    var givingUp by remember { mutableStateOf(false) }
     // Figma 16's two halves, and Figma 17 stacked on the second of them.
     var circleTab by remember { mutableStateOf(CircleTab.Mine) }
     var openPerson by remember { mutableStateOf<SupportedPerson?>(null) }
@@ -806,15 +818,43 @@ fun AsrApp(
                                 }
                             }
 
-                            AsrTab.Progress -> ProgressScreen(
-                                pact = activePact,
-                                earnedMinutes = earnedToday.minutesByPackage,
-                                onStartChallenge = {
-                                    tab = AsrTab.Home
-                                    setupStep = SetupStep.Duration
-                                    startingChallenge = true
-                                },
-                            )
+                            AsrTab.Progress -> {
+                                val running = activePact
+                                if (givingUp && running != null) {
+                                    val progress = ChallengeProgress.of(
+                                        running.startedAtMillis,
+                                        running.durationDays,
+                                    )
+                                    GiveUpScreen(
+                                        dayNumber = progress.dayNumber,
+                                        totalDays = progress.totalDays,
+                                        witnesses = witnesses,
+                                        onKeepGoing = { givingUp = false },
+                                        onGiveUp = {
+                                            // The screen goes away here
+                                            // rather than after the pact
+                                            // does. Clearing it is what
+                                            // Figma 26 waits for, and this
+                                            // must not still be on top of
+                                            // the thing it opens.
+                                            givingUp = false
+                                            pactViewModel.giveUp()
+                                        },
+                                        busy = false,
+                                    )
+                                } else {
+                                    ProgressScreen(
+                                        pact = running,
+                                        earnedMinutes = earnedToday.minutesByPackage,
+                                        onStartChallenge = {
+                                            tab = AsrTab.Home
+                                            setupStep = SetupStep.Duration
+                                            startingChallenge = true
+                                        },
+                                        onGiveUp = { givingUp = true },
+                                    )
+                                }
+                            }
 
                             AsrTab.Witnesses -> {
                                 val person = openPerson
@@ -943,7 +983,13 @@ fun AsrApp(
                     }
                     AsrBottomNav(
                         selected = tab,
-                        onSelect = { tab = it },
+                        onSelect = {
+                            // Leaving the tab answers the question. Coming
+                            // back to Progress should be coming back to
+                            // Progress, not to "are you ending this?".
+                            givingUp = false
+                            tab = it
+                        },
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     Spacer(Modifier.height(12.dp))

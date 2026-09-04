@@ -20,7 +20,6 @@ import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.earn.EarnStore
 import io.joinasr.app.permissions.Permissions
-import io.joinasr.app.sync.PendingEvent
 import io.joinasr.app.sync.Sync
 import io.joinasr.app.sync.Uuid7
 import io.joinasr.app.usage.Day
@@ -219,30 +218,26 @@ class EnforcementService : Service() {
         if (ending) return
         ending = true
         val now = System.currentTimeMillis()
-        val outcome = PactOutcome(
-            result = result,
-            startedAtMillis = pact.startedAtMillis,
-            endedAtMillis = now,
-            durationDays = pact.durationDays,
-            apps = pact.apps,
-            breach = breach,
-            witnesses = runCatching { witnesses.current().size }.getOrDefault(0),
-            reported = false,
-        )
-        outcomes.save(outcome)
+        val watching = runCatching { witnesses.current().size }.getOrDefault(0)
+        val eventId = Uuid7.next(now)
+        // Built together, in the one place all three ways of ending are
+        // built, so what this writes down and what the witnesses are told
+        // cannot drift apart.
+        val ending = if (breach != null) {
+            Endings.broken(pact, breach, watching, eventId, now)
+        } else if (result == PactResult.Failed) {
+            // Failed with nothing breached does not happen from here -- the
+            // service only fails a pact it caught -- but the type allows it
+            // and silently reporting the wrong reason would be worse than
+            // ending without a claim about why.
+            Endings.gaveUp(pact, watching, eventId, now)
+        } else {
+            Endings.completed(pact, watching, eventId, now)
+        }
+        outcomes.save(ending.outcome)
 
-        val event = PendingEvent(
-            id = Uuid7.next(now),
-            type = if (result == PactResult.Failed) "broken" else "completed",
-            // The server requires a reason on a broken event, and this is
-            // the true one: the limit was exceeded, which is only possible
-            // when the block did not hold.
-            reason = if (result == PactResult.Failed) "limit_exceeded" else null,
-            appPackage = breach?.packageName,
-            occurredAtMillis = now,
-        )
         runCatching {
-            sync.report(pact, event)
+            sync.report(pact, ending.event)
             if (sync.isDrained()) outcomes.markReported()
         }
 

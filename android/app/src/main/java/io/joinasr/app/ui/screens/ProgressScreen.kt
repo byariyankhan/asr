@@ -1,6 +1,7 @@
 package io.joinasr.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -63,6 +65,12 @@ fun ProgressScreen(
     /** Bonus minutes won today, per package. */
     earnedMinutes: Map<String, Int>,
     onStartChallenge: () -> Unit,
+    /**
+     * Opens the way out. Drawn only while something is actually running:
+     * there is nothing to give up otherwise, and the offer would read as a
+     * suggestion.
+     */
+    onGiveUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -153,6 +161,27 @@ fun ProgressScreen(
         Text("Challenges", style = AsrType.display(19), color = AsrColors.TextPrimary)
         Spacer(Modifier.height(14.dp))
         if (challenge != null) ChallengeRow(pact = pact, progress = challenge)
+
+        // Quiet, and here rather than nowhere.
+        //
+        // Nowhere is what it was, and nowhere does not mean nobody leaves --
+        // it means they leave by uninstalling, which loses their history,
+        // tells their witnesses the app was removed, and takes the person
+        // with it. This is the same exit with the door marked.
+        if (challenge != null && !challenge.isComplete) {
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Give up this challenge",
+                style = AsrType.Label.copy(fontSize = 13.sp),
+                color = AsrColors.TextTertiary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(role = Role.Button, onClick = onGiveUp)
+                    .padding(vertical = 10.dp),
+            )
+        }
 
         Spacer(Modifier.height(24.dp))
     }
@@ -405,6 +434,7 @@ private fun ProgressPreview() {
             ),
             earnedMinutes = emptyMap(),
             onStartChallenge = {},
+            onGiveUp = {},
         )
     }
 }

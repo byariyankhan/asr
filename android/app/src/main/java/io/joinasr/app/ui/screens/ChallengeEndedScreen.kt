@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.enforcement.Breach
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.enforcement.PactOutcome
@@ -88,11 +89,19 @@ fun ChallengeEndedScreen(
         Spacer(Modifier.height(14.dp))
         Text(
             if (failed) {
-                val day = outcome.breach?.dayNumber
-                if (day != null) {
+                // The day it ended on, whether a limit broke or the person
+                // stopped it. A breach carries its own, recorded when it
+                // happened; a give-up is counted back from the two
+                // timestamps every outcome has.
+                val day = outcome.breach?.dayNumber ?: ChallengeProgress.of(
+                    startedAtMillis = outcome.startedAtMillis,
+                    durationDays = outcome.durationDays,
+                    nowMillis = outcome.endedAtMillis,
+                ).dayNumber
+                if (outcome.breach != null) {
                     "Your ${outcome.durationDays}-day challenge ended on Day $day."
                 } else {
-                    "Your ${outcome.durationDays}-day challenge ended early."
+                    "You ended your ${outcome.durationDays}-day challenge on Day $day."
                 }
             } else {
                 "You kept every limit for ${outcome.durationDays} days."
@@ -102,8 +111,15 @@ fun ChallengeEndedScreen(
         )
 
         Spacer(Modifier.height(24.dp))
+        // Keyed on how it ended, not on whether there is a breach to draw.
+        // Those came apart the moment a challenge could be given up: a
+        // failure with nothing breached used to fall through to the card
+        // that says "Limits held · KEPT", congratulating somebody on the
+        // screen telling them they quit.
         if (outcome.breach != null) {
             BreachCard(outcome.breach)
+        } else if (failed) {
+            GaveUpCard(outcome.apps)
         } else {
             KeptCard(outcome.apps, outcome.durationDays)
         }
@@ -219,6 +235,61 @@ private fun BreachCard(breach: Breach) {
 }
 
 /** The completed case: the same card, listing what was actually held to. */
+/**
+ * Ended by the person, not by a limit.
+ *
+ * No breach to show and nothing to congratulate: what these apps were meant
+ * to be held to is the whole of what there is to say. The apps are listed
+ * with their limits because that is what was given up on, and a screen that
+ * showed only a sentence would leave somebody unsure what they had just
+ * cancelled.
+ */
+@Composable
+private fun GaveUpCard(apps: List<PactApp>) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AsrColors.Surface, shape)
+            .border(1.dp, AsrColors.FieldBorder, shape)
+            .padding(15.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "You ended it",
+                style = AsrType.CardTitle,
+                color = AsrColors.TextPrimary,
+                modifier = Modifier.weight(1f),
+            )
+            Pill("GAVE UP", AsrColors.Breach, AsrColors.BreachMuted)
+        }
+        Spacer(Modifier.height(14.dp))
+        for (app in apps) {
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                Text(
+                    app.label,
+                    style = AsrType.Field.copy(fontSize = 14.sp),
+                    color = AsrColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "${app.limitMinutes} min/day",
+                    style = AsrType.Label.copy(fontSize = 13.sp),
+                    color = AsrColors.TextSecondary,
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "These limits are off now.",
+            style = AsrType.Legal.copy(fontSize = 12.sp),
+            color = AsrColors.TextSecondary,
+        )
+    }
+}
+
 @Composable
 private fun KeptCard(apps: List<PactApp>, days: Int) {
     val shape = RoundedCornerShape(20.dp)
