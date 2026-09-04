@@ -20,17 +20,23 @@ import { peekInvite } from "@/server/witnesses";
 const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.io").replace(/\/$/, "");
 
 /**
- * The Play listing, once there is one.
+ * The Play listing, with the invitation attached.
  *
- * Behind a flag because a button linking to a listing that does not exist
- * is worse than no button: it would be the one action the page offers, and
- * it would land on a Play page saying the app was not found. Set
- * PLAY_LISTING_LIVE=true in .env the day the app is published.
+ * `referrer` survives the install: Play hands the string back to the app on
+ * first launch through the Install Referrer API, and PendingInvite reads
+ * `w=<code>` out of it. That is what closes the gap between tapping a link
+ * on a phone with no Asr on it and answering the invitation — without it
+ * the app opens on a welcome screen and the person has to go back and find
+ * the message again.
+ *
+ * Until the app is published this link answers "item not found". That is a
+ * known state and not a bug: the page is otherwise finished, and the day
+ * the listing exists nothing here changes.
  */
-function playUrl(): string | null {
-  if (process.env.PLAY_LISTING_LIVE !== "true") return null;
+function playUrl(code: string): string {
   const pkg = process.env.PLAY_PACKAGE_NAME || "io.joinasr.app";
-  return `https://play.google.com/store/apps/details?id=${pkg}`;
+  const referrer = encodeURIComponent(`w=${code}`);
+  return `https://play.google.com/store/apps/details?id=${pkg}&referrer=${referrer}`;
 }
 
 const RELATIONSHIP_LABEL: Record<string, string> = {
@@ -117,7 +123,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
     ? RELATIONSHIP_LABEL[invite.relationship] ?? "someone they trust"
     : "someone they trust";
   const initial = invite.inviter_name.trim().slice(0, 1).toUpperCase() || "?";
-  const play = playUrl();
+  const play = playUrl(code);
 
   return (
     <main style={S.page}>
@@ -150,20 +156,17 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
         </div>
 
         <div style={S.accept}>
-          <p style={S.acceptTitle}>To accept</p>
-          <a href={`${SITE()}/w/${code}`} style={S.cta}>
-            Open in Asr
+          {/* You are reading this because the app is not on this phone: with
+              Asr installed the link opens it and never reaches here. So the
+              install is the only thing to offer, and the code rides along
+              with it. */}
+          <a href={play} style={S.cta}>
+            Install Asr to accept
           </a>
           <p style={S.acceptBody}>
-            {play
-              ? "That opens the app if you have it. If you do not, install Asr and tap the link in the message again — it takes you straight here."
-              : "That opens the app if you have it. If you do not, install Asr and tap the link in the message again — it takes you straight here. Nothing is shared until you accept."}
+            Asr opens on this invitation once it is installed. Nothing is shared until you accept,
+            and declining tells them nothing beyond that you said no.
           </p>
-          {play ? (
-            <a href={play} style={S.secondary}>
-              Get Asr on Google Play
-            </a>
-          ) : null}
         </div>
       </div>
     </main>
@@ -232,7 +235,6 @@ const S: Record<string, React.CSSProperties> = {
   whatTitle: { margin: "0 0 8px", fontSize: 14, fontWeight: 600 },
   whatBody: { margin: 0, color: "#9A9F9C", fontSize: 13, lineHeight: 1.6 },
   accept: { marginTop: 22, textAlign: "left" },
-  acceptTitle: { margin: "0 0 12px", fontSize: 14, fontWeight: 600 },
   cta: {
     display: "block",
     background: "#12B886",
@@ -245,17 +247,6 @@ const S: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     marginBottom: 14,
   },
-  acceptBody: { margin: "0 0 12px", color: "#9A9F9C", fontSize: 13, lineHeight: 1.6 },
-  secondary: {
-    display: "block",
-    color: "#12B886",
-    textDecoration: "none",
-    textAlign: "center",
-    border: "1px solid #173B2D",
-    background: "#071A13",
-    borderRadius: 27,
-    padding: "14px 20px",
-    fontSize: 15,
-    fontWeight: 600,
-  },
+  acceptBody: { margin: 0, color: "#9A9F9C", fontSize: 13, lineHeight: 1.6, textAlign: "center" },
+
 };

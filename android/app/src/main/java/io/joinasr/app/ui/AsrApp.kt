@@ -28,6 +28,7 @@ import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.challenge.ChallengeDuration
 import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.enforcement.PactState
+import io.joinasr.app.PendingInvite
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.earn.EarnRules
@@ -287,6 +288,12 @@ fun AsrApp(
             }
             is DeepLink.Invite -> {
                 inviteCode = opened.code
+                // Accepting needs an account, and creating one means leaving
+                // for an email app, from where Android is free to kill this
+                // process. On disk it survives that; in a composable it does
+                // not, and it would be lost at the exact point where the
+                // work is done and one tap is left.
+                PendingInvite.remember(context, opened.code)
                 witnessViewModel.openInvite(opened.code)
                 onLinkHandled()
             }
@@ -336,6 +343,7 @@ fun AsrApp(
     LaunchedEffect(inviteAnswered) {
         if (!inviteAnswered) return@LaunchedEffect
         inviteCode = null
+        PendingInvite.clear(context)
         witnessViewModel.clearInvite()
         tab = AsrTab.Witnesses
         circleTab = CircleTab.Supporting
@@ -402,6 +410,17 @@ fun AsrApp(
         }
     }
 
+    // An invitation from before this launch: one left unanswered across a
+    // process death, or — on the first launch after installing from Play —
+    // the one whose link sent them to the listing. Either way the app opens
+    // on what they were doing rather than on a welcome screen.
+    LaunchedEffect(Unit) {
+        if (inviteCode != null) return@LaunchedEffect
+        val stored = PendingInvite.load(context) ?: return@LaunchedEffect
+        inviteCode = stored
+        witnessViewModel.openInvite(stored)
+    }
+
     // Read into a local so the branch below can smart-cast it. A delegated
     // property cannot be, and `!!` on the thing that tells somebody their
     // challenge broke is not where to be casual.
@@ -423,6 +442,7 @@ fun AsrApp(
             onBack = {
                 inviteCode = null
                 inviteDeferred = false
+                PendingInvite.clear(context)
                 witnessViewModel.clearInvite()
             },
             onAccept = {

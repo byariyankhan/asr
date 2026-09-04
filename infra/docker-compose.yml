@@ -62,6 +62,9 @@ services:
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
       INTERNAL_SECRET: ${INTERNAL_SECRET}
       PLAY_PACKAGE_NAME: ${PLAY_PACKAGE_NAME}
+      # The signing certificates /.well-known/assetlinks.json names, so a
+      # joinasr.io/w/<code> link opens the app instead of a browser.
+      ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
       PLAY_SERVICE_ACCOUNT_JSON_B64: ${PLAY_SERVICE_ACCOUNT_JSON_B64}
       PLAY_PUBSUB_SECRET: ${PLAY_PUBSUB_SECRET}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}

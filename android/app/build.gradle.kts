@@ -95,6 +95,12 @@ dependencies {
     implementation(libs.androidx.savedstate.ktx)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.exifinterface)
+    // Carries the invitation across a Play install. A witness is by
+    // definition somebody without the app, so the link they are sent lands
+    // on a phone that has to install it first, and without this the code is
+    // lost in that gap: they arrive at a welcome screen with no idea what
+    // they were doing and have to go and find the message again.
+    implementation(libs.installreferrer)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)

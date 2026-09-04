@@ -35,6 +35,7 @@ Add four repository secrets (Settings → Secrets and variables → Actions):
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | the whole Admin SDK JSON, pasted as-is |
 | `CERTBOT_EMAIL` | optional; set it and TLS is issued unattended |
 | `RESEND_API_KEY` | optional; set it and the bootstrap writes it into `.env` |
+| `ANDROID_CERT_SHA256` | optional; the app's signing certificate fingerprints, comma-separated. Served at `/.well-known/assetlinks.json`, and without it an invitation link opens a browser instead of the app. The Android CI job prints the debug one at the end of every run |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | optional; Cloudflare R2 for profile photos. Without them `POST /v1/me/avatar` answers 503. **See the shapes below** — three of these four are hex strings of different lengths and the page they are copied from also shows an API token, which is none of them |
 
 ### What the four R2 values look like

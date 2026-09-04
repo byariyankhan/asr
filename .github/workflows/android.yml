@@ -103,6 +103,32 @@ jobs:
             echo "$key: $(grep -o "\"$key\">[^<]*" "$values" | cut -d'>' -f2)"
           done
 
+      # The fingerprint that has to be in /.well-known/assetlinks.json for a
+      # joinasr.io/w/<code> link to open this app rather than a browser.
+      #
+      # Printed rather than looked up, because it is not knowable from the
+      # source: it is a property of the key that signed this APK, and the
+      # runner generates its own debug keystore. The release fingerprint is a
+      # different one again — Play signs those — and both belong in
+      # ANDROID_CERT_SHA256, comma-separated. A fingerprint is a public hash
+      # of a public certificate; there is nothing here to keep quiet.
+      - name: App Links fingerprint of this APK
+        if: success()
+        run: |
+          apk=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          signer=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          if [ -z "$apk" ] || [ -z "$signer" ]; then
+            echo "no APK or no apksigner; skipping"
+            exit 0
+          fi
+          sha=$("$signer" verify --print-certs "$apk" \
+            | grep -i "SHA-256 digest" | head -1 | awk -F': ' '{print $2}' \
+            | tr -d ' \r' | tr 'a-f' 'A-F' | sed 's/../&:/g;s/:$//')
+          echo "debug signing certificate: $sha"
+          echo
+          echo "Put this in the ANDROID_CERT_SHA256 repository secret (comma-separated"
+          echo "with the Play release fingerprint once there is one), then run Bootstrap."
+
       - uses: actions/upload-artifact@v4
         if: success()
         with:

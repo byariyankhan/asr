@@ -117,6 +117,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          ANDROID_CERT_SHA256: ${{ secrets.ANDROID_CERT_SHA256 }}
         run: |
           # Built with python rather than shell string-building so a value
           # containing a quote cannot end up as shell syntax, and passed on
@@ -130,6 +131,7 @@ jobs:
               "R2_ACCESS_KEY_ID",
               "R2_SECRET_ACCESS_KEY",
               "R2_BUCKET",
+              "ANDROID_CERT_SHA256",
           ]
           print(json.dumps({n: os.environ[n] for n in names if os.environ.get(n)}))
           PY
@@ -154,7 +156,10 @@ jobs:
           # in it would silently corrupt every variable after it, so anything
           # that is not a plain token is refused rather than written.
           for name, value in values.items():
-              if not re.fullmatch(r"[A-Za-z0-9_.:/+=-]{1,500}", value):
+              # Commas are in the set for ANDROID_CERT_SHA256, which is a
+              # list: one fingerprint for the debug key and one for the key
+              # Play signs releases with.
+              if not re.fullmatch(r"[A-Za-z0-9_.:/+=,-]{1,500}", value):
                   sys.exit(f"{name} has characters that cannot go in .env; refusing")
           path = "/opt/asr/.env"
           lines = open(path).read().splitlines()
@@ -190,7 +195,7 @@ jobs:
           # All four R2 variables, because the one that was wrong for days was
           # 65 characters where 32 was expected, and this loop was not printing
           # it. A length is not a secret and it is the whole check.
-          for name in RESEND_API_KEY R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET; do
+          for name in RESEND_API_KEY R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET ANDROID_CERT_SHA256; do
             n=$(docker compose exec -T api printenv "$name" </dev/null | tr -d "\n" | wc -c)
             echo "  container $name: $n characters"
           done
