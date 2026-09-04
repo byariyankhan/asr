@@ -12,15 +12,19 @@ import io.joinasr.app.data.DeviceRegistration
 import io.joinasr.app.data.EventCreate
 import io.joinasr.app.data.PactCreate
 import io.joinasr.app.data.PactSnapshot
+import io.joinasr.app.data.RemotePact
 import io.joinasr.app.data.SnapshotApp
 import io.joinasr.app.data.SummaryApp
 import io.joinasr.app.data.SummaryCreate
 import io.joinasr.app.earn.EarnActivity
 import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.challenge.ChallengeDuration
 import io.joinasr.app.enforcement.Pact
+import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.push.Push
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -99,6 +103,73 @@ class Sync(context: Context) {
     }
 
     /**
+     * Whether the server's active pact is this phone's, by when it started.
+     *
+     * A pact with no `starts_at` is one from a build that did not send the
+     * field; it is not identifiable, and refusing to adopt it is the safe
+     * direction -- the worst case is a challenge whose witnesses hear
+     * nothing, rather than one whose witnesses hear about somebody else.
+     */
+    private fun mine(remote: RemotePact, pact: Pact): Boolean {
+        val started = parseInstantMillis(remote.startsAt) ?: return false
+        return kotlin.math.abs(started - pact.startedAtMillis) <= ADOPTION_WINDOW_MS
+    }
+
+    /**
+     * The challenge this account is running, rebuilt on a phone that does
+     * not have it.
+     *
+     * The pact lived only in this app's own storage, written in one place
+     * and read from nowhere else, so it belonged to an install rather than
+     * to a person. Delete the app and reinstall it, replace the handset,
+     * sign in on a second phone -- in every one of those the challenge was
+     * simply gone, while the server still had it and the witnesses were
+     * still watching something nothing was enforcing.
+     *
+     * A commitment cannot be a property of a handset. This is where it comes
+     * back from.
+     *
+     * Null when there is nothing to restore, when there is no signal, or
+     * when the server's copy is missing the snapshot -- which is every pact
+     * created before the phone started sending one. Those are unrecoverable
+     * and saying so by returning null is better than rebuilding a challenge
+     * with no apps in it.
+     */
+    suspend fun restorePact(): Pact? {
+        val token = tokens.current() ?: return null
+        val remote = (Api.pacts.current(token) as? ApiResult.Ok)?.value ?: return null
+        if (remote.status != null && remote.status != "active") return null
+        val snapshot = remote.snapshot ?: return null
+        val startedAt = parseInstantMillis(remote.startsAt) ?: return null
+        val apps = snapshot.apps.map {
+            PactApp(
+                packageName = it.packageName,
+                label = it.label,
+                limitMinutes = it.dailyLimitMinutes,
+            )
+        }
+        if (apps.isEmpty()) return null
+
+        val pact = Pact(
+            apps = apps,
+            startedAtMillis = startedAt,
+            durationDays = remote.durationDays ?: ChallengeDuration.DEFAULT_DAYS,
+        )
+        // The id first, keyed to the start time this pact will be stored
+        // with, so events reported the moment enforcement begins already
+        // know where to go.
+        store.saveRemotePact(remote.id, pact.startedAtMillis)
+        // And say out loud that this phone is the one enforcing it now.
+        // Best effort: a challenge that is running here matters more than
+        // the server's record of which handset it is running on, and the
+        // next heartbeat is another chance.
+        deviceId()?.let { device ->
+            runCatching { Api.pacts.claim(token, remote.id, device) }
+        }
+        return pact
+    }
+
+    /**
      * The server's id for [pact], creating it if this phone has not managed
      * to yet.
      *
@@ -115,6 +186,19 @@ class Sync(context: Context) {
      * for adopting. When there is something queued, this gives up and
      * returns null; the drain closes the old pact, and the next attempt
      * creates this one properly.
+     *
+     * And a third way, which used to be swallowed by the first: the active
+     * pact belongs to *another phone* signed into the same account. Adopting
+     * it there is silently reporting this phone's breaches against a
+     * challenge somebody set up on a different handset, with different apps
+     * and different limits, and never sending this one's snapshot at all.
+     *
+     * So the start times have to agree. This phone's own create, answered or
+     * not, produces a server pact whose `starts_at` is when the request
+     * landed -- the same moment, give or take the round trip. Another
+     * phone's is any time at all. [ADOPTION_WINDOW_MS] is wide enough for a
+     * slow request and far narrower than the gap between two people
+     * committing separately.
      */
     suspend fun remotePactId(pact: Pact): String? {
         store.remotePactId(pact.startedAtMillis)?.let { return it }
@@ -155,7 +239,7 @@ class Sync(context: Context) {
         val id = when {
             created is ApiResult.Ok -> created.value.id
             created is ApiResult.Failure && created.code == 409 && store.pending().isEmpty() ->
-                (Api.pacts.current(token) as? ApiResult.Ok)?.value?.id
+                (Api.pacts.current(token) as? ApiResult.Ok)?.value?.takeIf { mine(it, pact) }?.id
             else -> null
         } ?: return null
         store.saveRemotePact(id, pact.startedAtMillis)
@@ -324,8 +408,33 @@ class Sync(context: Context) {
     /** Whether everything queued has gone through. */
     suspend fun isDrained(): Boolean = store.pending().isEmpty()
 
+    /**
+     * An ISO timestamp from the server, in milliseconds. Null when it is
+     * missing or unparseable, which is treated as "cannot restore" rather
+     * than as "started at the epoch".
+     */
+    private fun parseInstantMillis(iso: String?): Long? {
+        if (iso.isNullOrBlank()) return null
+        return runCatching { Instant.parse(iso).toEpochMilli() }
+            .recoverCatching { OffsetDateTime.parse(iso).toInstant().toEpochMilli() }
+            .getOrNull()
+    }
+
     private fun iso(millis: Long): String =
         DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(
             Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()),
         )
+
+    companion object {
+        /**
+         * How far apart this phone's idea of when a challenge started and
+         * the server's may be, and still be the same challenge.
+         *
+         * The gap is one request: the phone stamps the pact when Start is
+         * pressed, the server stamps it when the create lands. Five minutes
+         * covers a request that crawled and is nowhere near the distance
+         * between two people setting up separately on two handsets.
+         */
+        private const val ADOPTION_WINDOW_MS = 5L * 60 * 1000
+    }
 }

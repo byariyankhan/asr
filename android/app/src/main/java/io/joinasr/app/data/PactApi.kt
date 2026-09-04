@@ -80,7 +80,25 @@ data class SummaryCreate(
 
 /** The server's copy of a challenge. Only the id is used by this app. */
 @Serializable
-data class RemotePact(val id: String, val status: String? = null)
+data class RemotePact(
+    val id: String,
+    val status: String? = null,
+    /**
+     * Everything needed to rebuild the challenge on a phone that does not
+     * have it: which apps, what each is allowed, when it started and how
+     * long it runs.
+     *
+     * Only the id was read before, because the challenge only ever existed
+     * on the phone that made it. That is what left somebody who reinstalled
+     * with no challenge and no way to get it back.
+     */
+    val snapshot: PactSnapshot? = null,
+    @SerialName("starts_at") val startsAt: String? = null,
+    @SerialName("duration_days") val durationDays: Int? = null,
+)
+
+@Serializable
+data class PactClaim(@SerialName("device_id") val deviceId: String)
 
 @Serializable
 data class EventCreate(
@@ -107,6 +125,16 @@ class PactApi(
 ) {
     suspend fun create(token: String, body: PactCreate): ApiResult<RemotePact> =
         post("/v1/pacts", token, ApiJson.encodeToString(body))
+
+    /**
+     * Says this phone is the one enforcing the challenge now.
+     *
+     * Sent after restoring a pact this install did not create. Ownership is
+     * what the server's uninstall check reads, so a phone that has taken a
+     * challenge over has to say so or the one it replaced looks abandoned.
+     */
+    suspend fun claim(token: String, pactId: String, deviceId: String): ApiResult<RemotePact> =
+        post("/v1/pacts/$pactId/claim", token, ApiJson.encodeToString(PactClaim(deviceId)))
 
     /** The active pact, or a 404 failure when there is none. */
     suspend fun current(token: String): ApiResult<RemotePact> = withContext(Dispatchers.IO) {

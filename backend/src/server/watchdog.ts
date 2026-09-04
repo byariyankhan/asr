@@ -273,8 +273,23 @@ export async function deliverNotifications(push: PushSender, now: Date): Promise
   return { sent, failed, uninstalled };
 }
 
-// FCM said this device's token is gone. If it was running an active pact and
-// the user has no other live device, that is an uninstall.
+/**
+ * FCM said this device's token is gone. If it was the device running an
+ * active pact, the challenge has lost the phone enforcing it.
+ *
+ * The question is ownership and nothing else. It used to also look for any
+ * other device of theirs with a live token and a recent heartbeat, and let
+ * that stand as "they are fine" -- which had it exactly backwards, because
+ * the device most likely to satisfy that test is the fresh install that
+ * replaced the one being reported dead. Delete the app, install it again,
+ * and the new copy vouched for the old one: the pact stayed open, nothing
+ * was enforcing it, and no witness was told. A two-minute way around the
+ * one rule this product has.
+ *
+ * A phone that takes over a challenge says so -- `claimPact` moves
+ * `device_id` -- so ownership is the whole answer. If another phone is
+ * really running this challenge, this pact is not the one it owns.
+ */
 export async function handleDeadDevice(deviceId: string, now: Date): Promise<boolean> {
   const pact = await db
     .selectFrom("pact")
@@ -283,16 +298,6 @@ export async function handleDeadDevice(deviceId: string, now: Date): Promise<boo
     .where("status", "=", "active")
     .executeTakeFirst();
   if (!pact) return false;
-
-  const other = await db
-    .selectFrom("device")
-    .select("id")
-    .where("user_id", "=", pact.user_id)
-    .where("id", "!=", deviceId)
-    .where("fcm_token_invalid", "=", false)
-    .where("last_heartbeat_at", ">=", new Date(now.getTime() - HEARTBEAT_TIMEOUT_MS))
-    .executeTakeFirst();
-  if (other) return false;
 
   return db.transaction().execute(async (trx: Transaction<Database>) => {
     const eventId = newId();

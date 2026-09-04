@@ -305,6 +305,22 @@ profile's `gender`, which sign-up asks for and without which the profile is
 not complete; anyone who chose `other` or `prefer_not_to_say`, or has none
 recorded, is written about as they/them, verbs included.
 
+### `POST /pacts/{id}/claim`
+
+```json
+{ "device_id": "…" }
+```
+
+This phone is the one enforcing the challenge from now on; sets the pact's
+`device_id`. Sent by a phone that restored a pact it did not create — a
+reinstall, a replacement handset, a second phone on the same account. `409
+challenge_over` once it has finished, `404` for somebody else's.
+
+Ownership is what the uninstall check reads: a dead FCM token closes the
+challenge only when the dead device is the one that owns it. `GET
+/pacts/current` returns the whole pact, snapshot included, which is what a
+phone rebuilds it from.
+
 ### `GET /witnesses`
 
 Two lists: people witnessing me (pending and accepted), people I witness

@@ -84,6 +84,34 @@ export async function getCurrentPact(userId: string) {
     .executeTakeFirst();
 }
 
+/**
+ * This phone is the one enforcing the challenge now.
+ *
+ * A pact names the device running it, and that used to be settled forever at
+ * creation. But the challenge belongs to the person, not to the handset: they
+ * reinstall, they lose the phone, they sign in on a second one. Whichever
+ * phone has the pact loaded and the service running is the one whose word
+ * about it means anything, and it says so here.
+ *
+ * It is what makes the uninstall check honest as well. "Did the device
+ * running this challenge disappear" is only a real question if the answer can
+ * change hands.
+ */
+export async function claimPact(userId: string, pactId: string, deviceId: string) {
+  const pact = await requireOwnedPact(userId, pactId);
+  if (pact.status !== "active") {
+    throw conflict("challenge_over", "That challenge is no longer running.");
+  }
+  await requireOwnedDevice(userId, deviceId);
+  if (pact.device_id === deviceId) return pact;
+  return db
+    .updateTable("pact")
+    .set({ device_id: deviceId, updated_at: new Date() })
+    .where("id", "=", pactId)
+    .returning(pactColumns)
+    .executeTakeFirstOrThrow();
+}
+
 export async function requireOwnedPact(userId: string, pactId: string) {
   if (!isUuidLike(pactId)) throw notFound("Pact");
   const pact = await db

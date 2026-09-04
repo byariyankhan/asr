@@ -164,6 +164,7 @@ fun AsrApp(
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
+    val restoringPact by pactViewModel.restoring.collectAsStateWithLifecycle()
     val endedUnseen by pactViewModel.endedUnseen.collectAsStateWithLifecycle()
     val witnesses by witnessViewModel.witnesses.collectAsStateWithLifecycle()
     val pendingShare by witnessViewModel.pendingShare.collectAsStateWithLifecycle()
@@ -481,7 +482,13 @@ fun AsrApp(
     val code = inviteCode
     val signedIn = session is Session.SignedIn
 
-    LaunchedEffect(signedIn) { if (signedIn) inviteDeferred = false }
+    LaunchedEffect(signedIn) {
+        if (!signedIn) return@LaunchedEffect
+        inviteDeferred = false
+        // A challenge belongs to the person, not to the install. If this
+        // phone has none and the account does, this is where it comes back.
+        pactViewModel.restoreFromServer()
+    }
 
     // Sign-up has no name field, so the email's local part stands in until
     // About You. That placeholder was reaching the other person: the invite
@@ -539,9 +546,16 @@ fun AsrApp(
                     submitting = submitting,
                     errorMessage = error,
                 )
-            } else if (pactState is PactState.Loading) {
-                // One read of a small file. Blank rather than a spinner, for
+            } else if (pactState is PactState.Loading || restoringPact) {
+                // One read of a small file, and -- on a phone that has none
+                // -- one request asking whether this account has a challenge
+                // running somewhere else. Blank rather than a spinner, for
                 // the same reason as above.
+                //
+                // `restoringPact` matters: "no pact on this phone" and "no
+                // pact" are different answers, and offering to start a
+                // challenge for the second it takes to find out would be
+                // offering it to somebody who already has one.
                 Box(Modifier.fillMaxSize().background(AsrColors.Background))
             } else if (pactState is PactState.None && ended != null) {
                 // Figma 26. A challenge that ended is shown once, before

@@ -7,7 +7,9 @@ import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.sync.Sync
 import io.joinasr.app.sync.Uuid7
 import io.joinasr.app.witness.WitnessStore
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -42,6 +44,18 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
     private val sync = Sync(application)
     private val witnesses = WitnessStore(application)
 
+    /**
+     * True while the phone is asking the server whether this account has a
+     * challenge it does not know about.
+     *
+     * Read together with [state]: "no pact on this phone" and "no pact" are
+     * different answers, and showing somebody the start-a-challenge screen
+     * for the second it takes to find out would be showing them the wrong
+     * one.
+     */
+    private val _restoring = MutableStateFlow(false)
+    val restoring: StateFlow<Boolean> = _restoring.asStateFlow()
+
     val state: StateFlow<PactState> = store.pact
         .map { if (it == null) PactState.None else PactState.Active(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PactState.Loading)
@@ -53,6 +67,32 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
      */
     val endedUnseen: StateFlow<PactOutcome?> =
         outcomes.unseen.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * Brings back a challenge this install does not have.
+     *
+     * Called when somebody signs in. It does nothing at all in the ordinary
+     * case -- there is a pact on the phone and the first line returns -- and
+     * everything in the cases that used to lose one: a reinstall, a new
+     * handset, a second phone on the same account. Those all looked
+     * identical to "no challenge" and were treated as such, which is how
+     * deleting the app became a way out of a pact that nobody was told
+     * about.
+     *
+     * Never overwrites. A challenge on this phone is the one being enforced
+     * here, and the server's copy is bookkeeping about it.
+     */
+    fun restoreFromServer() {
+        viewModelScope.launch {
+            if (store.current() != null) return@launch
+            _restoring.value = true
+            val restored = runCatching { sync.restorePact() }.getOrNull()
+            // Checked again: committing a challenge while this was in flight
+            // is rare and the local one wins.
+            if (restored != null && store.current() == null) store.save(restored)
+            _restoring.value = false
+        }
+    }
 
     init {
         // A challenge that ended with no signal left an event in the outbox.
