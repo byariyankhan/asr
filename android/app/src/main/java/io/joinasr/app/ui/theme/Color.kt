@@ -71,4 +71,12 @@ object AsrColors {
      * the moment the designer draws one.
      */
     val Error = Color(0xFFE5484D)
+
+    /**
+     * The delete-account screen, and nowhere else. Figma 31 is the only frame
+     * in the file that uses red as a surface rather than as a line of text,
+     * and it is the only screen where a mistake cannot be undone.
+     */
+    val Danger = Color(0xFFFF6B6B)
+    val DangerMuted = Color(0xFF231011)
 }

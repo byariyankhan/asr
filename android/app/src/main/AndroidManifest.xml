@@ -72,6 +72,24 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- The password reset link. The email carries
+                 https://joinasr.io/reset/<token> and this is what opens it:
+                 an App Link rather than a custom scheme, so a link that
+                 arrives on a phone without the app still lands on a real
+                 web page instead of an error. autoVerify makes Android
+                 check /.well-known/assetlinks.json and open the app without
+                 asking; until that file lists this app's signing
+                 certificate, the link shows a chooser, which still works. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="joinasr.io"
+                    android:pathPrefix="/reset/" />
+            </intent-filter>
         </activity>
 
         <!-- The block screen. Its own task and out of recents, so dismissing

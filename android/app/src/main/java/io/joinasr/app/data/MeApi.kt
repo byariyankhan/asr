@@ -20,6 +20,7 @@ data class Me(
     /** A path like /v1/media/avatars/... , or null. Never an absolute URL:
      *  the server stores a key and the client owns the base URL. */
     val image: String? = null,
+    @SerialName("email_verified") val emailVerified: Boolean = false,
     @SerialName("date_of_birth") val dateOfBirth: String? = null,
     val country: String? = null,
     val gender: String? = null,

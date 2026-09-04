@@ -1,6 +1,5 @@
 package io.joinasr.app.ui
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -35,8 +34,11 @@ import io.joinasr.app.ui.screens.BlockingDisclosureScreen
 import io.joinasr.app.ui.screens.ChallengeStartedScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ChooseAppsScreen
+import io.joinasr.app.ui.screens.CheckEmailScreen
 import io.joinasr.app.ui.screens.DailyLimitsScreen
 import io.joinasr.app.ui.screens.DashboardScreen
+import io.joinasr.app.ui.screens.DeleteAccountScreen
+import io.joinasr.app.ui.screens.ForgotPasswordScreen
 import io.joinasr.app.legal.LegalTexts
 import io.joinasr.app.ui.screens.LegalScreen
 import io.joinasr.app.ui.screens.LogInScreen
@@ -44,8 +46,10 @@ import io.joinasr.app.ui.screens.PersonalDetailsScreen
 import io.joinasr.app.ui.screens.ProfileDestination
 import io.joinasr.app.ui.screens.ProfileScreen
 import io.joinasr.app.ui.screens.ProgressScreen
+import io.joinasr.app.ui.screens.ResetPasswordScreen
 import io.joinasr.app.ui.screens.ReviewScreen
 import io.joinasr.app.ui.screens.ProtectionScreen
+import io.joinasr.app.ui.screens.SecurityScreen
 import io.joinasr.app.ui.screens.SignUpScreen
 import io.joinasr.app.ui.screens.UsageAccessScreen
 import io.joinasr.app.ui.screens.WelcomeScreen
@@ -64,6 +68,13 @@ private sealed interface Destination {
     data object Welcome : Destination
     data object SignUp : Destination
     data object LogIn : Destination
+    data object ForgotPassword : Destination
+
+    /** Figma 34. Carries the address so the screen can name it. */
+    data class CheckEmail(val email: String) : Destination
+
+    /** Figma 35, reached from the link in the email rather than from a tap. */
+    data class ResetPassword(val token: String) : Destination
 }
 
 /**
@@ -95,15 +106,20 @@ private sealed interface SetupStep {
  */
 private val ProfileRoutes = setOf(
     ProfileDestination.PersonalDetails,
+    ProfileDestination.EmailAndPassword,
     ProfileDestination.PrivacyPolicy,
     ProfileDestination.TermsOfService,
 )
 
 @Composable
 fun AsrApp(
+    /** The token from a password-reset link, when the app was opened by one. */
+    resetToken: String? = null,
+    onResetTokenHandled: () -> Unit = {},
     viewModel: SessionViewModel = viewModel(),
     pactViewModel: PactViewModel = viewModel(),
     witnessViewModel: WitnessViewModel = viewModel(),
+    accountViewModel: AccountViewModel = viewModel(),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
@@ -113,6 +129,12 @@ fun AsrApp(
     val witnessError by witnessViewModel.error.collectAsStateWithLifecycle()
     val submitting by viewModel.submitting.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val accountBusy by accountViewModel.busy.collectAsStateWithLifecycle()
+    val accountError by accountViewModel.error.collectAsStateWithLifecycle()
+    val accountNotice by accountViewModel.notice.collectAsStateWithLifecycle()
+    val accountDeleted by accountViewModel.deleted.collectAsStateWithLifecycle()
+    val passwordReset by accountViewModel.reset.collectAsStateWithLifecycle()
+    val resetEmailSentTo by accountViewModel.resetEmailSentTo.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var destination by remember { mutableStateOf<Destination>(Destination.Welcome) }
@@ -124,6 +146,9 @@ fun AsrApp(
     // need a navigation library.
     var profileRoute by remember { mutableStateOf<ProfileDestination?>(null) }
     var addingWitness by remember { mutableStateOf(false) }
+    // Figma 31, which sits on top of Personal Details rather than in the
+    // profile's row list: the design puts it at the bottom of that screen.
+    var deletingAccount by remember { mutableStateOf(false) }
     // True between committing a pact and pressing "Go to dashboard" on
     // Figma 12. Not stored: it is a moment, not a state of the challenge,
     // and a person who closes the app during it has still started.
@@ -147,7 +172,51 @@ fun AsrApp(
     // Moving between the forms drops whatever the last one was refused for.
     // An error about a password left standing over a different screen reads
     // as a new failure.
-    LaunchedEffect(destination) { viewModel.clearError() }
+    LaunchedEffect(destination) {
+        viewModel.clearError()
+        accountViewModel.clear()
+    }
+    LaunchedEffect(profileRoute, deletingAccount) { accountViewModel.clear() }
+
+    // A reset link opens the reset screen from wherever the app was. It also
+    // signs the person out first: the token is proof of reaching the inbox,
+    // and the server revokes every session when it is spent, so staying on a
+    // signed-in screen behind it would only mean the next request 401s.
+    LaunchedEffect(resetToken) {
+        val token = resetToken ?: return@LaunchedEffect
+        viewModel.signOut()
+        destination = Destination.ResetPassword(token)
+        onResetTokenHandled()
+    }
+
+    // Deletion is accepted by the server, so the token is spent: signing out
+    // here rather than inside the account model keeps clearing it in one
+    // place, which is the only way it reliably happens at all.
+    LaunchedEffect(accountDeleted) {
+        if (!accountDeleted) return@LaunchedEffect
+        accountViewModel.consumeDeleted()
+        deletingAccount = false
+        profileRoute = null
+        tab = AsrTab.Home
+        destination = Destination.Welcome
+        viewModel.signOut()
+    }
+
+    LaunchedEffect(passwordReset) {
+        if (!passwordReset) return@LaunchedEffect
+        accountViewModel.consumeReset()
+        destination = Destination.LogIn
+    }
+
+    // Figma 34 says "reset link sent" as a fact, so it is reached when the
+    // server has taken the request and not when the button was pressed. A
+    // resend from that screen lands here too and leaves the destination as
+    // it is, which keeps the notice on screen.
+    LaunchedEffect(resetEmailSentTo) {
+        val sentTo = resetEmailSentTo ?: return@LaunchedEffect
+        accountViewModel.consumeResetEmailSent()
+        destination = Destination.CheckEmail(sentTo)
+    }
 
     BackHandler(enabled = destination != Destination.Welcome) {
         destination = Destination.Welcome
@@ -155,8 +224,11 @@ fun AsrApp(
 
     // Back from any other tab returns to Home rather than leaving the app,
     // which is what a bottom bar implies and what every app with one does.
-    BackHandler(enabled = tab != AsrTab.Home || profileRoute != null || addingWitness) {
+    BackHandler(
+        enabled = tab != AsrTab.Home || profileRoute != null || addingWitness || deletingAccount,
+    ) {
         when {
+            deletingAccount -> deletingAccount = false
             profileRoute != null -> profileRoute = null
             addingWitness -> addingWitness = false
             else -> tab = AsrTab.Home
@@ -336,8 +408,16 @@ fun AsrApp(
                                     onSignOut = signOut,
                                 )
 
-                                // Figma 29.
-                                ProfileDestination.PersonalDetails -> PersonalDetailsScreen(
+                                // Figma 29, with Figma 31 stacked on top of
+                                // it when the delete row is pressed.
+                                ProfileDestination.PersonalDetails -> if (deletingAccount) {
+                                    DeleteAccountScreen(
+                                        onBack = { deletingAccount = false },
+                                        onDelete = accountViewModel::deleteAccount,
+                                        busy = accountBusy,
+                                        errorMessage = accountError,
+                                    )
+                                } else PersonalDetailsScreen(
                                     me = current.me,
                                     onBack = { profileRoute = null },
                                     onSave = { name, country, gender ->
@@ -354,12 +434,23 @@ fun AsrApp(
                                         )
                                     },
                                     onPhotoPicked = viewModel::uploadPhoto,
-                                    onDeleteAccount = {},
-                                    // Figma 31, which needs an endpoint that
-                                    // does not exist yet.
-                                    deleteAvailable = false,
+                                    onDeleteAccount = { deletingAccount = true },
+                                    deleteAvailable = true,
                                     submitting = submitting,
                                     errorMessage = error,
+                                )
+
+                                // Figma 30.
+                                ProfileDestination.EmailAndPassword -> SecurityScreen(
+                                    email = current.me.email,
+                                    emailVerified = current.me.emailVerified,
+                                    onBack = { profileRoute = null },
+                                    onChangePassword = accountViewModel::changePassword,
+                                    onSignOutOtherSessions =
+                                        accountViewModel::signOutOtherSessions,
+                                    busy = accountBusy,
+                                    errorMessage = accountError,
+                                    notice = accountNotice,
                                 )
 
                                 // Figma 36 and 37.
@@ -393,7 +484,7 @@ fun AsrApp(
                 }
             }
 
-        Session.SignedOut -> when (destination) {
+        Session.SignedOut -> when (val where = destination) {
             Destination.Welcome -> WelcomeScreen(
                 onContinue = { destination = Destination.SignUp },
                 onLogIn = { destination = Destination.LogIn },
@@ -410,18 +501,45 @@ fun AsrApp(
             Destination.LogIn -> LogInScreen(
                 onBack = { destination = Destination.Welcome },
                 onSubmit = viewModel::signIn,
-                onForgotPassword = {
-                    // Figma 33-35 exist as designs and not yet as screens.
-                    // Saying so beats a link that appears to do nothing.
-                    Toast.makeText(
-                        context,
-                        "Password reset is designed but not built yet.",
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                },
+                onForgotPassword = { destination = Destination.ForgotPassword },
                 onCreateAccount = { destination = Destination.SignUp },
                 submitting = submitting,
                 errorMessage = error,
+            )
+
+            // Figma 33. Moving on happens whether or not the address has an
+            // account, because the server answers identically either way and
+            // a screen that only advanced for real accounts would be a way
+            // to test whether an address has one.
+            Destination.ForgotPassword -> ForgotPasswordScreen(
+                onBack = { destination = Destination.LogIn },
+                onSend = accountViewModel::sendResetEmail,
+                onBackToLogIn = { destination = Destination.LogIn },
+                busy = accountBusy,
+                errorMessage = accountError,
+            )
+
+            // Figma 34.
+            is Destination.CheckEmail -> CheckEmailScreen(
+                email = where.email,
+                onBack = { destination = Destination.ForgotPassword },
+                onResend = { accountViewModel.sendResetEmail(where.email) },
+                onBackToLogIn = { destination = Destination.LogIn },
+                busy = accountBusy,
+                notice = accountNotice,
+                errorMessage = accountError,
+            )
+
+            // Figma 35, reached from the link. Back goes to log in rather
+            // than to the previous screen: there is no previous screen when
+            // the app was opened by an email.
+            is Destination.ResetPassword -> ResetPasswordScreen(
+                onBack = { destination = Destination.LogIn },
+                onSubmit = { password ->
+                    accountViewModel.resetPassword(where.token, password)
+                },
+                busy = accountBusy,
+                errorMessage = accountError,
             )
         }
     }

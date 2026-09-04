@@ -28,6 +28,7 @@ object Api {
     val auth: AuthApi by lazy { AuthApi(client, BuildConfig.API_BASE_URL) }
     val me: MeApi by lazy { MeApi(client, BuildConfig.API_BASE_URL) }
     val witnesses: WitnessApi by lazy { WitnessApi(client, BuildConfig.API_BASE_URL) }
+    val account: AccountApi by lazy { AccountApi(client, BuildConfig.API_BASE_URL) }
 
     fun tokens(context: Context) = TokenStore(context.applicationContext)
 }
