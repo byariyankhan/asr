@@ -19,6 +19,20 @@ import { peekInvite } from "@/server/witnesses";
 
 const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.io").replace(/\/$/, "");
 
+/**
+ * The Play listing, once there is one.
+ *
+ * Behind a flag because a button linking to a listing that does not exist
+ * is worse than no button: it would be the one action the page offers, and
+ * it would land on a Play page saying the app was not found. Set
+ * PLAY_LISTING_LIVE=true in .env the day the app is published.
+ */
+function playUrl(): string | null {
+  if (process.env.PLAY_LISTING_LIVE !== "true") return null;
+  const pkg = process.env.PLAY_PACKAGE_NAME || "io.joinasr.app";
+  return `https://play.google.com/store/apps/details?id=${pkg}`;
+}
+
 const RELATIONSHIP_LABEL: Record<string, string> = {
   mother: "their mother",
   father: "their father",
@@ -103,6 +117,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
     ? RELATIONSHIP_LABEL[invite.relationship] ?? "someone they trust"
     : "someone they trust";
   const initial = invite.inviter_name.trim().slice(0, 1).toUpperCase() || "?";
+  const play = playUrl();
 
   return (
     <main style={S.page}>
@@ -134,12 +149,22 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
           </p>
         </div>
 
-        <p style={S.open}>
-          Open this link on the phone with Asr installed to accept, or install Asr and open it
-          again. Nothing happens until you accept.
-        </p>
-
-        <p style={S.code}>Invitation code · {code}</p>
+        <div style={S.accept}>
+          <p style={S.acceptTitle}>To accept</p>
+          <a href={`${SITE()}/w/${code}`} style={S.cta}>
+            Open in Asr
+          </a>
+          <p style={S.acceptBody}>
+            {play
+              ? "That opens the app if you have it. If you do not, install Asr and tap the link in the message again — it takes you straight here."
+              : "That opens the app if you have it. If you do not, install Asr and tap the link in the message again — it takes you straight here. Nothing is shared until you accept."}
+          </p>
+          {play ? (
+            <a href={play} style={S.secondary}>
+              Get Asr on Google Play
+            </a>
+          ) : null}
+        </div>
       </div>
     </main>
   );
@@ -206,6 +231,31 @@ const S: Record<string, React.CSSProperties> = {
   },
   whatTitle: { margin: "0 0 8px", fontSize: 14, fontWeight: 600 },
   whatBody: { margin: 0, color: "#9A9F9C", fontSize: 13, lineHeight: 1.6 },
-  open: { margin: "22px 0 0", color: "#9A9F9C", fontSize: 13, lineHeight: 1.6 },
-  code: { margin: "20px 0 0", color: "#6B706E", fontSize: 12, letterSpacing: "0.06em" },
+  accept: { marginTop: 22, textAlign: "left" },
+  acceptTitle: { margin: "0 0 12px", fontSize: 14, fontWeight: 600 },
+  cta: {
+    display: "block",
+    background: "#12B886",
+    color: "#04120C",
+    textDecoration: "none",
+    textAlign: "center",
+    borderRadius: 27,
+    padding: "16px 20px",
+    fontSize: 16,
+    fontWeight: 700,
+    marginBottom: 14,
+  },
+  acceptBody: { margin: "0 0 12px", color: "#9A9F9C", fontSize: 13, lineHeight: 1.6 },
+  secondary: {
+    display: "block",
+    color: "#12B886",
+    textDecoration: "none",
+    textAlign: "center",
+    border: "1px solid #173B2D",
+    background: "#071A13",
+    borderRadius: 27,
+    padding: "14px 20px",
+    fontSize: 15,
+    fontWeight: 600,
+  },
 };
