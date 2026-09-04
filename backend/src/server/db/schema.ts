@@ -167,7 +167,22 @@ export interface WitnessTable {
   updated_at: GeneratedTimestamp;
 }
 
-export type Relationship = "parent" | "sibling" | "spouse" | "partner" | "friend" | "mentor" | "colleague" | "other";
+export type Relationship =
+  | "mother"
+  | "father"
+  | "brother"
+  | "sister"
+  | "husband"
+  | "wife"
+  | "partner"
+  | "friend"
+  | "mentor"
+  | "colleague"
+  | "other"
+  // Written before the lumped values were split. Still read, never offered.
+  | "parent"
+  | "sibling"
+  | "spouse";
 export type Emoji = "laugh" | "haha" | "shoe" | "tomato" | "clap";
 
 export interface ReactionTable {

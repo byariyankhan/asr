@@ -301,8 +301,8 @@ private fun WitnessesPreview() {
         ) {
             WitnessesBody(
                 witnesses = listOf(
-                    Witness("1", "parent", 0, accepted = true, name = "Mum"),
-                    Witness("2", "sibling", 0),
+                    Witness("1", "mother", 0, accepted = true, name = "Mum"),
+                    Witness("2", "brother", 0),
                 ),
                 onAdd = {},
                 addEnabled = true,

@@ -308,7 +308,7 @@ private fun AddWitnessesPreview() {
         AddWitnessesScreen(
             fromName = "Ariyan",
             challengeDays = 14,
-            witnesses = listOf(Witness("1", "parent", 0)),
+            witnesses = listOf(Witness("1", "mother", 0)),
             onBack = {},
             onInvite = {},
             onContinue = {},

@@ -219,15 +219,20 @@ without completion; the app learns about it on next sync.
 ### `POST /witnesses/invites`
 
 ```json
-{ "relationship": "sibling", "email": "optional@example.com" }
+{ "relationship": "brother", "email": "optional@example.com" }
 ```
 
-`relationship` is one of `parent`, `sibling`, `spouse`, `partner`, `friend`,
-`mentor`, `colleague`, `other`; it personalises invite copy and
-notifications. `201`:
+`relationship` is one of `mother`, `father`, `brother`, `sister`, `husband`,
+`wife`, `partner`, `friend`, `mentor`, `colleague`, `other`; it personalises
+invite copy and notifications. Each names one person, because a witness is
+one person and the sender knows which.
+
+`parent`, `sibling` and `spouse` are also accepted and are what the app used
+to send. They are not offered any more; rows carrying them still read back.
+`201`:
 
 ```json
-{ "id": "…", "invite_code": "K7M2P9XQ4T", "relationship": "sibling", "url": "https://joinasr.io/w/K7M2P9XQ4T" }
+{ "id": "…", "invite_code": "K7M2P9XQ4T", "relationship": "brother", "url": "https://joinasr.io/w/K7M2P9XQ4T" }
 ```
 
 If `email` is given the delivery worker also sends the link by email.

@@ -271,7 +271,7 @@ private fun Note(glyph: String, text: String) {
 private fun WitnessInvitePreview() {
     AsrTheme {
         WitnessInviteScreen(
-            invite = InvitePeek(inviterName = "Ariyan", relationship = "parent"),
+            invite = InvitePeek(inviterName = "Ariyan", relationship = "mother"),
             errorMessage = null,
             signedIn = true,
             busy = false,

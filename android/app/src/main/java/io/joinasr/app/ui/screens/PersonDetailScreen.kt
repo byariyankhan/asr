@@ -411,7 +411,7 @@ private fun PersonDetailPreview() {
         PersonDetailScreen(
             person = SupportedPerson(
                 id = "1",
-                relationship = "sibling",
+                relationship = "brother",
                 user = io.joinasr.app.data.RemoteUser("2", "Rafi"),
             ),
             progress = null,

@@ -48,15 +48,23 @@ object Relationships {
     /**
      * Exactly the set the server accepts, in the same spelling.
      *
-     * The API validates `relationship` against an enum, so a client list
-     * that read "mother" and "brother" would have been refused with a 400 on
-     * the first invite anybody sent. The labels are this app's; the values
-     * are the server's, and they must stay that way.
+     * The API validates `relationship` against an enum, so a value this list
+     * invents is a 400 on the first invite anybody sends.
+     *
+     * Each one names a single person, because a witness is a single person
+     * and whoever is sending the invitation knows which one. The first
+     * version of this list lumped them — "Parent", "Husband or wife" — which
+     * reads as the app hedging about something it never had to guess at, and
+     * makes every sentence built from it hedge too: "your husband or wife
+     * will be told" is not a sentence anybody would write.
      */
     val all: List<Relationship> = listOf(
-        Relationship("parent", "Parent"),
-        Relationship("sibling", "Brother or sister"),
-        Relationship("spouse", "Husband or wife"),
+        Relationship("mother", "Mother"),
+        Relationship("father", "Father"),
+        Relationship("brother", "Brother"),
+        Relationship("sister", "Sister"),
+        Relationship("husband", "Husband"),
+        Relationship("wife", "Wife"),
         Relationship("partner", "Partner"),
         Relationship("friend", "Friend"),
         Relationship("mentor", "Mentor"),
@@ -64,8 +72,20 @@ object Relationships {
         Relationship("other", "Someone else"),
     )
 
+    /**
+     * Values written before the list was split into single people. Not
+     * offered, still displayed: an invite sent last week is still an invite,
+     * and a witness row reading "Witness" because the app stopped
+     * recognising its own value would be this change eating old data.
+     */
+    private val legacy = mapOf(
+        "parent" to "Parent",
+        "sibling" to "Brother or sister",
+        "spouse" to "Husband or wife",
+    )
+
     fun labelFor(value: String): String =
-        all.firstOrNull { it.value == value }?.label ?: "Witness"
+        all.firstOrNull { it.value == value }?.label ?: legacy[value] ?: "Witness"
 
     /** One required, three the design lays out room for. */
     const val REQUIRED = 1

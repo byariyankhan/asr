@@ -181,7 +181,11 @@ create table witness (
   witness_user_id   text references "user"(id) on delete cascade,  -- null until the invite is accepted
   invite_code       text not null unique,       -- 10 chars, base32 without ambiguous letters
   invite_email      text,                       -- optional, for the email fallback
-  relationship      text check (relationship in ('parent', 'sibling', 'spouse', 'partner', 'friend', 'mentor', 'colleague', 'other')),
+  -- One person each. 'parent', 'sibling' and 'spouse' are legacy: written
+  -- before the list was split, still accepted, no longer offered.
+  relationship      text check (relationship in ('mother', 'father', 'brother', 'sister',
+                      'husband', 'wife', 'partner', 'friend', 'mentor', 'colleague', 'other',
+                      'parent', 'sibling', 'spouse')),
   status            text not null default 'invited'
                     check (status in ('invited', 'accepted', 'declined', 'removed')),
   notify_start      boolean not null default true,

@@ -146,7 +146,25 @@ const isoDateTime = z.iso.datetime({ offset: true });
 const nonEmpty = (o: object) => Object.keys(o).length > 0;
 
 // --- witnesses ---
-export const RELATIONSHIPS = ["parent", "sibling", "spouse", "partner", "friend", "mentor", "colleague", "other"] as const;
+// A witness is one person, so each value names one person. The lumped
+// three -- parent, sibling, spouse -- are still accepted because rows
+// written before the split exist; the app no longer offers them.
+export const RELATIONSHIPS = [
+  "mother",
+  "father",
+  "brother",
+  "sister",
+  "husband",
+  "wife",
+  "partner",
+  "friend",
+  "mentor",
+  "colleague",
+  "other",
+  "parent",
+  "sibling",
+  "spouse",
+] as const;
 
 export const witnessInvite = z.object({
   relationship: z.enum(RELATIONSHIPS),
