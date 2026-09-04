@@ -684,6 +684,8 @@ fun AsrApp(
                                             showingNotifications = true
                                         },
                                         unreadNotifications = unread,
+                                        earnedMinutes = earnedToday.minutesByPackage,
+                                        onEarnTime = { earningFor = it.packageName },
                                     )
                                 }
                             }

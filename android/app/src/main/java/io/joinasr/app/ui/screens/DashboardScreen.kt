@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,10 +44,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.joinasr.app.apps.InstalledApps
 import io.joinasr.app.challenge.ChallengeProgress
+import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.enforcement.Pact
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.ui.DashboardViewModel
+import io.joinasr.app.ui.components.AsrIcons
 import io.joinasr.app.ui.components.AsrPill
 import io.joinasr.app.ui.greetingFor
 import io.joinasr.app.ui.theme.AsrColors
@@ -87,6 +90,10 @@ fun DashboardScreen(
     /** Opens Figma 19. */
     onNotifications: () -> Unit,
     unreadNotifications: Int,
+    /** Bonus minutes won today, per package. Raises the row's allowance. */
+    earnedMinutes: Map<String, Int>,
+    /** Opens Figma 21 for one app, from the "Earn +10m" button on its row. */
+    onEarnTime: (PactApp) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = viewModel(),
 ) {
@@ -177,6 +184,8 @@ fun DashboardScreen(
                 app = app,
                 icon = icons[app.packageName],
                 usedMinutes = state.minutesByPackage[app.packageName] ?: 0,
+                earnedMinutes = earnedMinutes[app.packageName] ?: 0,
+                onEarnTime = { onEarnTime(app) },
             )
             Spacer(Modifier.height(10.dp))
         }
@@ -223,27 +232,51 @@ fun DashboardScreen(
     }
 }
 
+/**
+ * Figma 13's notification button: a 40dp circle with the bell in it, and the
+ * unread count in a badge over its top corner.
+ *
+ * The count rather than a dot, because the frame draws a number and a number
+ * is worth more: two is a glance, a dot is a trip. Above nine it says 9+,
+ * which is the point at which the exact figure stops changing what anybody
+ * does about it.
+ */
 @Composable
 private fun Bell(unread: Int, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(AsrColors.Surface)
-            .border(1.dp, AsrColors.FieldBorder, CircleShape)
-            .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("◎", style = AsrType.display(18), color = AsrColors.TextSecondary)
+    Box(contentAlignment = Alignment.TopEnd) {
+        Box(
+            modifier = Modifier
+                .padding(top = 4.dp, end = 4.dp)
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(AsrColors.Surface)
+                .border(1.dp, AsrColors.FieldBorder, CircleShape)
+                .clickable(role = Role.Button, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsrIcons.Bell(
+                colour = if (unread > 0) AsrColors.Accent else AsrColors.TextSecondary,
+                size = 22.dp,
+            )
+        }
         if (unread > 0) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(9.dp)
-                    .size(8.dp)
+                    .size(18.dp)
                     .clip(CircleShape)
-                    .background(AsrColors.Accent),
-            )
+                    .background(AsrColors.Accent)
+                    .border(2.dp, AsrColors.Background, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (unread > 9) "9+" else unread.toString(),
+                    style = AsrType.Label.copy(
+                        fontSize = 9.sp,
+                        fontWeight = AsrType.RowTitle.fontWeight,
+                    ),
+                    color = AsrColors.OnAccent,
+                )
+            }
         }
     }
 }
@@ -321,9 +354,21 @@ private fun ChallengeCard(
 }
 
 @Composable
-private fun UsageRow(app: PactApp, icon: ImageBitmap?, usedMinutes: Int) {
+private fun UsageRow(
+    app: PactApp,
+    icon: ImageBitmap?,
+    usedMinutes: Int,
+    earnedMinutes: Int,
+    onEarnTime: () -> Unit,
+) {
     val shape = RoundedCornerShape(16.dp)
-    val locked = usedMinutes >= app.limitMinutes
+    // Today's allowance, not the pact's number. Bonus minutes are already
+    // raising the real limit inside the enforcement loop, and a row still
+    // reading LOCKED while the app opens fine would make the dashboard the
+    // liar of the two.
+    val allowance = app.limitMinutes + earnedMinutes
+    val locked = usedMinutes >= allowance
+    val capped = earnedMinutes >= EarnRules.DAILY_CAP_MINUTES
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -334,7 +379,7 @@ private fun UsageRow(app: PactApp, icon: ImageBitmap?, usedMinutes: Int) {
             .padding(horizontal = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RowIcon(app = app, icon = icon)
+        RowIcon(app = app, icon = icon, locked = locked)
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -346,28 +391,34 @@ private fun UsageRow(app: PactApp, icon: ImageBitmap?, usedMinutes: Int) {
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                "$usedMinutes of ${app.limitMinutes} min",
+                "$usedMinutes of $allowance min",
                 style = AsrType.Label.copy(fontSize = 12.sp),
                 color = AsrColors.TextSecondary,
             )
         }
 
         Spacer(Modifier.width(12.dp))
-        if (locked) {
-            // The design puts "Earn +10m" here. That flow is Figma 21 to 24
-            // and does not exist, so the row says what is true instead.
-            AsrPill("LOCKED")
-        } else {
-            Column(horizontalAlignment = Alignment.End) {
+        when {
+            // The design's own answer to a spent limit: not a label saying
+            // so -- the lock on the icon already says it -- but the one
+            // thing there is left to do about it.
+            locked && !capped -> EarnButton(onClick = onEarnTime)
+
+            // Nothing left to offer. All of today's bonus is already spent,
+            // and a button that refused every press would be worse than a
+            // row that says the day is done.
+            locked -> AsrPill("LOCKED")
+
+            else -> Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    "${app.limitMinutes - usedMinutes}m left",
+                    "${allowance - usedMinutes}m left",
                     style = AsrType.Label.copy(fontWeight = AsrType.RowTitle.fontWeight),
                     color = AsrColors.TextPrimary,
                 )
                 Spacer(Modifier.height(7.dp))
                 Box(modifier = Modifier.width(90.dp)) {
                     ProgressBar(
-                        fraction = usedMinutes.toFloat() / app.limitMinutes,
+                        fraction = usedMinutes.toFloat() / allowance.coerceAtLeast(1),
                         height = 6.dp,
                     )
                 }
@@ -376,31 +427,71 @@ private fun UsageRow(app: PactApp, icon: ImageBitmap?, usedMinutes: Int) {
     }
 }
 
+/** The green pill from Figma 13's TikTok row. */
 @Composable
-private fun RowIcon(app: PactApp, icon: ImageBitmap?) {
-    val shape = RoundedCornerShape(12.dp)
+private fun EarnButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(40.dp)
-            .clip(shape)
-            .background(AsrColors.Background)
-            .border(1.dp, AsrColors.FieldBorder, shape),
+            .height(34.dp)
+            .width(96.dp)
+            .clip(RoundedCornerShape(17.dp))
+            .background(AsrColors.Accent)
+            .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        if (icon != null) {
-            Image(
-                bitmap = icon,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Text(
-                app.label.take(1).uppercase(),
-                style = AsrType.Button.copy(fontSize = 14.sp),
-                color = AsrColors.Accent,
-            )
+        Text(
+            "Earn +${EarnRules.REWARD_MINUTES}m",
+            style = AsrType.Label.copy(
+                fontSize = 12.sp,
+                fontWeight = AsrType.RowTitle.fontWeight,
+            ),
+            color = AsrColors.OnAccent,
+        )
+    }
+}
+
+@Composable
+private fun RowIcon(app: PactApp, icon: ImageBitmap?, locked: Boolean) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(contentAlignment = Alignment.BottomEnd) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(shape)
+                .background(AsrColors.Background)
+                .border(1.dp, AsrColors.FieldBorder, shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (icon != null) {
+                Image(
+                    bitmap = icon,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(
+                    app.label.take(1).uppercase(),
+                    style = AsrType.Button.copy(fontSize = 14.sp),
+                    color = AsrColors.Accent,
+                )
+            }
         }
+        if (locked) LockBadge(Modifier.offset(x = 3.dp, y = 3.dp))
+    }
+}
+
+@Composable
+private fun LockBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(18.dp)
+            .clip(CircleShape)
+            .background(AsrColors.Background)
+            .border(1.dp, AsrColors.Accent, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        AsrIcons.Lock(colour = AsrColors.Accent, size = 10.dp)
     }
 }
 
@@ -439,8 +530,20 @@ private fun DashboardPreview() {
                 protected = true,
                 onProtectionLost = {},
             )
-            UsageRow(PactApp("com.instagram.android", "Instagram", 15), null, 8)
-            UsageRow(PactApp("com.zhiliaoapp.musically", "TikTok", 20), null, 20)
+            UsageRow(
+                app = PactApp("com.instagram.android", "Instagram", 15),
+                icon = null,
+                usedMinutes = 8,
+                earnedMinutes = 0,
+                onEarnTime = {},
+            )
+            UsageRow(
+                app = PactApp("com.zhiliaoapp.musically", "TikTok", 20),
+                icon = null,
+                usedMinutes = 20,
+                earnedMinutes = 0,
+                onEarnTime = {},
+            )
         }
     }
 }
