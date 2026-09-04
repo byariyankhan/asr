@@ -83,7 +83,11 @@ class EnforcementTest {
         // twenty-one would give everybody a free minute and make the number
         // on the block screen a lie.
         val decision = Enforcement.decide(pact, snapshot(instagram, instagram to 20))
-        val expected = Decision.Block(PactApp(instagram, "Instagram", 20), usedMinutes = 20)
+        val expected = Decision.Block(
+            PactApp(instagram, "Instagram", 20),
+            usedMinutes = 20,
+            limitMinutes = 20,
+        )
         assertEquals(expected, decision)
     }
 
@@ -278,5 +282,49 @@ class EnforcementTest {
     fun `the first app over its limit is the one reported`() {
         val seen = snapshot(youtube, instagram to 100, youtube to 100)
         assertEquals(instagram, Enforcement.breach(pact, seen, now, dayNumber = 3)?.packageName)
+    }
+
+    // ---- earned time ----
+
+    @Test
+    fun `earned minutes raise today's allowance`() {
+        val seen = snapshot(instagram, instagram to 25)
+        val earned = mapOf(instagram to 10)
+        assertEquals(Decision.Allow, Enforcement.decide(pact, seen, earned))
+    }
+
+    @Test
+    fun `earned minutes run out too`() {
+        val seen = snapshot(instagram, instagram to 30)
+        val earned = mapOf(instagram to 10)
+        val decision = Enforcement.decide(pact, seen, earned) as Decision.Block
+        assertEquals(30, decision.limitMinutes)
+        assertEquals(30, decision.usedMinutes)
+    }
+
+    @Test
+    fun `earned time for one app does not raise another's limit`() {
+        val seen = snapshot(youtube, youtube to 46)
+        val earned = mapOf(instagram to 30)
+        assertTrue(Enforcement.decide(pact, seen, earned) is Decision.Block)
+    }
+
+    @Test
+    fun `a breach is measured against the raised limit`() {
+        // 20 + 10 earned + 3 grace. Twenty-nine is not yet a breach.
+        val earned = mapOf(instagram to 10)
+        assertNull(Enforcement.breach(pact, snapshot(instagram, instagram to 32), now, 6, earned))
+        val breach = Enforcement.breach(pact, snapshot(instagram, instagram to 33), now, 6, earned)
+        assertEquals(30, breach?.limitMinutes)
+        assertEquals(33, breach?.usedMinutes)
+    }
+
+    @Test
+    fun `the close watch window follows the raised limit`() {
+        val earned = mapOf(instagram to 10)
+        val far = snapshot(instagram, instagram to 20)
+        assertEquals(Enforcement.WATCHING_MILLIS, Enforcement.pollDelayMillis(pact, far, earned))
+        val near = snapshot(instagram, instagram to 29)
+        assertEquals(Enforcement.CLOSE_MILLIS, Enforcement.pollDelayMillis(pact, near, earned))
     }
 }

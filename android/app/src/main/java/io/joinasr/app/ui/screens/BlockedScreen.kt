@@ -34,6 +34,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.joinasr.app.formatMinutes
+import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -63,6 +64,8 @@ fun BlockedScreen(
     limitMinutes: Int,
     availableAgain: String,
     onLeave: () -> Unit,
+    /** Opens Figma 21. The one moment somebody wants to earn time is this one. */
+    onEarnTime: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -98,6 +101,22 @@ fun BlockedScreen(
 
         Spacer(Modifier.weight(1f))
         AsrPrimaryButton(text = "Close $appLabel", onClick = onLeave)
+        Spacer(Modifier.height(14.dp))
+        // Below the close button, not above it. The default this screen
+        // offers is to stop, and earning more is the second thought — an app
+        // whose block screen leads with a way around itself is a slot
+        // machine with extra steps.
+        Text(
+            "Earn ${'$'}{EarnRules.REWARD_MINUTES} more minutes",
+            style = AsrType.Label.copy(fontSize = 14.sp),
+            color = AsrColors.Accent,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(role = Role.Button, onClick = onEarnTime)
+                .padding(vertical = 10.dp),
+        )
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -305,6 +324,7 @@ private fun BlockedPreview() {
             limitMinutes = 20,
             availableAgain = "Tomorrow at 12:00 AM",
             onLeave = {},
+            onEarnTime = {},
         )
     }
 }
@@ -320,6 +340,7 @@ private fun BlockedOverPreview() {
             limitMinutes = 30,
             availableAgain = "Tomorrow at 12:00 AM",
             onLeave = {},
+            onEarnTime = {},
         )
     }
 }

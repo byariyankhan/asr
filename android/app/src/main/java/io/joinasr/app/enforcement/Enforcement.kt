@@ -11,6 +11,8 @@ sealed interface Decision {
     data class Block(
         val app: PactApp,
         val usedMinutes: Int,
+        /** The limit as it stands today, bonus minutes included. */
+        val limitMinutes: Int,
     ) : Decision
 }
 
@@ -26,15 +28,26 @@ sealed interface Decision {
  */
 object Enforcement {
 
-    fun decide(pact: Pact?, snapshot: UsageSnapshot): Decision {
+    fun decide(
+        pact: Pact?,
+        snapshot: UsageSnapshot,
+        /**
+         * Minutes earned today, per package. Bonus time raises today's
+         * allowance and never the pact: the limit somebody committed to is
+         * still the limit tomorrow, which is the difference between earning
+         * time and editing a promise.
+         */
+        earnedMinutes: Map<String, Int> = emptyMap(),
+    ): Decision {
         if (pact == null || !pact.isEnforceable) return Decision.Allow
         val foreground = snapshot.foregroundPackage ?: return Decision.Allow
         val app = pact.appFor(foreground) ?: return Decision.Allow
         val used = snapshot.minutesByPackage[foreground] ?: 0
+        val allowed = app.limitMinutes + (earnedMinutes[foreground] ?: 0)
         // At the limit, not past it: a twenty minute limit is spent when the
         // twentieth minute is complete. Waiting for twenty-one would give
         // everybody a free minute and make the number on the screen a lie.
-        return if (used >= app.limitMinutes) Decision.Block(app, used) else Decision.Allow
+        return if (used >= allowed) Decision.Block(app, used, allowed) else Decision.Allow
     }
 
     /**
@@ -60,15 +73,26 @@ object Enforcement {
      * enough that somebody scrolling past a broken block reaches it almost
      * at once.
      */
-    fun breach(pact: Pact?, snapshot: UsageSnapshot, nowMillis: Long, dayNumber: Int): Breach? {
+    fun breach(
+        pact: Pact?,
+        snapshot: UsageSnapshot,
+        nowMillis: Long,
+        dayNumber: Int,
+        earnedMinutes: Map<String, Int> = emptyMap(),
+    ): Breach? {
         if (pact == null || !pact.isEnforceable) return null
         for (app in pact.apps) {
             val used = snapshot.minutesByPackage[app.packageName] ?: 0
-            if (used >= app.limitMinutes + BREACH_GRACE_MINUTES) {
+            val allowed = app.limitMinutes + (earnedMinutes[app.packageName] ?: 0)
+            if (used >= allowed + BREACH_GRACE_MINUTES) {
                 return Breach(
                     packageName = app.packageName,
                     label = app.label,
-                    limitMinutes = app.limitMinutes,
+                    // The limit as it stood, bonus included. A failure screen
+                    // reading "15 min limit, 28 used" for somebody who had
+                    // earned ten of those would be an accusation the app
+                    // itself knows to be unfair.
+                    limitMinutes = allowed,
                     usedMinutes = used,
                     atMillis = nowMillis,
                     dayNumber = dayNumber,
@@ -88,11 +112,16 @@ object Enforcement {
      * and idles otherwise. Somebody who is nowhere near a limit is not worth
      * a query a second.
      */
-    fun pollDelayMillis(pact: Pact?, snapshot: UsageSnapshot): Long {
+    fun pollDelayMillis(
+        pact: Pact?,
+        snapshot: UsageSnapshot,
+        earnedMinutes: Map<String, Int> = emptyMap(),
+    ): Long {
         if (pact == null || !pact.isEnforceable) return IDLE_MILLIS
         val foreground = snapshot.foregroundPackage ?: return IDLE_MILLIS
         val app = pact.appFor(foreground) ?: return IDLE_MILLIS
-        val remaining = app.limitMinutes - (snapshot.minutesByPackage[foreground] ?: 0)
+        val allowed = app.limitMinutes + (earnedMinutes[foreground] ?: 0)
+        val remaining = allowed - (snapshot.minutesByPackage[foreground] ?: 0)
         return if (remaining <= CLOSE_MINUTES) CLOSE_MILLIS else WATCHING_MILLIS
     }
 

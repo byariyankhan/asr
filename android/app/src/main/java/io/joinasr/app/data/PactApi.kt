@@ -19,6 +19,30 @@ data class SnapshotApp(
 )
 
 @Serializable
+data class ActivityRule(
+    @SerialName("reward_min") val rewardMinutes: Int,
+    @SerialName("daily_cap_min") val dailyCapMinutes: Int,
+    /** Steps, for a walk. */
+    val target: Int? = null,
+    /** Minutes, for a focus session. */
+    @SerialName("target_min") val targetMinutes: Int? = null,
+)
+
+/**
+ * What earning time costs, locked into the pact when it starts.
+ *
+ * Sent once and never again. The server takes the target and the reward from
+ * here rather than from the request that starts an activity, so a phone
+ * cannot ask for a cheaper walk halfway through a challenge — which is the
+ * only thing that makes earned time worth anything.
+ */
+@Serializable
+data class ActivityRules(
+    @SerialName("walk_steps") val walkSteps: ActivityRule? = null,
+    @SerialName("focus_session") val focusSession: ActivityRule? = null,
+)
+
+@Serializable
 data class PactSnapshot(
     val apps: List<SnapshotApp>,
     /**
@@ -28,6 +52,7 @@ data class PactSnapshot(
      * from the one the person is looking at.
      */
     @SerialName("reset_time") val resetTime: String = "00:00",
+    val activities: ActivityRules = ActivityRules(),
 )
 
 @Serializable

@@ -1,5 +1,6 @@
 package io.joinasr.app.ui
 
+import android.Manifest
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -9,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -20,11 +23,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.challenge.ChallengeDuration
 import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.enforcement.PactState
 import io.joinasr.app.permissions.PermissionState
+import io.joinasr.app.permissions.Permissions
+import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.EarnViewModel
 import io.joinasr.app.enforcement.PactViewModel
 import io.joinasr.app.ui.components.AsrBottomNav
 import io.joinasr.app.ui.components.AsrTab
@@ -33,7 +40,10 @@ import io.joinasr.app.ui.screens.AddWitnessesScreen
 import io.joinasr.app.ui.screens.BlockingDisclosureScreen
 import io.joinasr.app.ui.screens.ChallengeStartedScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
+import io.joinasr.app.ui.screens.ActivityProgressScreen
+import io.joinasr.app.ui.screens.ActivityTrackingScreen
 import io.joinasr.app.ui.screens.ChallengeEndedScreen
+import io.joinasr.app.ui.screens.ChooseActivityScreen
 import io.joinasr.app.ui.screens.CircleScreen
 import io.joinasr.app.ui.screens.CircleTab
 import io.joinasr.app.ui.screens.ChooseAppsScreen
@@ -41,6 +51,7 @@ import io.joinasr.app.ui.screens.CheckEmailScreen
 import io.joinasr.app.ui.screens.DailyLimitsScreen
 import io.joinasr.app.ui.screens.DashboardScreen
 import io.joinasr.app.ui.screens.DeleteAccountScreen
+import io.joinasr.app.ui.screens.EarnedScreen
 import io.joinasr.app.ui.screens.ForgotPasswordScreen
 import io.joinasr.app.legal.LegalTexts
 import io.joinasr.app.ui.screens.LegalScreen
@@ -131,6 +142,7 @@ fun AsrApp(
     witnessViewModel: WitnessViewModel = viewModel(),
     accountViewModel: AccountViewModel = viewModel(),
     inboxViewModel: InboxViewModel = viewModel(),
+    earnViewModel: EarnViewModel = viewModel(),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
@@ -149,6 +161,10 @@ fun AsrApp(
     val inboxItems by inboxViewModel.items.collectAsStateWithLifecycle()
     val unread by inboxViewModel.unread.collectAsStateWithLifecycle()
     val inboxLoaded by inboxViewModel.loaded.collectAsStateWithLifecycle()
+    val activeActivity by earnViewModel.active.collectAsStateWithLifecycle()
+    val earnedToday by earnViewModel.earned.collectAsStateWithLifecycle()
+    val justEarned by earnViewModel.justEarned.collectAsStateWithLifecycle()
+    val earnError by earnViewModel.error.collectAsStateWithLifecycle()
     val submitting by viewModel.submitting.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val accountBusy by accountViewModel.busy.collectAsStateWithLifecycle()
@@ -178,6 +194,21 @@ fun AsrApp(
     var showingProtectionLost by remember { mutableStateOf(false) }
     // Figma 19, opened from the bell.
     var showingNotifications by remember { mutableStateOf(false) }
+    // Figma 21-24. The package the block screen sent, held for as long as
+    // the person is inside the earn flow.
+    var earningFor by remember { mutableStateOf<String?>(null) }
+    // True while Figma 22 is showing, between choosing a walk and the grant.
+    var askingForSteps by remember { mutableStateOf(false) }
+    // Set when the grant comes back yes, so the walk starts without the
+    // person having to press the same row twice.
+    var walkOnceGranted by remember { mutableStateOf(false) }
+
+    val askForSteps = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        askingForSteps = false
+        walkOnceGranted = granted
+    }
     // Figma 25, opened from a notification about somebody else.
     var reactingTo by remember { mutableStateOf<InboxItem?>(null) }
     // Figma 18. The code from a witness link, held until it is answered.
@@ -236,6 +267,43 @@ fun AsrApp(
                 witnessViewModel.openInvite(opened.code)
                 onLinkHandled()
             }
+            is DeepLink.Earn -> {
+                earningFor = opened.packageName
+                tab = AsrTab.Home
+                onLinkHandled()
+            }
+        }
+    }
+
+    LaunchedEffect(walkOnceGranted, earningFor, pactState) {
+        if (!walkOnceGranted) return@LaunchedEffect
+        walkOnceGranted = false
+        val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
+        val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
+        earnViewModel.start(pact, app, EarnRules.WALK)
+    }
+
+    // What actually drives an activity forward.
+    //
+    // A walk reads the step counter, which is a running total the sensor hub
+    // keeps whether or not this app is alive -- so listening only while the
+    // screen is up loses nothing, and the difference from the baseline is
+    // still right when somebody comes back.
+    //
+    // A focus session is the clock. It cannot be beaten by leaving this
+    // screen: the enforcement loop cancels the session the moment a
+    // controlled app comes to the front, which is the only place on the
+    // phone that can see it happen.
+    LaunchedEffect(activeActivity?.id) {
+        val running = activeActivity ?: return@LaunchedEffect
+        if (running.isWalk) {
+            earnViewModel.steps.readings().collect { earnViewModel.onSteps(it) }
+        } else {
+            while (true) {
+                val elapsed = System.currentTimeMillis() - running.startedAtMillis
+                earnViewModel.onFocusMinutes((elapsed / 60_000L).toInt())
+                delay(1_000)
+            }
         }
     }
 
@@ -288,9 +356,11 @@ fun AsrApp(
     BackHandler(
         enabled = tab != AsrTab.Home || profileRoute != null || addingWitness ||
             deletingAccount || showingProtectionLost || openPerson != null ||
-            showingNotifications || reactingTo != null,
+            showingNotifications || reactingTo != null || earningFor != null,
     ) {
         when {
+            askingForSteps -> askingForSteps = false
+            earningFor != null -> earningFor = null
             reactingTo != null -> reactingTo = null
             showingNotifications -> showingNotifications = false
             showingProtectionLost -> showingProtectionLost = false
@@ -487,7 +557,81 @@ fun AsrApp(
                             // agreement about which tab is selected.
                             AsrTab.Home -> {
                                 val about = reactingTo
-                                if (about != null) {
+                                val running = activeActivity
+                                val done = justEarned
+                                val earnApp = earningFor?.let { activePact.appFor(it) }
+                                if (done != null) {
+                                    // Figma 24.
+                                    EarnedScreen(
+                                        activity = done,
+                                        availableNow = earnedToday.forPackage(done.packageName),
+                                        onUseNow = {
+                                            earnViewModel.acknowledgeEarned()
+                                            earningFor = null
+                                            // The reward exists on the phone
+                                            // already, so the app it is for
+                                            // simply opens: the loop will not
+                                            // block it again until the raised
+                                            // allowance is spent.
+                                            openApp(context, done.packageName)
+                                        },
+                                        onDismiss = {
+                                            earnViewModel.acknowledgeEarned()
+                                            earningFor = null
+                                        },
+                                    )
+                                } else if (running != null) {
+                                    // Figma 23.
+                                    ActivityProgressScreen(
+                                        activity = running,
+                                        onBack = { earningFor = null },
+                                        onEnd = {
+                                            earnViewModel.cancel()
+                                            earningFor = null
+                                        },
+                                    )
+                                } else if (earnApp != null && askingForSteps) {
+                                    // Figma 22.
+                                    ActivityTrackingScreen(
+                                        onBack = { askingForSteps = false },
+                                        onAllow = {
+                                            askForSteps.launch(
+                                                Manifest.permission.ACTIVITY_RECOGNITION,
+                                            )
+                                        },
+                                        onSkip = { askingForSteps = false },
+                                    )
+                                } else if (earnApp != null) {
+                                    // Figma 21.
+                                    ChooseActivityScreen(
+                                        app = earnApp,
+                                        earnedSoFar = earnedToday.forPackage(earnApp.packageName),
+                                        stepsAvailable = earnViewModel.steps.available,
+                                        onBack = {
+                                            earningFor = null
+                                            earnViewModel.clearError()
+                                        },
+                                        onWalk = {
+                                            if (Permissions.hasActivityRecognition(context)) {
+                                                earnViewModel.start(
+                                                    activePact,
+                                                    earnApp,
+                                                    EarnRules.WALK,
+                                                )
+                                            } else {
+                                                askingForSteps = true
+                                            }
+                                        },
+                                        onFocus = {
+                                            earnViewModel.start(
+                                                activePact,
+                                                earnApp,
+                                                EarnRules.FOCUS,
+                                            )
+                                        },
+                                        errorMessage = earnError,
+                                    )
+                                } else if (about != null) {
                                     // Figma 25.
                                     val person = supporting.firstOrNull {
                                         it.user.id == about.aboutUserId
@@ -739,4 +883,18 @@ fun AsrApp(
             )
         }
     }
+}
+
+/**
+ * Opens an app the person has just earned time for.
+ *
+ * Nothing is unblocked by doing this: the reward is already in the store and
+ * the loop reads it on the next pass, so the app simply is not over its
+ * allowance any more. If there is no launcher entry -- which can happen for
+ * something installed and then disabled -- nothing happens, and the person
+ * is left on a screen that still says the minutes are theirs.
+ */
+private fun openApp(context: android.content.Context, packageName: String) {
+    val intent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return
+    runCatching { context.startActivity(intent) }
 }

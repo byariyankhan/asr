@@ -1,13 +1,16 @@
 package io.joinasr.app.permissions
 
+import android.Manifest
 import android.app.AppOpsManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 
 /**
@@ -73,6 +76,23 @@ object Permissions {
      * they never learn a pact broke. Both cases answer the same question, so
      * both are checked.
      */
+    /**
+     * Whether the app may read the step counter.
+     *
+     * A runtime permission from API 29, and granted at install below that.
+     * Only asked for when somebody chooses a walking activity, which is why
+     * it is not part of [PermissionState]: a challenge runs perfectly
+     * without it, and a permission sheet at launch for a feature nobody has
+     * opened is how apps get denied everything.
+     */
+    fun hasActivityRecognition(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACTIVITY_RECOGNITION,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     fun hasNotifications(context: Context): Boolean {
         val manager = context.getSystemService<NotificationManager>() ?: return false
         return manager.areNotificationsEnabled()

@@ -17,6 +17,8 @@ import androidx.core.content.getSystemService
 import io.joinasr.app.MainActivity
 import io.joinasr.app.R
 import io.joinasr.app.challenge.ChallengeProgress
+import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.EarnStore
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.sync.PendingEvent
 import io.joinasr.app.sync.Sync
@@ -59,6 +61,7 @@ class EnforcementService : Service() {
     private lateinit var status: ProtectionStatusStore
     private lateinit var outcomes: OutcomeStore
     private lateinit var witnesses: WitnessStore
+    private lateinit var earn: EarnStore
     private lateinit var sync: Sync
 
     /** When the outbox was last emptied, so it is drained on a timer rather
@@ -94,6 +97,7 @@ class EnforcementService : Service() {
         status = ProtectionStatusStore(this)
         outcomes = OutcomeStore(this)
         witnesses = WitnessStore(this)
+        earn = EarnStore(this)
         sync = Sync(this)
 
         createChannel()
@@ -161,11 +165,18 @@ class EnforcementService : Service() {
         val snapshot = reader.poll()
         val now = System.currentTimeMillis()
         val progress = ChallengeProgress.of(current.startedAtMillis, current.durationDays, now)
+        // Bonus minutes raise today's allowance. Read on every pass rather
+        // than cached, because a walk finishing while an app is open should
+        // take the block screen down within the second -- which is the whole
+        // promise of earning time.
+        val earned = earn.earnedToday().minutesByPackage
+
+        cancelFocusIfBroken(snapshot.foregroundPackage, current)
 
         // Checked before blocking. A pact that has already been broken, or
         // has run its course, should not be putting a block screen in front
         // of anybody: the challenge is over either way.
-        val breach = Enforcement.breach(current, snapshot, now, progress.dayNumber)
+        val breach = Enforcement.breach(current, snapshot, now, progress.dayNumber, earned)
         if (breach != null) {
             end(current, PactResult.Failed, breach)
             return Enforcement.IDLE_MILLIS
@@ -177,7 +188,7 @@ class EnforcementService : Service() {
 
         flushIfDue(current, now, snapshot.minutesByPackage)
 
-        when (val decision = Enforcement.decide(current, snapshot)) {
+        when (val decision = Enforcement.decide(current, snapshot, earned)) {
             Decision.Allow -> blocking = null
 
             is Decision.Block -> {
@@ -187,7 +198,7 @@ class EnforcementService : Service() {
                 }
             }
         }
-        return Enforcement.pollDelayMillis(current, snapshot)
+        return Enforcement.pollDelayMillis(current, snapshot, earned)
     }
 
     /**
@@ -240,6 +251,24 @@ class EnforcementService : Service() {
     }
 
     /**
+     * Ends a focus session the moment a controlled app is opened.
+     *
+     * This is the whole rule of a focus session: twenty minutes off the apps
+     * being limited. The loop already knows what is in front of the person
+     * every second, so it is the only thing on the phone that can enforce it
+     * -- and a timer that could be beaten by opening the app it is about
+     * would be a reward for nothing.
+     */
+    private suspend fun cancelFocusIfBroken(foreground: String?, pact: Pact) {
+        if (foreground == null) return
+        if (pact.appFor(foreground) == null) return
+        val running = earn.currentActive() ?: return
+        if (running.type != EarnRules.FOCUS) return
+        earn.clearActive()
+        runCatching { sync.cancelActivity(running) }
+    }
+
+    /**
      * Empties the outbox now and then while a challenge is running, so an
      * event queued during a tunnel is not still sitting there a day later.
      */
@@ -274,7 +303,13 @@ class EnforcementService : Service() {
      * scrolling uninterrupted past their limit.
      */
     private suspend fun showBlockScreen(decision: Decision.Block) {
-        val intent = BlockActivity.intent(this, decision.app, decision.usedMinutes, nextResetText())
+        val intent = BlockActivity.intent(
+            context = this,
+            app = decision.app,
+            usedMinutes = decision.usedMinutes,
+            limitMinutes = decision.limitMinutes,
+            availableAgain = nextResetText(),
+        )
         val launched = runCatching { startActivity(intent) }.isSuccess
         if (!launched) {
             blocking = null

@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import io.joinasr.app.apps.InstalledApps
 import io.joinasr.app.ui.screens.BlockedScreen
 import io.joinasr.app.ui.theme.AsrColors
+import io.joinasr.app.DeepLink
+import io.joinasr.app.MainActivity
 import io.joinasr.app.ui.theme.AsrTheme
 
 /**
@@ -81,6 +83,7 @@ class BlockActivity : ComponentActivity() {
                         limitMinutes = current.limitMinutes,
                         availableAgain = current.availableAgain,
                         onLeave = ::goHome,
+                        onEarnTime = { openEarnTime(current.packageName) },
                     )
                 }
             }
@@ -89,6 +92,22 @@ class BlockActivity : ComponentActivity() {
         // singleTask, so a second block while this one is up arrives here
         // rather than stacking another copy.
         addOnNewIntentListener { state.value = stateFrom(it) }
+    }
+
+    /**
+     * Opens Figma 21 in the app proper, for the app that is blocked.
+     *
+     * A new task rather than an activity on top of this one: the block
+     * screen has its own task affinity so that dismissing it never leaves a
+     * stray Asr entry in recents, and stacking the earn flow inside that
+     * task would undo the whole arrangement.
+     */
+    private fun openEarnTime(packageName: String) {
+        val intent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(DeepLink.EXTRA_EARN_FOR, packageName)
+        runCatching { startActivity(intent) }
+        finish()
     }
 
     private fun goHome() {
@@ -126,6 +145,8 @@ class BlockActivity : ComponentActivity() {
             context: Context,
             app: PactApp,
             usedMinutes: Int,
+            /** Today's allowance, bonus minutes included. */
+            limitMinutes: Int,
             availableAgain: String,
         ): Intent = Intent(context, BlockActivity::class.java)
             .addFlags(
@@ -139,7 +160,7 @@ class BlockActivity : ComponentActivity() {
             .putExtra(EXTRA_PACKAGE, app.packageName)
             .putExtra(EXTRA_LABEL, app.label)
             .putExtra(EXTRA_USED, usedMinutes)
-            .putExtra(EXTRA_LIMIT, app.limitMinutes)
+            .putExtra(EXTRA_LIMIT, limitMinutes)
             .putExtra(EXTRA_RESET, availableAgain)
     }
 }

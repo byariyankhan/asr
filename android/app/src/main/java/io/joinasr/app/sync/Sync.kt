@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.Build
 import io.joinasr.app.BuildConfig
 import io.joinasr.app.data.Api
+import io.joinasr.app.data.ActivityCreate
+import io.joinasr.app.data.ActivityRule
+import io.joinasr.app.data.ActivityRules
 import io.joinasr.app.data.ApiResult
 import io.joinasr.app.data.DeviceRegistration
 import io.joinasr.app.data.EventCreate
@@ -12,6 +15,8 @@ import io.joinasr.app.data.PactSnapshot
 import io.joinasr.app.data.SnapshotApp
 import io.joinasr.app.data.SummaryApp
 import io.joinasr.app.data.SummaryCreate
+import io.joinasr.app.earn.EarnActivity
+import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.enforcement.Pact
 import java.time.Instant
 import java.time.LocalDate
@@ -95,6 +100,22 @@ class Sync(context: Context) {
                         dailyLimitMinutes = it.limitMinutes,
                     )
                 },
+                // Locked in with the challenge. The server reads the target
+                // and the reward from here rather than from the request that
+                // starts a walk, so the price of earning time cannot be
+                // renegotiated by the phone halfway through.
+                activities = ActivityRules(
+                    walkSteps = ActivityRule(
+                        rewardMinutes = EarnRules.REWARD_MINUTES,
+                        dailyCapMinutes = EarnRules.DAILY_CAP_MINUTES,
+                        target = EarnRules.WALK_STEPS,
+                    ),
+                    focusSession = ActivityRule(
+                        rewardMinutes = EarnRules.REWARD_MINUTES,
+                        dailyCapMinutes = EarnRules.DAILY_CAP_MINUTES,
+                        targetMinutes = EarnRules.FOCUS_MINUTES,
+                    ),
+                ),
             ),
         )
         val created = Api.pacts.create(token, body)
@@ -192,6 +213,50 @@ class Sync(context: Context) {
             pactId = pactId,
             body = SummaryCreate(day = LocalDate.now(ZoneId.systemDefault()).toString(), apps = apps),
         )
+    }
+
+    /**
+     * Tells the server an activity has begun. Best-effort, like everything
+     * else here: the walk counts on the phone whether or not this lands.
+     */
+    suspend fun startActivity(pact: Pact, activity: EarnActivity): Boolean {
+        val token = tokens.current() ?: return false
+        val pactId = remotePactId(pact) ?: return false
+        val result = Api.activities.start(
+            token = token,
+            pactId = pactId,
+            body = ActivityCreate(
+                id = activity.id,
+                type = activity.type,
+                startedAt = iso(activity.startedAtMillis),
+                deadlineAt = iso(activity.deadlineAtMillis),
+            ),
+        )
+        return result is ApiResult.Ok
+    }
+
+    /**
+     * Reports a finished activity, with the reward it carried.
+     *
+     * The event id is made here and kept nowhere, because the server treats
+     * the completion itself as idempotent on the activity: a retry of an
+     * already-completed activity answers 409, which is a settled state and
+     * not a thing to keep trying.
+     */
+    suspend fun completeActivity(activity: EarnActivity, atMillis: Long): Boolean {
+        val token = tokens.current() ?: return false
+        val result = Api.activities.complete(
+            token = token,
+            activityId = activity.id,
+            eventId = Uuid7.next(atMillis),
+            occurredAt = iso(atMillis),
+        )
+        return result is ApiResult.Ok
+    }
+
+    suspend fun cancelActivity(activity: EarnActivity) {
+        val token = tokens.current() ?: return
+        Api.activities.cancel(token, activity.id)
     }
 
     /** Whether everything queued has gone through. */

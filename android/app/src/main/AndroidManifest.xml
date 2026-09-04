@@ -19,6 +19,16 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Steps, and only steps. Asked for the first time somebody chooses a
+         walking activity (Figma 22) and never at launch, because it is not
+         needed to run a challenge. It is needed to earn extra time, which
+         is optional. maxSdkVersion is deliberately absent: this is a runtime
+         permission from API 29 and an install-time one below, and the
+         manifest entry is what makes either possible. No location, no
+         activity history: the step counter is a number the sensor hub keeps
+         and nothing here asks where it was kept. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
     <!-- The enforcement loop runs as a foreground service. SPECIAL_USE is the
          type Android 14 requires for it: the other types describe things this
          is not (no media, no location, no sync), and the whole point is that
