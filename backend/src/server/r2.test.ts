@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { __testing, r2Config } from "./r2";
+import { __testing, configProblem, r2Config } from "./r2";
 
 const { encodeKey, sign, signingKey } = __testing;
 
@@ -115,5 +115,46 @@ describe("r2Config", () => {
     } finally {
       process.env = saved;
     }
+  });
+});
+
+describe("configuration", () => {
+  it("trims what a .env file leaves on the ends", () => {
+    const saved = process.env;
+    try {
+      process.env = { ...saved };
+      // A trailing CR is what an .env edited on Windows leaves behind, and
+      // it is invisible in every tool that shows the file. It reaches the
+      // `host` header, which the runtime then refuses to build — the upload
+      // dies as a bare TypeError from inside fetch.
+      process.env.R2_ACCOUNT_ID = "acc123\r";
+      process.env.R2_ACCESS_KEY_ID = " AKIDEXAMPLE ";
+      process.env.R2_SECRET_ACCESS_KEY = "secret\n";
+      process.env.R2_BUCKET = "asr-media ";
+      expect(r2Config()).toEqual({
+        accountId: "acc123",
+        accessKeyId: "AKIDEXAMPLE",
+        secretAccessKey: "secret",
+        bucket: "asr-media",
+      });
+    } finally {
+      process.env = saved;
+    }
+  });
+
+  it("names the field when trimming cannot help", () => {
+    expect(configProblem(config)).toBeNull();
+    expect(configProblem({ ...config, accountId: "acc 123" })).toBe("account_id_has_whitespace");
+    expect(configProblem({ ...config, bucket: "asr media" })).toBe("bucket_has_whitespace");
+    expect(configProblem({ ...config, accessKeyId: "AK\tID" })).toBe(
+      "access_key_id_has_whitespace",
+    );
+    expect(configProblem({ ...config, secretAccessKey: "a\u00a0b" })).toBe(
+      "secret_access_key_has_whitespace",
+    );
+    // An account id is a hex string. Anything with punctuation in it is a
+    // whole URL or an endpoint pasted where the id belongs, which produces a
+    // hostname nobody would recognise as wrong at a glance.
+    expect(configProblem({ ...config, accountId: "acc.123" })).toBe("account_id_is_not_a_hex_id");
   });
 });

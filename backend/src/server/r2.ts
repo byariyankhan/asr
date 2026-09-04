@@ -25,15 +25,43 @@ export type R2Config = {
   bucket: string;
 };
 
-/** Null when the credentials are absent, which is a working state: the
- *  upload route answers 503 and everything else is unaffected. */
+/**
+ * Null when the credentials are absent, which is a working state: the
+ * upload route answers 503 and everything else is unaffected.
+ *
+ * Trimmed, because these arrive through a .env file on a server and a value
+ * pasted with a trailing space or a CR is not a typo anybody can see. The
+ * account id becomes a hostname and goes into the signed `host` header, so
+ * one invisible character there is not a wrong address — it is a header
+ * value the runtime refuses to build, and the upload dies as a TypeError
+ * from inside fetch with nothing naming the cause.
+ */
 export function r2Config(): R2Config | null {
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  const bucket = process.env.R2_BUCKET;
+  const accountId = process.env.R2_ACCOUNT_ID?.trim();
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim();
+  const bucket = process.env.R2_BUCKET?.trim();
   if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return null;
   return { accountId, accessKeyId, secretAccessKey, bucket };
+}
+
+/**
+ * What is wrong with the configuration itself, before a byte is sent.
+ *
+ * Trimming fixes the ends; it cannot fix a space in the middle, and every
+ * one of these values goes somewhere that forbids whitespace — a hostname, a
+ * path segment, a header value. Naming the field is the whole diagnosis, and
+ * the value is never returned: this is reported on a route that takes no
+ * session.
+ */
+export function configProblem(config: R2Config): string | null {
+  const bad = (value: string) => /[^\x21-\x7e]/.test(value);
+  if (bad(config.accountId)) return "account_id_has_whitespace";
+  if (bad(config.bucket)) return "bucket_has_whitespace";
+  if (bad(config.accessKeyId)) return "access_key_id_has_whitespace";
+  if (bad(config.secretAccessKey)) return "secret_access_key_has_whitespace";
+  if (!/^[a-zA-Z0-9]+$/.test(config.accountId)) return "account_id_is_not_a_hex_id";
+  return null;
 }
 
 const REGION = "auto"; // R2 has one region and expects this literal.
