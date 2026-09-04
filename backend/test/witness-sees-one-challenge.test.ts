@@ -92,6 +92,23 @@ describe.skipIf(!DATABASE_URL)("what a witness can see", async () => {
     await expect(getPactWithEvents(friend, watchedPactId)).resolves.toMatchObject({ id: watchedPactId });
   });
 
+  it("cannot react to an event from a challenge they never watched", async () => {
+    const { react } = await import("@/server/reactions");
+    const old = await db
+      .selectFrom("pact_event")
+      .select("id")
+      .where("pact_id", "=", oldPactId)
+      .executeTakeFirstOrThrow();
+    await expect(react(friend, witnessRowId, old.id, "clap")).rejects.toMatchObject({ status: 404 });
+
+    const mine = await db
+      .selectFrom("pact_event")
+      .select("id")
+      .where("pact_id", "=", watchedPactId)
+      .executeTakeFirstOrThrow();
+    await expect(react(friend, witnessRowId, mine.id, "clap")).resolves.toMatchObject({ emoji: "clap" });
+  });
+
   it("counts a streak in days kept, not days elapsed", async () => {
     const fresh = await progressFor(owner);
     // Day one, nothing reported: no day has been kept yet, and a challenge

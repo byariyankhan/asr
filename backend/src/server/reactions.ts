@@ -19,12 +19,17 @@ const EMOJI_LABEL: Record<Emoji, string> = {
 export async function react(callerId: string, witnessRowId: string, eventId: string, emoji: Emoji) {
   const row = await requireWitnessView(callerId, witnessRowId);
   if (!isUuidLike(eventId)) throw notFound("Event");
+  // The challenge this person is a witness to, not merely the person. A
+  // witness of one challenge could otherwise react to an event from another
+  // -- one from before they were invited -- which is both a reaction on
+  // something they were never shown and a way to confirm it happened.
+  if (!row.pact_id) throw notFound("Event");
   const event = await db
     .selectFrom("pact_event")
     .innerJoin("pact", "pact.id", "pact_event.pact_id")
     .select(["pact_event.id", "pact_event.type", "pact.user_id"])
     .where("pact_event.id", "=", eventId)
-    .where("pact.user_id", "=", row.user_id)
+    .where("pact_event.pact_id", "=", row.pact_id)
     .executeTakeFirst();
   if (!event) throw notFound("Event");
 
