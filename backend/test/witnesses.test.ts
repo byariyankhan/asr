@@ -33,6 +33,16 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
       )
       .execute();
     deviceId = (await registerDevice(alice, { install_id: "alice-phone", app_version: "1.0.0" })).id;
+    // The pact comes first now. A witness is invited to a challenge, so
+    // there is nothing to invite anybody to until one exists -- which is
+    // also the order the app follows since the invite step moved to after
+    // the challenge is committed.
+    await createPact(alice, {
+      device_id: deviceId,
+      duration_days: 14,
+      timezone: "Asia/Dhaka",
+      snapshot: { apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }], reset_time: "04:00", activities: {} },
+    });
   });
 
   afterAll(async () => {
@@ -58,9 +68,10 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
       inviter_name: "Alice",
       inviter_image: null,
       relationship: "sibling",
-      // Alice has no active pact in this suite, so there is no duration to
-      // name and the page says "a challenge" rather than inventing a length.
-      days: null,
+      // The duration of the challenge this invitation was written for --
+      // not "their current challenge", which is the same thing while it
+      // runs and a different thing the moment it does not.
+      days: 14,
       own: false,
     });
     await expect(peekInvite("NOPE")).rejects.toMatchObject({ status: 404 });
@@ -101,7 +112,16 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
     const forBob = await listWitnesses(bob);
     expect(forBob.i_witness.map((w) => [w.user.name, w.relationship, w.mutual])).toEqual([["Alice", "sibling", false]]);
 
-    // Bob invites Alice back: now mutual.
+    // Bob invites Alice back: now mutual. He needs a challenge of his own
+    // first -- mutual means two live challenges, one each way, which is
+    // what the badge has always claimed and now actually requires.
+    const bobDevice = (await registerDevice(bob, { install_id: "bob-phone", app_version: "1.0.0" })).id;
+    await createPact(bob, {
+      device_id: bobDevice,
+      duration_days: 7,
+      timezone: "Asia/Dhaka",
+      snapshot: { apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }], reset_time: "04:00", activities: {} },
+    });
     const back = await createInvite(bob, { relationship: "sibling" });
     await acceptInvite(alice, back.invite_code);
     expect((await listWitnesses(alice)).my_witnesses[0]?.mutual).toBe(true);
@@ -119,12 +139,6 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
   });
 
   it("witness sees progress and pact detail only while allowed", async () => {
-    await createPact(alice, {
-      device_id: deviceId,
-      duration_days: 14,
-      timezone: "Asia/Dhaka",
-      snapshot: { apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }], reset_time: "04:00", activities: {} },
-    });
     const pact = (await getCurrentPact(alice))!;
 
     const view = await requireWitnessView(bob, witnessRowId);

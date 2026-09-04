@@ -10,6 +10,8 @@ describe.skipIf(!DATABASE_URL)("account deletion and export", async () => {
   const { auth } = await import("@/server/auth");
   const { exportAccount, requestAccountDeletion, signInCheck } = await import("@/server/account");
   const { createInvite, acceptInvite, listWitnesses } = await import("@/server/witnesses");
+  const { registerDevice } = await import("@/server/devices");
+  const { createPact } = await import("@/server/pacts");
   const { listInbox, markRead } = await import("@/server/inbox");
 
   const email = `${newId()}@test.local`;
@@ -22,6 +24,13 @@ describe.skipIf(!DATABASE_URL)("account deletion and export", async () => {
     userId = res.user.id;
     const now = new Date();
     await db.insertInto("user").values({ id: friend, name: "Friend", email: `${friend}@test.local`, emailVerified: false, createdAt: now, updatedAt: now }).execute();
+    const device = (await registerDevice(userId, { install_id: "leaver-phone", app_version: "1.0.0" })).id;
+    await createPact(userId, {
+      device_id: device,
+      duration_days: 7,
+      timezone: "UTC",
+      snapshot: { apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }], reset_time: "04:00", activities: {} },
+    });
     const invite = await createInvite(userId, { relationship: "friend" });
     await acceptInvite(friend, invite.invite_code);
   });
@@ -35,7 +44,9 @@ describe.skipIf(!DATABASE_URL)("account deletion and export", async () => {
     const data = await exportAccount(userId);
     expect(data.user.email).toBe(email);
     expect(data.witnesses).toHaveLength(1);
-    expect(data.pacts).toEqual([]);
+    // The challenge their witness was invited to. A witness belongs to one,
+    // so an account with a witness has a pact by construction.
+    expect(data.pacts).toHaveLength(1);
   });
 
   it("refuses deletion with the wrong password", async () => {

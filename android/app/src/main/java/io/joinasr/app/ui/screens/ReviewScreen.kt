@@ -31,7 +31,6 @@ import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
-import io.joinasr.app.witness.Witness
 
 /**
  * Figma 11 — Review / Start Challenge (node 124:2).
@@ -48,7 +47,6 @@ fun ReviewScreen(
     days: Int,
     apps: List<AppEntry>,
     limits: Map<String, Int>,
-    witnesses: List<Witness>,
     protectionReady: Boolean,
     onBack: () -> Unit,
     onStart: () -> Unit,
@@ -76,7 +74,7 @@ fun ReviewScreen(
         )
 
         Spacer(Modifier.height(20.dp))
-        SummaryCard(days = days, apps = apps.size, witnesses = witnesses.size)
+        SummaryCard(days = days, apps = apps.size)
 
         Spacer(Modifier.height(26.dp))
         Text("Daily limits", style = AsrType.display(20), color = AsrColors.TextPrimary)
@@ -91,7 +89,7 @@ fun ReviewScreen(
         }
 
         Spacer(Modifier.height(10.dp))
-        WitnessReview(witnesses)
+        WitnessNote()
 
         Spacer(Modifier.height(12.dp))
         ProtectionReview(ready = protectionReady)
@@ -114,7 +112,7 @@ fun ReviewScreen(
 }
 
 @Composable
-private fun SummaryCard(days: Int, apps: Int, witnesses: Int) {
+private fun SummaryCard(days: Int, apps: Int) {
     val shape = RoundedCornerShape(20.dp)
     Column(
         modifier = Modifier
@@ -143,7 +141,7 @@ private fun SummaryCard(days: Int, apps: Int, witnesses: Int) {
                 modifier = Modifier.weight(1f),
             )
             Text(
-                "${plural(apps, "app")}  ·  ${plural(witnesses, "witness", "witnesses")}",
+                plural(apps, "app"),
                 style = AsrType.Label.copy(fontSize = 12.sp),
                 color = AsrColors.TextSecondary,
             )
@@ -182,7 +180,7 @@ private fun LimitRow(packageName: String, label: String, minutes: Int) {
 }
 
 @Composable
-private fun WitnessReview(witnesses: List<Witness>) {
+private fun WitnessNote() {
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
@@ -196,11 +194,10 @@ private fun WitnessReview(witnesses: List<Witness>) {
             Text("Witnesses", style = AsrType.Field.copy(fontSize = 15.sp), color = AsrColors.TextPrimary)
             Spacer(Modifier.height(6.dp))
             Text(
-                if (witnesses.isEmpty()) {
-                    "Nobody invited"
-                } else {
-                    witnesses.joinToString(" · ") { it.label }
-                },
+                // They are invited next, not here. An invitation names a
+                // challenge, and until this button is pressed there is no
+                // challenge for it to name.
+                "Invited on the next screen, once this challenge exists",
                 style = AsrType.Label.copy(fontSize = 12.sp),
                 color = AsrColors.TextSecondary,
                 maxLines = 1,
@@ -208,7 +205,7 @@ private fun WitnessReview(witnesses: List<Witness>) {
             )
         }
         Spacer(Modifier.width(10.dp))
-        Pill("${witnesses.size} SET", highlighted = witnesses.isNotEmpty())
+        Pill("NEXT", highlighted = false)
     }
 }
 
@@ -314,7 +311,6 @@ private fun ReviewPreview() {
                 AppEntry("com.google.android.youtube", "YouTube"),
             ),
             limits = mapOf("com.instagram.android" to 15, "com.google.android.youtube" to 30),
-            witnesses = listOf(Witness("1", "mother", 0), Witness("2", "brother", 0)),
             protectionReady = true,
             onBack = {},
             onStart = {},

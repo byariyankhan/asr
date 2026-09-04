@@ -32,6 +32,12 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
     for (const [k, id] of Object.entries(users)) {
       devices[k] = (await registerDevice(id, { install_id: `${k}-phone`, app_version: "1.0.0", fcm_token: `tok-${k}` })).id;
     }
+    // The pacts come first: a witness is invited to a challenge, so there
+    // has to be one before anybody can be named.
+    await createPact(users.silent, { device_id: devices.silent!, duration_days: 7, timezone: "UTC", snapshot });
+    await createPact(users.walker, { device_id: devices.walker!, duration_days: 7, timezone: "UTC", snapshot });
+    await createPact(users.finisher, { device_id: devices.finisher!, duration_days: 1, timezone: "UTC", snapshot });
+
     // everyone but the leaver names `witness` as their witness
     for (const k of ["silent", "walker", "finisher"] as const) {
       const invite = await createInvite(users[k], { relationship: "friend" });
@@ -45,7 +51,6 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
   });
 
   it("breaks a pact whose device has been silent for a day, once", async () => {
-    await createPact(users.silent, { device_id: devices.silent!, duration_days: 7, timezone: "UTC", snapshot });
     const pact = (await getCurrentPact(users.silent))!;
     // Age the pact and the heartbeat past the threshold.
     await db.updateTable("pact").set({ starts_at: new Date(Date.now() - 2 * DAY) }).where("id", "=", pact.id).execute();
@@ -62,11 +67,13 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
       { type: "protection_lost", reason: "heartbeat_timeout", source: "server" },
     ]);
     const told = await db.selectFrom("notification").select("kind").where("recipient_id", "=", users.witness).where("about_user_id", "=", users.silent).execute();
-    expect(told.map((t) => t.kind).sort()).toEqual(["pact_started", "protection_lost"]);
+    // No "pact_started": witnesses are invited to a challenge that is
+    // already running, so by the time anybody accepted, the start had
+    // happened and there was nobody to tell.
+    expect(told.map((t) => t.kind).sort()).toEqual(["protection_lost"]);
   });
 
   it("does not touch a pact whose device is alive", async () => {
-    await createPact(users.walker, { device_id: devices.walker!, duration_days: 7, timezone: "UTC", snapshot });
     await recordHeartbeat(users.walker, devices.walker!, { protection_enabled: true, app_version: "1.0.0" });
     expect(await markProtectionLost(new Date())).toBe(0);
     expect((await getCurrentPact(users.walker))?.status).toBe("active");
@@ -90,7 +97,6 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
   });
 
   it("completes a pact whose time is up and tells the witness", async () => {
-    await createPact(users.finisher, { device_id: devices.finisher!, duration_days: 1, timezone: "UTC", snapshot });
     const pact = (await getCurrentPact(users.finisher))!;
     await db.updateTable("pact").set({ ends_at: new Date(Date.now() - 1000) }).where("id", "=", pact.id).execute();
     await recordHeartbeat(users.finisher, devices.finisher!, { protection_enabled: true, app_version: "1.0.0" });
@@ -99,7 +105,7 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
     const row = await db.selectFrom("pact").select("status").where("id", "=", pact.id).executeTakeFirstOrThrow();
     expect(row.status).toBe("completed");
     const told = await db.selectFrom("notification").select("kind").where("recipient_id", "=", users.witness).where("about_user_id", "=", users.finisher).execute();
-    expect(told.map((t) => t.kind).sort()).toEqual(["pact_completed", "pact_started"]);
+    expect(told.map((t) => t.kind).sort()).toEqual(["pact_completed"]);
   });
 
   it("delivers queued pushes, marks dead tokens, and treats a dead active device as an uninstall", async () => {

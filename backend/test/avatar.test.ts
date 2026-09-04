@@ -18,6 +18,8 @@ describe.skipIf(!DATABASE_URL)("avatar keys", async () => {
   const { db } = await import("@/server/db/client");
   const { imagePath, ownerOf, readAvatar } = await import("@/server/avatar");
   const { peekInvite } = await import("@/server/witnesses");
+  const { registerDevice } = await import("@/server/devices");
+  const { createPact, getCurrentPact } = await import("@/server/pacts");
 
   const owner = newId();
   const inviteCode = generateInviteCode();
@@ -37,11 +39,21 @@ describe.skipIf(!DATABASE_URL)("avatar keys", async () => {
         updatedAt: now,
       })
       .execute();
+    // An invitation belongs to a challenge, so there has to be one for the
+    // preview to answer about at all.
+    const device = (await registerDevice(owner, { install_id: "owner-phone", app_version: "1.0.0" })).id;
+    await createPact(owner, {
+      device_id: device,
+      duration_days: 7,
+      timezone: "UTC",
+      snapshot: { apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }], reset_time: "04:00", activities: {} },
+    });
     await db
       .insertInto("witness")
       .values({
         id: newId(),
         user_id: owner,
+        pact_id: (await getCurrentPact(owner))!.id,
         invite_code: inviteCode,
         invite_email: "friend@test.local",
         status: "invited",

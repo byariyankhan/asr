@@ -28,17 +28,6 @@ describe.skipIf(!DATABASE_URL)("pact ledger", async () => {
         { id: witnessId, name: "Witness", email: `${witnessId}@test.local`, emailVerified: false, createdAt: now, updatedAt: now },
       ])
       .execute();
-    await db
-      .insertInto("witness")
-      .values({
-        id: newId(),
-        user_id: userId,
-        witness_user_id: witnessId,
-        invite_code: newId().slice(0, 10),
-        status: "accepted",
-        responded_at: now,
-      })
-      .execute();
     const device = await registerDevice(userId, { install_id: "install-test-1", app_version: "1.0.0" });
     deviceId = device.id;
   });
@@ -63,6 +52,21 @@ describe.skipIf(!DATABASE_URL)("pact ledger", async () => {
 
   it("locks one pact and refuses a second while it is active", async () => {
     const c = await createPact(userId, { device_id: deviceId, duration_days: 7, timezone: "Asia/Dhaka", snapshot });
+    // Bound to this pact, because that is what a witness is a witness to.
+    // Written by hand rather than through createInvite/acceptInvite: this
+    // suite is about the ledger, and the invitation flow has its own.
+    await db
+      .insertInto("witness")
+      .values({
+        id: newId(),
+        user_id: userId,
+        pact_id: c.id,
+        witness_user_id: witnessId,
+        invite_code: newId().slice(0, 10),
+        status: "accepted",
+        responded_at: new Date(),
+      })
+      .execute();
     expect(c.status).toBe("active");
     expect(c.ends_at.getTime() - c.starts_at.getTime()).toBe(7 * 86_400_000);
     expect(c.snapshot.apps[0]?.package).toBe("com.instagram.android");

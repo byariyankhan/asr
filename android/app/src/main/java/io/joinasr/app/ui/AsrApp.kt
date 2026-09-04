@@ -110,12 +110,21 @@ private sealed interface Destination {
  * exists once everything it needs exists, and until then there is nothing to
  * enforce and nothing to come back to.
  */
+/**
+ * The setup flow, which no longer includes witnesses.
+ *
+ * Inviting them was step five and the pact was written at step eight, so
+ * every invitation was issued against a challenge that did not exist yet.
+ * Send the invitations, abandon setup, and the links still worked — which is
+ * how somebody ended up listed as a witness to nothing. A witness belongs to
+ * a challenge, so the challenge is created first and they are invited to it
+ * on the way out.
+ */
 private sealed interface SetupStep {
     data object Duration : SetupStep
     data object UsageAccess : SetupStep
     data object ChooseApps : SetupStep
     data object DailyLimits : SetupStep
-    data object Witnesses : SetupStep
     data object Protection : SetupStep
     data object BlockingDisclosure : SetupStep
     data object Review : SetupStep
@@ -230,6 +239,9 @@ fun AsrApp(
     // Figma 12. Not stored: it is a moment, not a state of the challenge,
     // and a person who closes the app during it has still started.
     var justStarted by remember { mutableStateOf(false) }
+    /** Whether the "add your witnesses" screen has been through once since
+     *  the challenge started. It is offered, not required. */
+    var witnessesOffered by remember { mutableStateOf(false) }
 
     /**
      * Whether the person is inside the setup flow.
@@ -552,26 +564,14 @@ fun AsrApp(
                         onBack = { setupStep = SetupStep.ChooseApps },
                         onContinue = { limits ->
                             chosenLimits = limits
-                            setupStep = SetupStep.Witnesses
+                            setupStep = SetupStep.Protection
                         },
                     )
 
                     // Figma 08. Invites go through Android's share sheet, so
                     // this step needs no server and works today.
-                    SetupStep.Witnesses -> AddWitnessesScreen(
-                        challengeDays = chosenDays,
-                        witnesses = witnesses,
-                        onBack = { setupStep = SetupStep.DailyLimits },
-                        onInvite = witnessViewModel::invite,
-                        onContinue = { setupStep = SetupStep.Protection },
-                        pendingShare = pendingShare,
-                        onShared = witnessViewModel::shared,
-                        inviting = inviting,
-                        errorMessage = witnessError,
-                    )
-
                     SetupStep.Protection -> ProtectionScreen(
-                        onBack = { setupStep = SetupStep.Witnesses },
+                        onBack = { setupStep = SetupStep.DailyLimits },
                         // Figma 10, which explains what the overlay reads
                         // before Settings opens rather than after.
                         onReviewBlocking = { setupStep = SetupStep.BlockingDisclosure },
@@ -585,7 +585,6 @@ fun AsrApp(
                         days = chosenDays,
                         apps = chosenApps,
                         limits = chosenLimits,
-                        witnesses = witnesses,
                         protectionReady = PermissionState.read(context).requiredGranted,
                         onBack = { setupStep = SetupStep.Protection },
                         // The one place a challenge is committed. From here it
@@ -608,13 +607,37 @@ fun AsrApp(
                     )
                 }
             } else if (justStarted && pactState is PactState.Active) {
-                // Figma 12.
-                ChallengeStartedScreen(
-                    days = (pactState as PactState.Active).pact.durationDays,
-                    witnesses = witnesses.size,
-                    protectionReady = PermissionState.read(context).requiredGranted,
-                    onContinue = { justStarted = false },
-                )
+                val started = (pactState as PactState.Active).pact
+                if (!witnessesOffered) {
+                    // Figma 08, on the way out rather than on the way in. The
+                    // challenge exists now, so the links it issues point at
+                    // something real -- and skipping is allowed, because the
+                    // pact is already running and refusing to let somebody
+                    // past this screen would not un-start it.
+                    AddWitnessesScreen(
+                        challengeDays = started.durationDays,
+                        witnesses = witnesses,
+                        onBack = { witnessesOffered = true },
+                        onInvite = witnessViewModel::invite,
+                        onContinue = { witnessesOffered = true },
+                        pendingShare = pendingShare,
+                        onShared = witnessViewModel::shared,
+                        inviting = inviting,
+                        errorMessage = witnessError,
+                        showStepNumber = false,
+                    )
+                } else {
+                    // Figma 12.
+                    ChallengeStartedScreen(
+                        days = started.durationDays,
+                        witnesses = witnesses.size,
+                        protectionReady = PermissionState.read(context).requiredGranted,
+                        onContinue = {
+                            justStarted = false
+                            witnessesOffered = false
+                        },
+                    )
+                }
             } else {
                 // Null when nothing is running, which every tab now handles.
                 // The bar and its four screens are the app; a challenge is

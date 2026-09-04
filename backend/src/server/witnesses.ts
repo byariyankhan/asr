@@ -12,6 +12,7 @@ import { isUuidLike, newId } from "@/lib/uuid";
 export const witnessColumns = [
   "id",
   "user_id",
+  "pact_id",
   "witness_user_id",
   "invite_code",
   "invite_email",
@@ -67,7 +68,7 @@ const ARTICLE: Record<string, string> = {
  */
 async function assertSingularFree(
   db_: Db,
-  userId: string,
+  pactId: string,
   relationship: string | null,
   excludeWitnessId?: string,
 ): Promise<void> {
@@ -75,7 +76,7 @@ async function assertSingularFree(
   let query = db_
     .selectFrom("witness")
     .select("id")
-    .where("user_id", "=", userId)
+    .where("pact_id", "=", pactId)
     .where("relationship", "=", relationship as never)
     .where("status", "=", "accepted");
   if (excludeWitnessId) query = query.where("id", "!=", excludeWitnessId);
@@ -91,9 +92,23 @@ async function assertSingularFree(
 // A new invite row. The email, if given, is sent by the delivery worker;
 // here it is only stored.
 export async function createInvite(userId: string, input: WitnessInvite) {
+  // A witness is invited to a challenge, and the invitation names how many
+  // days it runs. Without one there is nothing to witness, and the link
+  // would still work after setup was abandoned -- which is how somebody
+  // ended up listed as a witness to nothing.
+  const pact = await db
+    .selectFrom("pact")
+    .select("id")
+    .where("user_id", "=", userId)
+    .where("status", "=", "active")
+    .executeTakeFirst();
+  if (!pact) {
+    throw conflict("no_active_pact", "Start a challenge before inviting witnesses to it.");
+  }
+
   // Refused before a code is allocated, so the app can say why instead of
   // handing somebody a link that will be rejected when it is opened.
-  await assertSingularFree(db, userId, input.relationship);
+  await assertSingularFree(db, pact.id, input.relationship);
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateInviteCode();
     try {
@@ -102,6 +117,7 @@ export async function createInvite(userId: string, input: WitnessInvite) {
         .values({
           id: newId(),
           user_id: userId,
+          pact_id: pact.id,
           witness_user_id: null,
           invite_code: code,
           invite_email: input.email ?? null,
@@ -135,6 +151,7 @@ export async function peekInvite(code: string, viewerId?: string) {
       "witness.relationship",
       "witness.status",
       "witness.user_id",
+      "witness.pact_id",
       "u.name as inviter_name",
       "u.image as inviter_image",
     ])
@@ -143,17 +160,20 @@ export async function peekInvite(code: string, viewerId?: string) {
     .executeTakeFirst();
   if (!row || row.status !== "invited") throw notFound("Invite");
 
-  // How long the challenge runs, when one is running. The invitation names
-  // it ("a 14-day challenge") and the page that opens the link should agree
-  // with the message that carried it. Null is an ordinary answer: a witness
-  // can be invited before the pact starts.
-  const pact = await db
-    .selectFrom("pact")
-    .select("duration_days")
-    .where("user_id", "=", row.user_id)
-    .where("status", "=", "active")
-    .orderBy("created_at", "desc")
-    .executeTakeFirst();
+  // The challenge this invitation was written for -- not "their current
+  // one". Those are the same thing while it runs and different the moment
+  // it does not, and the second is when somebody would be told they are
+  // joining a challenge that ended.
+  const pact = row.pact_id
+    ? await db
+        .selectFrom("pact")
+        .select(["duration_days", "status"])
+        .where("id", "=", row.pact_id)
+        .executeTakeFirst()
+    : undefined;
+  // An invitation to a challenge that has ended is not an open invitation.
+  // It reads the same as a used code, which is what it is.
+  if (!pact || pact.status !== "active") throw notFound("Invite");
 
   // The photo travels with the name. Somebody deciding whether to vouch for
   // a person should see who is asking, and at this point they have no
@@ -162,7 +182,7 @@ export async function peekInvite(code: string, viewerId?: string) {
     inviter_name: row.inviter_name,
     inviter_image: imagePath(row.inviter_image),
     relationship: row.relationship,
-    days: pact?.duration_days ?? null,
+    days: pact.duration_days,
     // Whether the person reading this is the one who sent it. acceptInvite
     // already refuses -- nobody witnesses themselves -- but refusing after
     // the button is pressed is a worse way to learn it than never being
@@ -182,6 +202,19 @@ export async function acceptInvite(witnessUserId: string, code: string) {
   if (!row) throw notFound("Invite");
   if (row.user_id === witnessUserId) throw conflict("own_invite", "You cannot witness yourself.");
   if (row.status !== "invited") throw conflict("invite_used", "This invite was already answered.");
+  const pactId = row.pact_id;
+  if (!pactId) throw conflict("challenge_over", "That challenge is no longer running.");
+  const invitedTo = await db
+    .selectFrom("pact")
+    .select("status")
+    .where("id", "=", pactId)
+    .executeTakeFirst();
+  // Between sharing the link and somebody opening it, the challenge can
+  // finish or break. Accepting then would add a witness to something that
+  // is over.
+  if (invitedTo?.status !== "active") {
+    throw conflict("challenge_over", "That challenge is no longer running.");
+  }
 
   const now = new Date();
   try {
@@ -189,7 +222,7 @@ export async function acceptInvite(witnessUserId: string, code: string) {
       // The real gate. The invite link is a code that travels through group
       // chats, so the question is not who was invited but who is opening it,
       // and this is the last moment anybody can be told no.
-      await assertSingularFree(trx, row.user_id, row.relationship, row.id);
+      await assertSingularFree(trx, pactId, row.relationship, row.id);
       const updated = await trx
         .updateTable("witness")
         .set({ witness_user_id: witnessUserId, status: "accepted", responded_at: now, updated_at: now })
@@ -232,8 +265,18 @@ export async function declineInvite(witnessUserId: string, code: string): Promis
   if (result.numUpdatedRows === 0n) throw notFound("Invite");
 }
 
-// Both directions, with a `mutual` flag where the same two people witness
-// each other (the design's "MUTUAL" badge).
+/**
+ * Both directions, scoped to challenges that are running.
+ *
+ * A witness belongs to a challenge. When it ends they were a witness to a
+ * thing that finished — which is a record, not a list of people who would be
+ * told if something broke today. Showing them alongside live ones made the
+ * count on that screen a number about the past, and the count is the one
+ * thing on it that has to be true.
+ *
+ * `mutual` is unchanged in meaning and now happens to be rarer: it needs two
+ * live challenges, one each way.
+ */
 export async function listWitnesses(userId: string) {
   const mine = await db
     .selectFrom("witness")
@@ -256,8 +299,10 @@ export async function listWitnesses(userId: string) {
       "w.name as witness_name",
       "w.image as witness_image",
     ])
+    .innerJoin("pact as p", "p.id", "witness.pact_id")
     .where("witness.user_id", "=", userId)
     .where("witness.status", "in", ["invited", "accepted"])
+    .where("p.status", "=", "active")
     .orderBy("witness.invited_at", "desc")
     .execute();
 
@@ -278,8 +323,10 @@ export async function listWitnesses(userId: string) {
       "u.name as person_name",
       "u.image as person_image",
     ])
+    .innerJoin("pact as p", "p.id", "witness.pact_id")
     .where("witness.witness_user_id", "=", userId)
     .where("witness.status", "=", "accepted")
+    .where("p.status", "=", "active")
     .orderBy("witness.responded_at", "desc")
     .execute();
 

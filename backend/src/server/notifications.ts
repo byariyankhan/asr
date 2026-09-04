@@ -81,6 +81,10 @@ export async function queueWitnessNotifications(
       "u.name as user_name",
     ])
     .where("witness.user_id", "=", args.userId)
+    // The witnesses of *this* challenge. Somebody who watched a pact that
+    // finished last month agreed to watch that one, and is not owed an
+    // alert about a new one they were never told about.
+    .where("witness.pact_id", "=", args.pactId)
     .where("witness.status", "=", "accepted")
     .where(`witness.${PREF_FOR_KIND[args.kind]}`, "=", true)
     .execute();

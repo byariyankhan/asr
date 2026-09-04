@@ -152,6 +152,9 @@ export interface ActivityTable {
 export interface WitnessTable {
   id: string;
   user_id: string;
+  /** The challenge they were invited to. Null only for rows from before
+   *  0004 whose account never started one; those are read as ended. */
+  pact_id: string | null;
   witness_user_id: string | null;
   invite_code: string;
   invite_email: string | null;
