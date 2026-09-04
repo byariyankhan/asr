@@ -8,6 +8,8 @@ import io.joinasr.app.data.ApiResult
 import io.joinasr.app.data.InvitePeek
 import io.joinasr.app.data.SupportedPerson
 import io.joinasr.app.data.WitnessProgress
+import io.joinasr.app.enforcement.PactStore
+import io.joinasr.app.sync.Sync
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +33,8 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
 
     private val store = WitnessStore(application)
     private val tokens = Api.tokens(application)
+    private val pacts = PactStore(application)
+    private val sync = Sync(application)
 
     val witnesses: StateFlow<List<Witness>> =
         store.witnesses.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -118,6 +122,18 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
                 _inviting.value = false
                 return@launch
             }
+            // An invitation is to a challenge, and the server will not issue
+            // a link without one. The challenge is committed on the phone
+            // and pushed to the server afterwards, in the background and
+            // best-effort, so the invitation can easily get there first --
+            // and the screen that asks for it is the one that will not let
+            // go until an invitation has gone out. Refusing there is a lock
+            // with no way out of it.
+            //
+            // So the challenge is made sure of first. After the first time
+            // this costs nothing: the server's id for it is stored, and
+            // finding it is a read from disk.
+            pacts.current()?.let { pact -> runCatching { sync.remotePactId(pact) } }
             when (val result = Api.witnesses.invite(token, relationship)) {
                 is ApiResult.Ok -> {
                     store.add(

@@ -105,6 +105,11 @@ fun AddWitnessesScreen(
 ) {
     val context = LocalContext.current
 
+    // What the picker has selected but not yet shared. Cleared once the
+    // invitation is actually on its way, so the next one starts from an
+    // empty field rather than from the last relationship chosen.
+    var chosen by remember { mutableStateOf<Relationship?>(null) }
+
     // The sheet opens when the invite comes back, not when Share is pressed:
     // there is nothing to share until the server has issued the link.
     LaunchedEffect(pendingShare) {
@@ -119,13 +124,15 @@ fun AddWitnessesScreen(
             putExtra(Intent.EXTRA_TEXT, text)
         }
         runCatching { context.startActivity(Intent.createChooser(share, "Invite a witness")) }
+        // Emptied here rather than when Share was pressed. The server can
+        // refuse -- and does, while it has not heard about the challenge
+        // yet -- and clearing on the press threw away the choice along with
+        // the attempt, leaving an error above an empty field and somebody
+        // picking the same relationship again to find out whether it was
+        // the field or the request that failed.
+        chosen = null
         onShared()
     }
-
-    // What the picker has selected but not yet shared. Cleared on share, so
-    // the next invitation starts from an empty field rather than from the
-    // last relationship chosen.
-    var chosen by remember { mutableStateOf<Relationship?>(null) }
 
     val enough = witnesses.size >= Relationships.REQUIRED
 
@@ -167,11 +174,7 @@ fun AddWitnessesScreen(
             selected = chosen,
             onSelect = { chosen = it },
             busy = inviting,
-            onShare = {
-                val relationship = chosen?.value ?: return@InvitePicker
-                onInvite(relationship)
-                chosen = null
-            },
+            onShare = { chosen?.value?.let(onInvite) },
         )
 
         errorMessage?.let {
