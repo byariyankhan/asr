@@ -358,3 +358,37 @@ export function relationshipCopy(
 
 /** Exported for the test that walks every relationship. */
 export const RELATIONSHIPS_WITH_COPY = Object.keys(TABLE) as Relationship[];
+
+/**
+ * What to call a witness when talking to the person they watch.
+ *
+ * "Mom saw what happened", not "Jonny Harris saw what happened" -- the name
+ * is already the title of the notification, and repeating it says nothing
+ * the line above did not. What the second line is for is the thing the title
+ * cannot carry: *who this person is to you*.
+ *
+ * Second person throughout, because that is who is reading: a parent is
+ * "Mom" and "Dad" because nobody says "your mother saw that", and everybody
+ * else takes "Your", because "Brother saw that" is not English.
+ */
+const WITNESS_LABEL: Record<string, string> = {
+  mother: "Mom",
+  father: "Dad",
+  brother: "Your brother",
+  sister: "Your sister",
+  husband: "Your husband",
+  wife: "Your wife",
+  partner: "Your partner",
+  friend: "Your friend",
+  mentor: "Your mentor",
+  colleague: "Your colleague",
+  // Written by builds before the specific list, and still on rows.
+  parent: "Your parent",
+  sibling: "Your brother or sister",
+  spouse: "Your husband or wife",
+  other: "Your witness",
+};
+
+export function witnessLabel(relationship?: string | null): string {
+  return (relationship && WITNESS_LABEL[relationship]) || "Your witness";
+}

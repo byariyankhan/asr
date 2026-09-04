@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -180,12 +181,38 @@ private fun WitnessCard(witness: Witness) {
             .padding(15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AsrProfilePhoto(
-            imagePath = witness.image,
-            fallback = witness.label,
-            size = 48.dp,
-            initialSize = 16,
-        )
+        // The last thing they reacted with, on the photo, where a social app
+        // puts the green dot. It belongs to the person rather than sitting
+        // beside them in a row of its own, and one is the number: this says
+        // "they saw, and this is what they thought", not a history.
+        Box {
+            AsrProfilePhoto(
+                imagePath = witness.image,
+                fallback = witness.label,
+                size = 48.dp,
+                initialSize = 16,
+            )
+            witness.reactions.firstOrNull()?.let { latest ->
+                Reactions.of(latest)?.let { reaction ->
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            // Ringed in the card's own colour, so it reads as
+                            // sitting on top of the photo rather than being
+                            // part of it.
+                            .background(AsrColors.SurfaceRaised)
+                            .padding(1.dp)
+                            .clip(CircleShape)
+                            .background(AsrColors.Surface),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(reaction.emoji, style = AsrType.Legal.copy(fontSize = 11.sp))
+                    }
+                }
+            }
+        }
 
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -206,28 +233,7 @@ private fun WitnessCard(witness: Witness) {
             )
         }
         Spacer(Modifier.width(10.dp))
-        // Status above, what they have actually done below it.
-        //
-        // Reacting is the only thing a witness can do, and it was a push
-        // notification and then nothing: somebody's brother throws a tomato,
-        // the phone buzzes once, and by the evening there is no trace of it.
-        // This is the screen listing the people who did it.
-        Column(horizontalAlignment = Alignment.End) {
-            StatusPill("ACTIVE", highlighted = true)
-            if (witness.reactions.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Row {
-                    for (reaction in witness.reactions) {
-                        val emoji = Reactions.of(reaction)?.emoji ?: continue
-                        Text(
-                            emoji,
-                            style = AsrType.Field.copy(fontSize = 15.sp),
-                            modifier = Modifier.padding(start = 3.dp),
-                        )
-                    }
-                }
-            }
-        }
+        StatusPill("ACTIVE", highlighted = true)
     }
 }
 

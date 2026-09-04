@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   RELATIONSHIPS_WITH_COPY,
+  witnessLabel,
   relationshipCopy,
   type CopyVars,
   type WitnessEvent,
@@ -246,5 +247,38 @@ describe("pronouns", () => {
         }
       }
     }
+  });
+});
+
+/**
+ * Who a witness is to the person reading, for the line under their name.
+ *
+ * A reaction notification said the name in the title and again underneath
+ * it, with the same emoji twice. The second line is for the one thing the
+ * title cannot carry: who this person is to you.
+ */
+describe("witnessLabel", () => {
+  it("a parent is Mom or Dad, because nobody says 'your mother'", () => {
+    expect(witnessLabel("mother")).toBe("Mom");
+    expect(witnessLabel("father")).toBe("Dad");
+  });
+
+  it("everybody else takes 'Your', because 'Brother saw that' is not English", () => {
+    expect(witnessLabel("brother")).toBe("Your brother");
+    expect(witnessLabel("friend")).toBe("Your friend");
+    expect(witnessLabel("colleague")).toBe("Your colleague");
+  });
+
+  it("covers every relationship the copy table knows", () => {
+    for (const relationship of RELATIONSHIPS_WITH_COPY) {
+      expect(witnessLabel(relationship)).not.toBe("Your witness");
+    }
+  });
+
+  it("a relationship from an older build still reads as something", () => {
+    expect(witnessLabel("sibling")).toBe("Your brother or sister");
+    expect(witnessLabel("other")).toBe("Your witness");
+    expect(witnessLabel(null)).toBe("Your witness");
+    expect(witnessLabel("nonsense")).toBe("Your witness");
   });
 });

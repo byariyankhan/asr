@@ -1,6 +1,7 @@
 import { db } from "./db/client";
 import type { Emoji } from "./db/schema";
 import { queueNotification } from "./notifications";
+import { witnessLabel } from "./witness-copy";
 import { requireWitnessView } from "./witnesses";
 import { notFound } from "@/lib/http";
 import { isUuidLike, newId } from "@/lib/uuid";
@@ -43,6 +44,10 @@ export async function react(callerId: string, witnessRowId: string, eventId: str
       .executeTakeFirstOrThrow();
 
     const witness = await trx.selectFrom("user").select("name").where("id", "=", callerId).executeTakeFirstOrThrow();
+    // The name once, in the title; who they are to you underneath it. The
+    // second line used to repeat the name and the emoji, which said nothing
+    // the first line had not already said, twice.
+    const who = witnessLabel(row.relationship);
     await queueNotification(trx, {
       recipientId: row.user_id,
       aboutUserId: callerId,
@@ -50,8 +55,8 @@ export async function react(callerId: string, witnessRowId: string, eventId: str
       title: `${witness.name} reacted ${EMOJI_LABEL[emoji]}`,
       body:
         event.type === "completed"
-          ? `${witness.name} saw you keep your word.`
-          : `${witness.name} saw what happened. ${EMOJI_LABEL[emoji]}`,
+          ? `${who} saw you keep your word.`
+          : `${who} saw what happened.`,
       deepLink: `/witnesses`,
     });
     return reaction;
