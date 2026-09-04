@@ -45,6 +45,7 @@ import io.joinasr.app.ui.screens.ForgotPasswordScreen
 import io.joinasr.app.legal.LegalTexts
 import io.joinasr.app.ui.screens.LegalScreen
 import io.joinasr.app.ui.screens.LogInScreen
+import io.joinasr.app.ui.screens.NotificationsScreen
 import io.joinasr.app.ui.screens.PersonDetailScreen
 import io.joinasr.app.ui.screens.PersonalDetailsScreen
 import io.joinasr.app.ui.screens.ProfileDestination
@@ -58,6 +59,8 @@ import io.joinasr.app.ui.screens.SecurityScreen
 import io.joinasr.app.ui.screens.SignUpScreen
 import io.joinasr.app.ui.screens.UsageAccessScreen
 import io.joinasr.app.ui.screens.WelcomeScreen
+import io.joinasr.app.ui.screens.WitnessInviteScreen
+import io.joinasr.app.DeepLink
 import io.joinasr.app.data.SupportedPerson
 import io.joinasr.app.witness.Relationships
 import io.joinasr.app.witness.WitnessViewModel
@@ -118,13 +121,14 @@ private val ProfileRoutes = setOf(
 
 @Composable
 fun AsrApp(
-    /** The token from a password-reset link, when the app was opened by one. */
-    resetToken: String? = null,
-    onResetTokenHandled: () -> Unit = {},
+    /** The link the app was opened by, if any. */
+    link: DeepLink? = null,
+    onLinkHandled: () -> Unit = {},
     viewModel: SessionViewModel = viewModel(),
     pactViewModel: PactViewModel = viewModel(),
     witnessViewModel: WitnessViewModel = viewModel(),
     accountViewModel: AccountViewModel = viewModel(),
+    inboxViewModel: InboxViewModel = viewModel(),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
@@ -136,6 +140,13 @@ fun AsrApp(
     val supporting by witnessViewModel.supporting.collectAsStateWithLifecycle()
     val witnessProgress by witnessViewModel.progress.collectAsStateWithLifecycle()
     val reactions by witnessViewModel.reactions.collectAsStateWithLifecycle()
+    val invite by witnessViewModel.invite.collectAsStateWithLifecycle()
+    val inviteError by witnessViewModel.inviteError.collectAsStateWithLifecycle()
+    val inviteBusy by witnessViewModel.inviteBusy.collectAsStateWithLifecycle()
+    val inviteAnswered by witnessViewModel.inviteAnswered.collectAsStateWithLifecycle()
+    val inboxItems by inboxViewModel.items.collectAsStateWithLifecycle()
+    val unread by inboxViewModel.unread.collectAsStateWithLifecycle()
+    val inboxLoaded by inboxViewModel.loaded.collectAsStateWithLifecycle()
     val submitting by viewModel.submitting.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val accountBusy by accountViewModel.busy.collectAsStateWithLifecycle()
@@ -163,6 +174,15 @@ fun AsrApp(
     var deletingAccount by remember { mutableStateOf(false) }
     // Figma 27, opened from the NOT PROTECTED pill on the dashboard.
     var showingProtectionLost by remember { mutableStateOf(false) }
+    // Figma 19, opened from the bell.
+    var showingNotifications by remember { mutableStateOf(false) }
+    // Figma 18. The code from a witness link, held until it is answered.
+    var inviteCode by remember { mutableStateOf<String?>(null) }
+    // True while somebody who opened an invite is going through sign-up.
+    // The code is kept the whole time, so they land back on the invitation
+    // with an account rather than on an empty dashboard wondering where the
+    // link went.
+    var inviteDeferred by remember { mutableStateOf(false) }
     // True between committing a pact and pressing "Go to dashboard" on
     // Figma 12. Not stored: it is a moment, not a state of the challenge,
     // and a person who closes the app during it has still started.
@@ -192,15 +212,38 @@ fun AsrApp(
     }
     LaunchedEffect(profileRoute, deletingAccount) { accountViewModel.clear() }
 
-    // A reset link opens the reset screen from wherever the app was. It also
-    // signs the person out first: the token is proof of reaching the inbox,
-    // and the server revokes every session when it is spent, so staying on a
-    // signed-in screen behind it would only mean the next request 401s.
-    LaunchedEffect(resetToken) {
-        val token = resetToken ?: return@LaunchedEffect
-        viewModel.signOut()
-        destination = Destination.ResetPassword(token)
-        onResetTokenHandled()
+    // A link takes precedence over whatever screen was showing, because
+    // opening one is the person saying where they want to be.
+    //
+    // A reset link also signs them out first: the token is proof of reaching
+    // the inbox, the server revokes every session when it is spent, and
+    // staying on a signed-in screen behind it would only mean the next
+    // request 401s.
+    LaunchedEffect(link) {
+        when (val opened = link) {
+            null -> Unit
+            is DeepLink.Reset -> {
+                viewModel.signOut()
+                destination = Destination.ResetPassword(opened.token)
+                onLinkHandled()
+            }
+            is DeepLink.Invite -> {
+                inviteCode = opened.code
+                witnessViewModel.openInvite(opened.code)
+                onLinkHandled()
+            }
+        }
+    }
+
+    // Answered, so the screen has done its job. Accepting leaves the person
+    // on their own app rather than on a confirmation: the list they have
+    // just joined is the confirmation.
+    LaunchedEffect(inviteAnswered) {
+        if (!inviteAnswered) return@LaunchedEffect
+        inviteCode = null
+        witnessViewModel.clearInvite()
+        tab = AsrTab.Witnesses
+        circleTab = CircleTab.Supporting
     }
 
     // Deletion is accepted by the server, so the token is spent: signing out
@@ -240,9 +283,11 @@ fun AsrApp(
     // which is what a bottom bar implies and what every app with one does.
     BackHandler(
         enabled = tab != AsrTab.Home || profileRoute != null || addingWitness ||
-            deletingAccount || showingProtectionLost || openPerson != null,
+            deletingAccount || showingProtectionLost || openPerson != null ||
+            showingNotifications,
     ) {
         when {
+            showingNotifications -> showingNotifications = false
             showingProtectionLost -> showingProtectionLost = false
             deletingAccount -> deletingAccount = false
             profileRoute != null -> profileRoute = null
@@ -256,8 +301,37 @@ fun AsrApp(
     // property cannot be, and `!!` on the thing that tells somebody their
     // challenge broke is not where to be casual.
     val ended = endedUnseen
+    val code = inviteCode
+    val signedIn = session is Session.SignedIn
 
-    when (val current = session) {
+    LaunchedEffect(signedIn) { if (signedIn) inviteDeferred = false }
+
+    if (code != null && (signedIn || !inviteDeferred)) {
+        // Figma 18, over everything. Opening the link is the person saying
+        // where they want to be, and it works signed out because the person
+        // being asked to vouch usually has no account yet.
+        WitnessInviteScreen(
+            invite = invite,
+            errorMessage = inviteError,
+            signedIn = signedIn,
+            busy = inviteBusy,
+            onBack = {
+                inviteCode = null
+                inviteDeferred = false
+                witnessViewModel.clearInvite()
+            },
+            onAccept = {
+                if (signedIn) {
+                    witnessViewModel.answerInvite(code, accept = true)
+                } else {
+                    // The code survives sign-up; this only steps aside.
+                    inviteDeferred = true
+                    destination = Destination.SignUp
+                }
+            },
+            onDecline = { witnessViewModel.answerInvite(code, accept = false) },
+        )
+    } else when (val current = session) {
         // Between launch and the answer from /v1/me. Blank rather than a
         // spinner: it is one request against a warm connection, and a
         // spinner that flashes for 200ms is worse than nothing.
@@ -406,7 +480,17 @@ fun AsrApp(
                             // screens rather than a bar inside each of them:
                             // four copies would be four things to keep in
                             // agreement about which tab is selected.
-                            AsrTab.Home -> if (showingProtectionLost) {
+                            AsrTab.Home -> if (showingNotifications) {
+                                // Figma 19.
+                                NotificationsScreen(
+                                    items = inboxItems,
+                                    unread = unread,
+                                    loaded = inboxLoaded,
+                                    onBack = { showingNotifications = false },
+                                    onOpen = { inboxViewModel.markRead(it.id) },
+                                    onMarkAllRead = inboxViewModel::markAllRead,
+                                )
+                            } else if (showingProtectionLost) {
                                 // Figma 27.
                                 ProtectionLostScreen(
                                     onBack = { showingProtectionLost = false },
@@ -416,6 +500,11 @@ fun AsrApp(
                                 DashboardScreen(
                                     pact = activePact,
                                     onProtectionLost = { showingProtectionLost = true },
+                                    onNotifications = {
+                                        inboxViewModel.refresh()
+                                        showingNotifications = true
+                                    },
+                                    unreadNotifications = unread,
                                 )
                             }
 

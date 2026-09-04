@@ -89,6 +89,12 @@
                     android:scheme="https"
                     android:host="joinasr.io"
                     android:pathPrefix="/reset/" />
+                <!-- The witness invitation, shared through whatever the
+                     person already uses to talk to their mother. -->
+                <data
+                    android:scheme="https"
+                    android:host="joinasr.io"
+                    android:pathPrefix="/w/" />
             </intent-filter>
         </activity>
 

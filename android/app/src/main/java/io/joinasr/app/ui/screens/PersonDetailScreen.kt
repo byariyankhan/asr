@@ -41,7 +41,6 @@ import io.joinasr.app.witness.Reactions
 import io.joinasr.app.witness.Relationships
 import java.time.Duration
 import java.time.Instant
-import java.time.OffsetDateTime
 
 /**
  * Figma 17 — Supporting / Person Detail (node 173:2).
@@ -393,13 +392,7 @@ private fun ReactionRow(options: List<Reaction>, chosen: String?, onPick: (React
  * know whether this is fresh, not the second it landed.
  */
 internal fun ago(isoTimestamp: String?): String {
-    val at = isoTimestamp?.let { text ->
-        // Postgres timestamps come back with an offset; a plain Z-suffixed
-        // one parses only as an Instant. Both shapes reach this app, so both
-        // are tried rather than assuming which serialiser was in the middle.
-        runCatching { OffsetDateTime.parse(text).toInstant() }.getOrNull()
-            ?: runCatching { Instant.parse(text) }.getOrNull()
-    } ?: return "recently"
+    val at = parseInstant(isoTimestamp) ?: return "recently"
     val minutes = Duration.between(at, Instant.now()).toMinutes()
     return when {
         minutes < 0 -> "just now"

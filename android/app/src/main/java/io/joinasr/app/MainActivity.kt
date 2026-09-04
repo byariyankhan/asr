@@ -22,17 +22,17 @@ import io.joinasr.app.ui.theme.AsrTheme
 class MainActivity : ComponentActivity() {
 
     /**
-     * The reset token from https://joinasr.io/reset/<token>, if the app was
-     * opened by one of those links. Held here rather than read inside the
-     * composition because the link can also arrive at an activity that is
-     * already running, through onNewIntent, and a composable reading
-     * `intent` would never see it.
+     * The link this activity was opened by, if any.
+     *
+     * Held here rather than read inside the composition because a link can
+     * also arrive at an activity that is already running, through
+     * onNewIntent, and a composable reading `intent` would never see it.
      */
-    private var resetToken by mutableStateOf<String?>(null)
+    private var link by mutableStateOf<DeepLink?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        resetToken = tokenFrom(intent)
+        link = DeepLink.from(intent)
         // Edge to edge, then the app's own background painted behind the
         // status and navigation bars — without it they stay the system's
         // default and the black screen ends in two grey stripes.
@@ -46,11 +46,11 @@ class MainActivity : ComponentActivity() {
                         .windowInsetsPadding(WindowInsets.systemBars),
                 ) {
                     AsrApp(
-                        resetToken = resetToken,
-                        // Consumed once the reset screen has it, so rotating
-                        // the phone afterwards does not reopen the screen
-                        // with a token that has already been spent.
-                        onResetTokenHandled = { resetToken = null },
+                        link = link,
+                        // Consumed once the screen has it, so rotating the
+                        // phone afterwards does not reopen a screen with a
+                        // token that has already been spent.
+                        onLinkHandled = { link = null },
                     )
                 }
             }
@@ -60,18 +60,6 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        tokenFrom(intent)?.let { resetToken = it }
-    }
-
-    /**
-     * The last path segment of a reset link. Anything else — the launcher
-     * icon, a share, a link to some other path — yields null, so a stray
-     * intent cannot put somebody on a reset screen with an empty token.
-     */
-    private fun tokenFrom(intent: Intent?): String? {
-        if (intent?.action != Intent.ACTION_VIEW) return null
-        val segments = intent.data?.pathSegments ?: return null
-        if (segments.size != 2 || segments[0] != "reset") return null
-        return segments[1].takeIf { it.isNotBlank() }
+        DeepLink.from(intent)?.let { link = it }
     }
 }

@@ -68,6 +68,20 @@ data class WitnessLists(
     @SerialName("i_witness") val iWitness: List<SupportedPerson> = emptyList(),
 )
 
+/**
+ * What GET /v1/witnesses/invites/{code} answers with, and deliberately all
+ * of it. The route takes no session -- somebody deciding whether to vouch
+ * for a person has no account yet -- so it never returns their app list,
+ * their limits or how long the challenge runs. Figma 18 draws those; they
+ * cannot be shown before accepting, and inventing them would be worse.
+ */
+@Serializable
+data class InvitePeek(
+    @SerialName("inviter_name") val inviterName: String,
+    @SerialName("inviter_image") val inviterImage: String? = null,
+    val relationship: String,
+)
+
 @Serializable
 private data class InviteRequest(val relationship: String)
 
@@ -108,6 +122,43 @@ class WitnessApi(
             .get()
             .build()
         call<WitnessLists>(request)
+    }
+
+    /**
+     * Figma 18, before accepting. No token: the person opening the link may
+     * not have an account yet, which is exactly who this screen is for.
+     */
+    suspend fun peekInvite(code: String): ApiResult<InvitePeek> = withContext(Dispatchers.IO) {
+        call<InvitePeek>(Request.Builder().url("$baseUrl/v1/witnesses/invites/$code").get().build())
+    }
+
+    suspend fun acceptInvite(token: String, code: String): ApiResult<Unit> =
+        withContext(Dispatchers.IO) {
+            answerInvite(token, code, "accept")
+        }
+
+    suspend fun declineInvite(token: String, code: String): ApiResult<Unit> =
+        withContext(Dispatchers.IO) {
+            answerInvite(token, code, "decline")
+        }
+
+    private fun answerInvite(token: String, code: String, action: String): ApiResult<Unit> {
+        val request = Request.Builder()
+            .url("$baseUrl/v1/witnesses/invites/$code/$action")
+            .header("Authorization", "Bearer $token")
+            .post("{}".toRequestBody(JSON_MEDIA))
+            .build()
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    ApiResult.Ok(Unit)
+                } else {
+                    parseFailure(response.code, response.body?.string(), response.header("Retry-After"))
+                }
+            }
+        } catch (e: IOException) {
+            ApiResult.Offline(OFFLINE)
+        }
     }
 
     /** Figma 17: what somebody I am a witness for is doing. */

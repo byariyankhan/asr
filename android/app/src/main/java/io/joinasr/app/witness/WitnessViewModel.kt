@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.joinasr.app.data.Api
 import io.joinasr.app.data.ApiResult
+import io.joinasr.app.data.InvitePeek
 import io.joinasr.app.data.SupportedPerson
 import io.joinasr.app.data.WitnessProgress
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,6 +65,20 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
     /** What this person has reacted with, keyed by event id. */
     private val _reactions = MutableStateFlow<Map<String, String>>(emptyMap())
     val reactions: StateFlow<Map<String, String>> = _reactions.asStateFlow()
+
+    /** Figma 18: an invitation opened from a link. */
+    private val _invite = MutableStateFlow<InvitePeek?>(null)
+    val invite: StateFlow<InvitePeek?> = _invite.asStateFlow()
+
+    private val _inviteError = MutableStateFlow<String?>(null)
+    val inviteError: StateFlow<String?> = _inviteError.asStateFlow()
+
+    private val _inviteBusy = MutableStateFlow(false)
+    val inviteBusy: StateFlow<Boolean> = _inviteBusy.asStateFlow()
+
+    /** Set once the invite has been accepted or declined, so the screen closes. */
+    private val _inviteAnswered = MutableStateFlow(false)
+    val inviteAnswered: StateFlow<Boolean> = _inviteAnswered.asStateFlow()
 
     init {
         refresh()
@@ -184,6 +199,65 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+    }
+
+    /**
+     * Looks up an invitation. No token: the person who opened the link may
+     * have no account at all, which is exactly who Figma 18 is for.
+     */
+    fun openInvite(code: String) {
+        viewModelScope.launch {
+            _invite.value = null
+            _inviteError.value = null
+            _inviteAnswered.value = false
+            when (val result = Api.witnesses.peekInvite(code)) {
+                is ApiResult.Ok -> _invite.value = result.value
+                is ApiResult.Failure -> _inviteError.value = if (result.code == 404) {
+                    // 404 here means answered, withdrawn or never real, and
+                    // the server deliberately does not say which: it answers
+                    // to anybody holding a code.
+                    "This invitation has already been answered, or the link is not valid."
+                } else {
+                    result.message
+                }
+                is ApiResult.Offline -> _inviteError.value = result.message
+            }
+        }
+    }
+
+    fun answerInvite(code: String, accept: Boolean) {
+        if (_inviteBusy.value) return
+        viewModelScope.launch {
+            val token = tokens.current()
+            if (token.isNullOrBlank()) {
+                _inviteError.value = "Sign in first, then open the link again."
+                return@launch
+            }
+            _inviteBusy.value = true
+            _inviteError.value = null
+            val result = if (accept) {
+                Api.witnesses.acceptInvite(token, code)
+            } else {
+                Api.witnesses.declineInvite(token, code)
+            }
+            when (result) {
+                is ApiResult.Ok -> {
+                    _inviteAnswered.value = true
+                    // Accepting adds somebody to the other list, so both are
+                    // re-read rather than patched locally.
+                    if (accept) refresh()
+                }
+                is ApiResult.Failure -> _inviteError.value = result.message
+                is ApiResult.Offline -> _inviteError.value = result.message
+            }
+            _inviteBusy.value = false
+        }
+    }
+
+    fun clearInvite() {
+        _invite.value = null
+        _inviteError.value = null
+        _inviteAnswered.value = false
     }
 
     fun remove(id: String) {

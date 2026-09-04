@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -83,6 +84,9 @@ fun DashboardScreen(
     pact: Pact,
     /** Opens Figma 27. Only reachable while a grant is actually missing. */
     onProtectionLost: () -> Unit,
+    /** Opens Figma 19. */
+    onNotifications: () -> Unit,
+    unreadNotifications: Int,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = viewModel(),
 ) {
@@ -120,13 +124,25 @@ fun DashboardScreen(
             .padding(horizontal = 24.dp),
     ) {
         Spacer(Modifier.height(24.dp))
-        Text(
-            greetingFor(hour),
-            style = AsrType.Eyebrow.copy(fontSize = 11.sp),
-            color = AsrColors.Accent,
-        )
-        Spacer(Modifier.height(10.dp))
-        Text("Stay in control.", style = AsrType.display(28), color = AsrColors.TextPrimary)
+        Row(verticalAlignment = Alignment.Top) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    greetingFor(hour),
+                    style = AsrType.Eyebrow.copy(fontSize = 11.sp),
+                    color = AsrColors.Accent,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Stay in control.",
+                    style = AsrType.display(28),
+                    color = AsrColors.TextPrimary,
+                )
+            }
+            // Figma 19 has a back chevron, so it is pushed from somewhere,
+            // and the file never draws the somewhere. This is it: the one
+            // place a person is already looking every day.
+            Bell(unread = unreadNotifications, onClick = onNotifications)
+        }
 
         Spacer(Modifier.height(22.dp))
         // Protected means all three of these, not one: the permissions are
@@ -204,6 +220,31 @@ fun DashboardScreen(
         }
 
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun Bell(unread: Int, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(AsrColors.Surface)
+            .border(1.dp, AsrColors.FieldBorder, CircleShape)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("◎", style = AsrType.display(18), color = AsrColors.TextSecondary)
+        if (unread > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(9.dp)
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(AsrColors.Accent),
+            )
+        }
     }
 }
 
