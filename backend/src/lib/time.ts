@@ -45,3 +45,17 @@ export function dayNumber(startsAt: Date, durationDays: number, now = new Date()
   const elapsed = Math.floor((now.getTime() - startsAt.getTime()) / DAY_MS) + 1;
   return Math.max(1, Math.min(durationDays, elapsed));
 }
+
+/**
+ * The calendar day before this one, as YYYY-MM-DD.
+ *
+ * Pure date arithmetic, not "minus 24 hours". Those are the same number on
+ * most days and different on the two a year a zone changes offset, which is
+ * exactly when a streak counted in 24-hour steps skips a day or counts one
+ * twice.
+ */
+export function previousDay(day: string): string {
+  const at = new Date(`${day}T00:00:00Z`);
+  at.setUTCDate(at.getUTCDate() - 1);
+  return at.toISOString().slice(0, 10);
+}

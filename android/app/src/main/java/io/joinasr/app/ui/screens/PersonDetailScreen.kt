@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +36,7 @@ import io.joinasr.app.data.RemotePactEvent
 import io.joinasr.app.data.SupportedPerson
 import io.joinasr.app.data.WitnessProgress
 import io.joinasr.app.ui.components.AsrBackChevron
+import io.joinasr.app.ui.components.rememberNow
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
@@ -73,6 +75,9 @@ fun PersonDetailScreen(
 ) {
     val current = progress?.current
     val latest = progress?.recentEvents?.firstOrNull()
+    // Ticking, so "9 hr ago" is nine hours ago rather than nine hours after
+    // whatever last redrew this screen.
+    val now by rememberNow()
 
     Column(
         modifier = modifier
@@ -139,6 +144,7 @@ fun PersonDetailScreen(
             events = progress?.recentEvents.orEmpty(),
             labels = labels,
             loaded = progress != null,
+            now = now,
         )
 
         if (latest != null) {
@@ -281,6 +287,8 @@ private fun ActivityCard(
     events: List<RemotePactEvent>,
     labels: Map<String, String>,
     loaded: Boolean,
+    /** Passed in rather than read here, so the times move when it does. */
+    now: Instant,
 ) {
     val shape = RoundedCornerShape(18.dp)
     Column(
@@ -345,7 +353,7 @@ private fun ActivityCard(
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        ago(event.receivedAt),
+                        ago(event.receivedAt, now),
                         style = AsrType.Legal.copy(fontSize = 11.sp),
                         color = AsrColors.TextSecondary,
                     )
@@ -393,9 +401,9 @@ private fun ReactionRow(options: List<Reaction>, chosen: String?, onPick: (React
  * "2 days ago", from an ISO timestamp. Rough on purpose: a witness needs to
  * know whether this is fresh, not the second it landed.
  */
-internal fun ago(isoTimestamp: String?): String {
+internal fun ago(isoTimestamp: String?, now: Instant = Instant.now()): String {
     val at = parseInstant(isoTimestamp) ?: return "recently"
-    val minutes = Duration.between(at, Instant.now()).toMinutes()
+    val minutes = Duration.between(at, now).toMinutes()
     return when {
         minutes < 0 -> "just now"
         minutes < 2 -> "just now"

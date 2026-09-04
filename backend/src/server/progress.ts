@@ -1,5 +1,6 @@
 import { db } from "./db/client";
-import { dayInZone, dayNumber } from "@/lib/time";
+import { sql } from "kysely";
+import { dayInZone, dayNumber, previousDay } from "@/lib/time";
 
 const DAY_MS = 86_400_000;
 
@@ -60,12 +61,18 @@ export async function progressFor(userId: string, witnessTo?: string) {
       const over = new Set(summary.filter((s) => s.minutes_used > s.limit_min + s.earned_min).map((s) => s.app_package));
       within = apps.filter((a) => !over.has(a.package)).length;
     } else {
+      // The day the limits are actually keyed to, in the challenge's own
+      // timezone -- not the last twenty-four hours. Those are different
+      // things every morning: a limit reached at eleven last night would
+      // otherwise still be "today" at ten the next day, and the screen would
+      // show somebody over their limit on a day they had not opened the app.
+      // Postgres does the conversion, with its own timezone database.
       const hits = await db
         .selectFrom("pact_event")
         .select("app_package")
         .where("pact_id", "=", current.id)
         .where("type", "=", "limit_hit")
-        .where("occurred_at", ">=", new Date(now.getTime() - DAY_MS))
+        .where(sql<boolean>`(occurred_at at time zone ${sql.lit(current.timezone)})::date = ${sql.lit(today)}::date`)
         .execute();
       const hit = new Set(hits.map((h) => h.app_package));
       within = apps.filter((a) => !hit.has(a.package)).length;
@@ -159,13 +166,16 @@ async function streakDays(
 
   const firstDay = dayInZone(pact.starts_at, pact.timezone);
   let streak = 0;
-  // Back from yesterday, in the challenge's own timezone, stopping at the
-  // first day that was not kept, was not reported, or is before it began.
-  for (let back = 1; back <= pact.duration_days; back++) {
-    const day = dayInZone(new Date(now.getTime() - back * DAY_MS), pact.timezone);
+  // Back from yesterday by calendar days, stopping at the first that was not
+  // kept, was not reported, or is before the challenge began. Calendar days
+  // rather than 24-hour steps, so the two days a year a zone shifts offset
+  // do not skip a date or visit one twice.
+  let day = previousDay(dayInZone(now, pact.timezone));
+  for (let counted = 0; counted < pact.duration_days; counted++) {
     if (day < firstDay) break;
     if (!seen.has(day) || over.has(day)) break;
     streak += 1;
+    day = previousDay(day);
   }
   return streak;
 }

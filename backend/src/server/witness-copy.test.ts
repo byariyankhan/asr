@@ -7,7 +7,7 @@ import {
 } from "./witness-copy";
 
 const vars: CopyVars = { userName: "Ariyan", appName: "TikTok", extraMinutes: 10 };
-const EVENTS: WitnessEvent[] = ["time_earned", "challenge_abandoned"];
+const EVENTS: WitnessEvent[] = ["time_earned", "challenge_abandoned", "challenge_given_up"];
 const EXPECTED = [
   "mother",
   "father",
@@ -123,5 +123,59 @@ describe("relationshipCopy", () => {
         expect(copy.body.startsWith("Ariyan")).toBe(true);
       }
     }
+  });
+});
+
+/**
+ * Giving up openly is not deleting the app, and must not be reported as it.
+ *
+ * The abandoned copy was written about somebody removing Asr mid-challenge:
+ * every line of it says "removed", "deleted", "the referee". Somebody who
+ * opened the app and pressed Give up did the opposite thing, and got the
+ * same message until this event existed.
+ */
+describe("giving up, in nine voices", () => {
+  const vars = { userName: "Ariyan", appName: "Instagram", extraMinutes: 0 };
+  const said = (relationship: string) => {
+    const copy = relationshipCopy("challenge_given_up", relationship as never, vars);
+    return `${copy.title} ${copy.body}`;
+  };
+
+  it("never says they removed or deleted anything", () => {
+    for (const relationship of RELATIONSHIPS_WITH_COPY) {
+      expect(said(relationship)).not.toMatch(/remov|delet|uninstall/i);
+    }
+  });
+
+  it("says what they actually did, in every voice", () => {
+    for (const relationship of RELATIONSHIPS_WITH_COPY) {
+      expect(said(relationship)).toMatch(/end(ed)? the challenge|gave up|Give up|quit|called it off|surrender/i);
+    }
+  });
+
+  it("keeps each relationship's own greeting", () => {
+    expect(said("mother")).toContain("Hey Mom,");
+    expect(said("father")).toContain("Hey Dad,");
+    expect(said("brother")).toContain("Hey bro,");
+    expect(said("sister")).toContain("Hey sis,");
+    expect(said("husband")).toContain("Hey love,");
+    expect(said("wife")).toContain("Hey love,");
+    // Friend, mentor and colleague open with the name, as they always have.
+    for (const relationship of ["friend", "mentor", "colleague"]) {
+      expect(said(relationship)).not.toMatch(/^Hey /);
+    }
+  });
+
+  it("the roast lands hardest on a brother or sister and softest on a colleague", () => {
+    expect(said("brother")).toMatch(/thumb|on purpose/i);
+    expect(said("sister")).toMatch(/worse|quit/i);
+    // Restrained: a statement of fact and nothing else.
+    expect(said("colleague")).not.toMatch(/🏳️|💀|😅/);
+    expect(said("mentor")).not.toMatch(/🏳️|💀/);
+  });
+
+  it("a relationship with no entry gets the restrained voice, not the abandoned one", () => {
+    const legacy = relationshipCopy("challenge_given_up", "parent" as never, vars);
+    expect(`${legacy.title} ${legacy.body}`).not.toMatch(/remov|delet/i);
   });
 });

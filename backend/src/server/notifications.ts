@@ -31,16 +31,10 @@ const PREF_FOR_KIND: Record<
 };
 
 /**
- * Reasons that mean the person got out from under the pact rather than
- * failing it in the open.
+ * Reasons that mean the person got out from under the pact.
  *
- * `user_gave_up` is deliberately not one of them, and the copy is why. Every
- * line of the abandoned set says some version of "they removed Asr" -- it
- * was written about somebody deleting the app mid-challenge, which is what
- * `app_removed` and `protection_disabled` are. Somebody who opened the app
- * and pressed Give up did the opposite of that, and telling their mother
- * they uninstalled it would be false about the one person who was honest.
- * They fall through to the plain broken-pact copy, which is true.
+ * Removing Asr or switching protection off. Every line of the abandoned copy
+ * says some version of "they removed Asr", because that is what these are.
  */
 const ABANDONED: ReadonlySet<string> = new Set<EventReason>([
   "app_removed",
@@ -51,13 +45,17 @@ const ABANDONED: ReadonlySet<string> = new Set<EventReason>([
  * Which of the two relationship-aware events this is, or null for the ones
  * that keep the older plain copy.
  *
- * `pact_broken` is both: a limit somebody blew past is a different message
- * from a pact somebody switched off, and only the second is what the
- * abandoned copy describes.
+ * `pact_broken` is three things. A limit somebody blew past keeps the plain
+ * copy. A pact somebody switched off or deleted their way out of is
+ * `challenge_abandoned`. And somebody who opened the app and pressed Give up
+ * is `challenge_given_up` -- the same ending, reached by the opposite act,
+ * and telling their mother they uninstalled it would be false about the one
+ * person who was honest about stopping.
  */
 function relationshipEventFor(kind: WitnessKind, reason?: EventReason | null): WitnessEvent | null {
   if (kind === "time_earned") return "time_earned";
   if (kind === "uninstalled") return "challenge_abandoned";
+  if (kind === "pact_broken" && reason === "user_gave_up") return "challenge_given_up";
   if (kind === "pact_broken" && reason && ABANDONED.has(reason)) return "challenge_abandoned";
   return null;
 }

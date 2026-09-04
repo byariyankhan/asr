@@ -80,6 +80,9 @@ describe.skipIf(!DATABASE_URL)("giving up", async () => {
     const said = `${queued[0]!.title} ${queued[0]!.body}`;
     expect(said).not.toMatch(/remov|delet|uninstall/i);
     expect(said).toContain("Ariyan");
+    // And in her own voice, not the plain fallback: this is the mother of
+    // somebody who stopped honestly.
+    expect(said).toContain("Hey Mom,");
   });
 
   it("refuses a second ending", async () => {

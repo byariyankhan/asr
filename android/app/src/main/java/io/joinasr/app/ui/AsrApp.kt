@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -890,6 +891,24 @@ fun AsrApp(
 
                                 val person = openPerson
                                 if (person != null) {
+                                    // Their numbers, again, whenever this
+                                    // comes back to the front. Somebody
+                                    // opens the app to see how the person
+                                    // they are watching is doing, and the
+                                    // answer they were shown yesterday is
+                                    // not that.
+                                    val watching = rememberUpdatedState(person.id)
+                                    val personOwner = LocalLifecycleOwner.current
+                                    DisposableEffect(personOwner) {
+                                        val watch = LifecycleEventObserver { _, event ->
+                                            if (event == Lifecycle.Event.ON_RESUME) {
+                                                witnessViewModel.loadProgress(watching.value)
+                                            }
+                                        }
+                                        personOwner.lifecycle.addObserver(watch)
+                                        onDispose { personOwner.lifecycle.removeObserver(watch) }
+                                    }
+
                                     // Figma 17.
                                     PersonDetailScreen(
                                         person = person,

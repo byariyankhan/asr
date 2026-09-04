@@ -21,9 +21,16 @@ import type { Relationship } from "./db/schema";
  *   thing the pact asked for, so the tone stays playful or warm. A witness
  *   who is alarmed by a legitimate reward will stop reading the alarming
  *   ones.
- * - `challenge_abandoned` is the pact being ended on purpose — Asr removed,
- *   protection switched off, or given up. This is the one that is allowed
- *   to bite.
+ * - `challenge_abandoned` is somebody getting out from under the pact: Asr
+ *   removed, or protection switched off. This is the one that is allowed to
+ *   bite, and every line of it says so — "removed Asr", "deleted the
+ *   referee".
+ * - `challenge_given_up` is the opposite act with the same result. They
+ *   opened the app and pressed Give up. Reporting that as an uninstall
+ *   would be false about the one person who was honest, so it has its own
+ *   nine: the same voices, but roasting the surrender rather than the
+ *   escape. Every one of them says, somewhere, that nothing was deleted --
+ *   because that is the whole difference and the reason the door exists.
  *
  * Every message here is addressed to the witness, about the person being
  * witnessed — because `relationship` is what the *witness* is: "Invited you
@@ -36,7 +43,7 @@ import type { Relationship } from "./db/schema";
  * notifications.ts: those events were not part of this spec, and inventing
  * nine voices for them would be guessing at a tone nobody asked for.
  */
-export type WitnessEvent = "time_earned" | "challenge_abandoned";
+export type WitnessEvent = "time_earned" | "challenge_abandoned" | "challenge_given_up";
 
 export type CopyVars = {
   /** The person being witnessed. */
@@ -81,6 +88,13 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
         "Hey Mom, {userName} removed Asr before finishing the challenge. The pact is now broken. " +
         "You may want to have a little talk with him. 😅",
     },
+    challenge_given_up: {
+      title: "{userName} ended the challenge",
+      body:
+        "Hey Mom, {userName} stopped the challenge today — opened Asr and ended it rather " +
+        "than quietly walking away from it. That is the honest way to stop. A word from " +
+        "you might be what gets the next one finished.",
+    },
   },
   father: {
     time_earned: {
@@ -94,6 +108,13 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
       body:
         "Hey Dad, {userName} removed Asr before completing the challenge. The pact has officially " +
         "been broken. Looks like this one needs a conversation.",
+    },
+    challenge_given_up: {
+      title: "{userName} called it off.",
+      body:
+        "Hey Dad, {userName} ended the challenge today rather than letting it quietly fall " +
+        "apart. Owning it counts for something. Worth a conversation before the next " +
+        "one starts.",
     },
   },
   brother: {
@@ -109,6 +130,13 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
         "Hey bro, {userName} couldn’t change the rules, so he deleted Asr instead. The challenge " +
         "is officially over. You know what to do. 💀",
     },
+    challenge_given_up: {
+      title: "Tapped out. Voluntarily. 🏳️",
+      body:
+        "Hey bro, {userName} opened the app and pressed Give up with their own thumb. " +
+        "Nothing broke and nothing went missing — that was a choice, made on purpose, " +
+        "in writing.",
+    },
   },
   sister: {
     time_earned: {
@@ -122,6 +150,12 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
       body:
         "Hey sis, {userName} removed Asr before finishing the challenge. The pact is broken. This " +
         "information is now yours to use responsibly. Or not.",
+    },
+    challenge_given_up: {
+      title: "{userName} surrendered on purpose 🏳️",
+      body:
+        "Hey sis, {userName} didn’t get caught and didn’t sneak off. They walked in and " +
+        "quit, on purpose. Somehow that is worse. Over to you.",
     },
   },
   husband: {
@@ -137,6 +171,13 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
         "Hey love, {userName} removed Asr before the challenge ended. The pact is broken. A " +
         "gentle reminder from you may be more effective than anything Asr can send. 😶",
     },
+    challenge_given_up: {
+      title: "White flag 🏳️",
+      body:
+        "Hey love, {userName} ended the challenge today. Not sneaked out of — ended, on " +
+        "purpose, with a button. That counts for something. Maybe not much, but " +
+        "something.",
+    },
   },
   wife: {
     time_earned: {
@@ -150,6 +191,12 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
       body:
         "Hey love, {userName} removed Asr before completing the challenge. The pact is broken. " +
         "Asr will leave the rest of this conversation to you. 😶",
+    },
+    challenge_given_up: {
+      title: "The challenge is off 🏳️",
+      body:
+        "Hey love, {userName} ended the challenge today rather than quietly letting it " +
+        "slip. Honest about it, at least. The rest of this one is yours.",
     },
   },
   friend: {
@@ -165,6 +212,12 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
         "{userName} deleted Asr and abandoned the challenge. Can’t lose the challenge if you " +
         "delete the referee, apparently.",
     },
+    challenge_given_up: {
+      title: "Withdrawn from the competition. 🏳️",
+      body:
+        "{userName} ended the challenge themselves. Didn’t break it, didn’t sneak off — " +
+        "just looked accountability in the eye and pressed Give up.",
+    },
   },
   mentor: {
     time_earned: {
@@ -179,6 +232,13 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
         "{userName} removed Asr before completing the challenge, so the pact has been marked as " +
         "broken. Your encouragement may help them reset and try again.",
     },
+    challenge_given_up: {
+      title: "The challenge was ended.",
+      body:
+        "{userName} ended the challenge before completing it, and did so openly rather " +
+        "than letting it lapse. That is worth acknowledging. Your encouragement may " +
+        "help with the next one.",
+    },
   },
   colleague: {
     time_earned: {
@@ -192,6 +252,12 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
       body:
         "{userName} removed Asr before completing the challenge. The pact has been marked as " +
         "broken.",
+    },
+    challenge_given_up: {
+      title: "Challenge ended.",
+      body:
+        "{userName} ended the challenge before it finished. It has been recorded as not " +
+        "completed.",
     },
   },
 };
