@@ -88,9 +88,16 @@ object Relationships {
     fun labelFor(value: String): String =
         all.firstOrNull { it.value == value }?.label ?: legacy[value] ?: "Witness"
 
-    /** One required, three the design lays out room for. */
+    /**
+     * How many witnesses a challenge needs before it can start.
+     *
+     * One, and no ceiling. There was a ceiling of three, taken from the
+     * three slots the frame draws, and it was the frame's layout mistaken
+     * for a rule: nothing about being watched gets worse with more people
+     * watching, and somebody who wants their mother, their brother and two
+     * friends told should not be refused the fourth.
+     */
     const val REQUIRED = 1
-    const val SLOTS = 3
 
     /**
      * Relationships only one person can hold.

@@ -12,17 +12,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +58,25 @@ import io.joinasr.app.witness.Witness
  * There is no name field because the frame has none. A witness is a
  * relationship and an invitation; the name arrives with the person when they
  * accept.
+ *
+ * The frame draws three numbered slots and this screen used to build exactly
+ * that: three rows, each either a picker or an invite already sent, reading
+ * "Invited · waiting for them to accept". Both halves of that were wrong.
+ *
+ * Three was the layout mistaken for a rule — nothing about being watched
+ * gets worse with more people watching, and somebody who wants four people
+ * told was being refused the fourth by a number that came from how many
+ * rectangles fit on a phone.
+ *
+ * And a sent invitation is not something to display back. It is a message in
+ * somebody else's inbox that may never be opened; the person sending it
+ * already knows who they sent it to, cannot do anything about the waiting,
+ * and three rows saying "waiting" read as three witnesses when the honest
+ * number is zero.
+ *
+ * So: one picker, used as many times as they like, and nothing pretending to
+ * be a witness until somebody has actually accepted. That happens on the
+ * circle screen, by name.
  */
 @Composable
 fun AddWitnessesScreen(
@@ -95,9 +113,10 @@ fun AddWitnessesScreen(
         onShared()
     }
 
-    // What each empty slot has selected but not yet shared. Keyed by slot so
-    // choosing a relationship in slot 2 does not disturb slot 3.
-    val chosen = remember { mutableStateMapOf<Int, Relationship>() }
+    // What the picker has selected but not yet shared. Cleared on share, so
+    // the next invitation starts from an empty field rather than from the
+    // last relationship chosen.
+    var chosen by remember { mutableStateOf<Relationship?>(null) }
 
     val enough = witnesses.size >= Relationships.REQUIRED
 
@@ -134,47 +153,40 @@ fun AddWitnessesScreen(
         val options = Relationships.available(witnesses)
 
         Spacer(Modifier.height(18.dp))
-        for (slot in 0 until Relationships.SLOTS) {
-            val invited = witnesses.getOrNull(slot)
-            WitnessSlot(
-                number = slot + 1,
-                invited = invited,
-                options = options,
-                selected = chosen[slot],
-                onSelect = { chosen[slot] = it },
-                busy = inviting,
-                onShare = {
-                    val relationship = chosen[slot]?.value ?: return@WitnessSlot
-                    onInvite(relationship)
-                    chosen.remove(slot)
-                },
-            )
-            Spacer(Modifier.height(12.dp))
-        }
+        InvitePicker(
+            options = options,
+            selected = chosen,
+            onSelect = { chosen = it },
+            busy = inviting,
+            onShare = {
+                val relationship = chosen?.value ?: return@InvitePicker
+                onInvite(relationship)
+                chosen = null
+            },
+        )
 
         errorMessage?.let {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             Text(it, style = AsrType.Legal, color = AsrColors.Error)
         }
 
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "${witnesses.size} of ${Relationships.SLOTS} added",
-                style = AsrType.Label.copy(fontSize = 13.sp),
-                color = if (enough) AsrColors.Accent else AsrColors.TextSecondary,
-                modifier = Modifier.weight(1f),
-            )
-            if (!enough) {
-                Text(
-                    "Add at least ${Relationships.REQUIRED} witness",
-                    style = AsrType.Legal.copy(fontSize = 12.sp),
-                    color = AsrColors.TextTertiary,
-                )
-            }
-        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            // Said once and without a number. That an invitation went out is
+            // worth confirming; how many are outstanding is not, because
+            // waiting is not a state anybody can act on.
+            if (enough) {
+                "Invitation shared. Invite as many people as you like — they " +
+                    "appear in your circle once they accept."
+            } else {
+                "Pick who they are to you, then Share hands the invitation to " +
+                    "whatever you already use to talk to them."
+            },
+            style = AsrType.Legal.copy(fontSize = 12.sp),
+            color = if (enough) AsrColors.Accent else AsrColors.TextTertiary,
+        )
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(18.dp))
         AsrPrimaryButton(text = "Continue", onClick = onContinue, enabled = enough)
         Spacer(Modifier.height(28.dp))
     }
@@ -191,7 +203,7 @@ private fun RuleCard() {
             .padding(17.dp),
     ) {
         Text(
-            "${Relationships.REQUIRED} required · ${Relationships.SLOTS} recommended",
+            "At least ${Relationships.REQUIRED} · no limit",
             style = AsrType.Field.copy(fontSize = 14.sp),
             color = AsrColors.TextPrimary,
         )
@@ -204,10 +216,15 @@ private fun RuleCard() {
     }
 }
 
+/**
+ * One relationship and a Share button, used as often as somebody likes.
+ *
+ * It keeps no memory of what has been shared. Whether an invitation is
+ * outstanding belongs to the person holding the other phone, and the only
+ * thing this screen can honestly offer is the chance to send another.
+ */
 @Composable
-private fun WitnessSlot(
-    number: Int,
-    invited: Witness?,
+private fun InvitePicker(
     options: List<Relationship>,
     selected: Relationship?,
     onSelect: (Relationship) -> Unit,
@@ -219,70 +236,30 @@ private fun WitnessSlot(
         modifier = Modifier
             .fillMaxWidth()
             .background(AsrColors.SurfaceRaised, shape)
-            .border(
-                1.dp,
-                if (invited != null) AsrColors.Accent else AsrColors.FieldBorder,
-                shape,
-            )
+            .border(1.dp, AsrColors.FieldBorder, shape)
             .padding(15.dp),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.Bottom,
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(AsrColors.Background)
-                .border(1.dp, AsrColors.FieldBorder, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                number.toString(),
-                style = AsrType.Label.copy(fontSize = 13.sp),
-                color = AsrColors.TextPrimary,
-            )
-        }
-
-        Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                if (invited != null) invited.label else "Witness $number",
+                "Who is this person to you?",
                 style = AsrType.Field.copy(fontSize = 15.sp),
                 color = AsrColors.TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                when {
-                    invited != null -> "Invited · waiting for them to accept"
-                    number <= Relationships.REQUIRED -> "Required"
-                    else -> "Recommended"
-                },
-                style = AsrType.Label.copy(fontSize = 12.sp),
-                color = when {
-                    invited != null -> AsrColors.Accent
-                    number <= Relationships.REQUIRED -> AsrColors.Accent
-                    else -> AsrColors.TextSecondary
-                },
+            Spacer(Modifier.height(10.dp))
+            AsrSelectField(
+                label = "",
+                selected = selected,
+                placeholder = "Select relationship",
+                options = options,
+                optionLabel = Relationship::label,
+                onSelect = onSelect,
             )
-
-            if (invited == null) {
-                Spacer(Modifier.height(10.dp))
-                AsrSelectField(
-                    label = "",
-                    selected = selected,
-                    placeholder = "Select relationship",
-                    options = options,
-                    optionLabel = Relationship::label,
-                    onSelect = onSelect,
-                )
-            }
         }
-
-        if (invited == null) {
-            Spacer(Modifier.width(12.dp))
-            ShareButton(enabled = selected != null && !busy, busy = busy, onClick = onShare)
-        }
+        Spacer(Modifier.width(12.dp))
+        ShareButton(enabled = selected != null && !busy, busy = busy, onClick = onShare)
     }
 }
 

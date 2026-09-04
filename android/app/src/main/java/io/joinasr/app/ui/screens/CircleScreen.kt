@@ -63,7 +63,6 @@ fun CircleScreen(
     onLoadProgress: (String) -> Unit,
     onOpenPerson: (SupportedPerson) -> Unit,
     onAdd: () -> Unit,
-    addEnabled: Boolean,
     hasChallenge: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -103,7 +102,6 @@ fun CircleScreen(
             CircleTab.Mine -> WitnessesBody(
                 witnesses = witnesses,
                 onAdd = onAdd,
-                addEnabled = addEnabled,
                 hasChallenge = hasChallenge,
             )
 
@@ -404,7 +402,6 @@ private fun CirclePreview() {
             onLoadProgress = {},
             onOpenPerson = {},
             onAdd = {},
-            addEnabled = true,
             hasChallenge = true,
         )
     }

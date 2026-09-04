@@ -35,9 +35,10 @@ import io.joinasr.app.ui.theme.AsrType
 /**
  * Figma 15 — Accountability / My Witnesses (node 91:2).
  *
- * Witnesses invited on Figma 08 appear here, with the status the server
- * holds: INVITED until the other person opens the link and accepts, ACTIVE
- * afterwards.
+ * The people who accepted appear here, by name. Nothing about invitations
+ * that have not been answered does — not as rows and not as a count — so
+ * every number on this screen is a number of people who would actually be
+ * told.
  *
  * It has no header and no scroller of its own, because Figma 16 puts it
  * under a tab bar. Two nested scrolling columns is a thing Compose will
@@ -51,7 +52,6 @@ import io.joinasr.app.ui.theme.AsrType
 fun ColumnScope.WitnessesBody(
     witnesses: List<Witness>,
     onAdd: () -> Unit,
-    addEnabled: Boolean,
     /** False when no challenge is running: there is nothing to witness yet. */
     hasChallenge: Boolean = true,
 ) {
@@ -63,10 +63,15 @@ fun ColumnScope.WitnessesBody(
     // three rows reading "Partner · INVITED" look like three witnesses,
     // which is the one number on this screen that has to be true — it is
     // what decides whether anybody finds out if the pact breaks.
+    //
+    // Nor is the count of them shown. "You have sent 3 invites" was the same
+    // claim with the rows taken away: still a number about people who are
+    // not watching, still nothing to do about it, and still read as progress
+    // toward being watched when it is none.
     val joined = witnesses.filter { it.accepted }
 
     Spacer(Modifier.height(20.dp))
-    SummaryCard(count = joined.size, pending = witnesses.size - joined.size)
+    SummaryCard(count = joined.size)
 
     Spacer(Modifier.height(26.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -85,7 +90,7 @@ fun ColumnScope.WitnessesBody(
 
     Spacer(Modifier.height(14.dp))
     if (joined.isEmpty()) {
-        EmptyState(pendingInvites = witnesses.size)
+        EmptyState()
     } else {
         for (witness in joined) {
             WitnessCard(witness)
@@ -94,7 +99,7 @@ fun ColumnScope.WitnessesBody(
     }
 
     Spacer(Modifier.height(14.dp))
-    AddWitnessButton(onClick = onAdd, enabled = addEnabled && hasChallenge)
+    AddWitnessButton(onClick = onAdd, enabled = hasChallenge)
     if (!hasChallenge) {
         Spacer(Modifier.height(10.dp))
         Text(
@@ -110,7 +115,7 @@ fun ColumnScope.WitnessesBody(
 }
 
 @Composable
-private fun SummaryCard(count: Int, pending: Int) {
+private fun SummaryCard(count: Int) {
     val shape = RoundedCornerShape(20.dp)
     Column(
         modifier = Modifier
@@ -128,21 +133,14 @@ private fun SummaryCard(count: Int, pending: Int) {
                 color = AsrColors.TextTertiary,
                 modifier = Modifier.weight(1f),
             )
-            StatusPill(
-                text = when {
-                    count > 0 -> "ACTIVE"
-                    pending > 0 -> "WAITING"
-                    else -> "NONE YET"
-                },
-                highlighted = count > 0,
-            )
+            StatusPill(text = if (count > 0) "ACTIVE" else "NONE YET", highlighted = count > 0)
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            when {
-                count > 0 -> "They'll be notified if you break the pact."
-                pending > 0 -> "Nobody has accepted yet, so nobody would be told."
-                else -> "Nobody is watching this challenge yet."
+            if (count > 0) {
+                "They'll be notified if you break the pact."
+            } else {
+                "Nobody is watching this challenge yet."
             },
             style = AsrType.Field.copy(fontSize = 14.sp),
             color = AsrColors.TextSecondary,
@@ -216,12 +214,12 @@ private fun WitnessCard(witness: Witness) {
             )
         }
         Spacer(Modifier.width(10.dp))
-        StatusPill(if (witness.accepted) "ACTIVE" else "INVITED", witness.accepted)
+        StatusPill("ACTIVE", highlighted = true)
     }
 }
 
 @Composable
-private fun EmptyState(pendingInvites: Int) {
+private fun EmptyState() {
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier = Modifier
@@ -230,24 +228,13 @@ private fun EmptyState(pendingInvites: Int) {
             .border(1.dp, AsrColors.FieldBorder, shape)
             .padding(18.dp),
     ) {
-        Text(
-            if (pendingInvites > 0) "Nobody has accepted yet" else "No witnesses yet",
-            style = AsrType.CardTitle,
-            color = AsrColors.TextPrimary,
-        )
+        Text("No witnesses yet", style = AsrType.CardTitle, color = AsrColors.TextPrimary)
         Spacer(Modifier.height(8.dp))
         Text(
-            if (pendingInvites > 0) {
-                // Said once, as a number, because the alternative is a list
-                // of rows nobody can do anything with. Sending again is the
-                // only action there is, and the button below is it.
-                "You have sent $pendingInvites ${if (pendingInvites == 1) "invite" else "invites"}. " +
-                    "They appear here by name once somebody opens the link and accepts."
-            } else {
-                "A witness is somebody who is told when you break your pact. " +
-                    "Add one and Asr issues an invite link, then hands it to " +
-                    "whatever you already use to talk to them."
-            },
+            "A witness is somebody who is told when you break your pact. Add one " +
+                "and Asr issues an invite link, then hands it to whatever you " +
+                "already use to talk to them. They appear here by name once they " +
+                "accept.",
             style = AsrType.Legal,
             color = AsrColors.TextSecondary,
         )
@@ -326,8 +313,7 @@ private fun WitnessesPreview() {
                     Witness("2", "brother", 0),
                 ),
                 onAdd = {},
-                addEnabled = true,
-            )
+                )
         }
     }
 }

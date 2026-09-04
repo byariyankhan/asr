@@ -75,7 +75,6 @@ import io.joinasr.app.ui.screens.WitnessInviteScreen
 import io.joinasr.app.DeepLink
 import io.joinasr.app.data.InboxItem
 import io.joinasr.app.data.SupportedPerson
-import io.joinasr.app.witness.Relationships
 import io.joinasr.app.witness.WitnessViewModel
 import io.joinasr.app.ui.theme.AsrColors
 
@@ -785,12 +784,6 @@ fun AsrApp(
                                             witnessViewModel.loadProgress(it.id)
                                         },
                                         onAdd = { addingWitness = true },
-                                        // On who accepted, not on who was
-                                        // invited: a pending invite must not
-                                        // stop somebody inviting anybody
-                                        // else while they wait.
-                                        addEnabled = witnesses.count { it.accepted } <
-                                            Relationships.SLOTS,
                                         hasChallenge = activePact != null,
                                     )
                                 }
