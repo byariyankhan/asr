@@ -1,5 +1,6 @@
 import { sql } from "kysely";
 import { db, isUniqueViolation } from "./db/client";
+import { queueWitnessNotifications } from "./notifications";
 import { requireOwnedPact } from "./pacts";
 import { conflict, notFound } from "@/lib/http";
 import type { ActivityComplete, ActivityCreate, Snapshot } from "@/lib/schemas";
@@ -11,6 +12,7 @@ export const activityColumns = [
   "pact_id",
   "user_id",
   "type",
+  "app_package",
   "target",
   "reward_min",
   "started_at",
@@ -25,6 +27,21 @@ type Rule = { reward_min: number; daily_cap_min: number; target?: number; target
 
 function ruleFor(snapshot: Snapshot, type: ActivityCreate["type"]): Rule | undefined {
   return snapshot.activities[type];
+}
+
+/**
+ * The app's name as somebody would say it, from the package the phone sent.
+ *
+ * The pact's snapshot is the right source: it is the list they chose,
+ * frozen when the pact started, so the label cannot drift or disappear
+ * because an app was uninstalled afterwards. "their limit" when there is no
+ * package or no match, "daily" -- which is vaguer than naming the app and
+ * reads correctly in every template that uses it: "the daily limit",
+ * "ran out of daily time", "reached his daily limit".
+ */
+export function appLabel(snapshot: Snapshot, packageName: string | null): string {
+  if (!packageName) return "daily";
+  return snapshot.apps.find((a) => a.package === packageName)?.label ?? "daily";
 }
 
 function targetOf(rule: Rule): number {
@@ -73,6 +90,7 @@ export async function createActivity(userId: string, pactId: string, input: Acti
         pact_id: pactId,
         user_id: userId,
         type: input.type,
+        app_package: input.app_package ?? null,
         target: targetOf(rule),
         reward_min: rule.reward_min,
         started_at: startedAt,
@@ -148,6 +166,18 @@ export async function completeActivity(userId: string, activityId: string, input
         })
         .returning(["id", "pact_id", "type", "minutes", "occurred_at", "received_at"])
         .executeTakeFirstOrThrow();
+
+      // The earn is finished, so the minutes are real and are about to be
+      // spent. Witnesses hear about it here rather than when the activity
+      // started: a walk somebody abandons halfway is not news.
+      await queueWitnessNotifications(trx, {
+        userId,
+        eventId: event.id,
+        kind: "time_earned",
+        pactId: activity.pact_id,
+        appName: appLabel(pact.snapshot, updated.app_package),
+        minutes: updated.reward_min,
+      });
       return { activity: updated, event, created: true };
     });
   } catch (error) {

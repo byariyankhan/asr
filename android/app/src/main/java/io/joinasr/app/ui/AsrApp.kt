@@ -337,6 +337,20 @@ fun AsrApp(
         }
     }
 
+    // Their own link, opened on their own phone. It happens by accident --
+    // testing it, or tapping it in the thread they just shared it to -- and
+    // nobody witnesses themselves, so there is nothing to decide. The
+    // witness list is where they were going anyway.
+    LaunchedEffect(invite?.own) {
+        if (invite?.own != true) return@LaunchedEffect
+        inviteCode = null
+        inviteDeferred = false
+        PendingInvite.clear(context)
+        witnessViewModel.clearInvite()
+        tab = AsrTab.Witnesses
+        circleTab = CircleTab.Mine
+    }
+
     // Answered, so the screen has done its job. Accepting leaves the person
     // on their own app rather than on a confirmation: the list they have
     // just joined is the confirmation.

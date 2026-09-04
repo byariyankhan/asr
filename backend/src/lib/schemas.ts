@@ -88,6 +88,7 @@ export const EVENT_REASONS = [
   "permission_revoked",
   "user_gave_up",
 ] as const;
+export type EventReason = (typeof EVENT_REASONS)[number];
 
 export const eventCreate = z
   .object({
@@ -201,6 +202,10 @@ export const activityCreate = z
     type: z.enum(ACTIVITY_TYPES),
     started_at: isoDateTime,
     deadline_at: isoDateTime,
+    // Which app's limit sent them here. Optional: an earn started from
+    // anywhere else is still an earn, and the witness copy falls back to
+    // "their limit" rather than naming the wrong app.
+    app_package: packageName.optional(),
   })
   .refine((a) => new Date(a.deadline_at) > new Date(a.started_at), {
     message: "deadline must be after start",

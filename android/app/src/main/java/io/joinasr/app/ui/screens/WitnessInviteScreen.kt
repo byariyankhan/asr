@@ -80,7 +80,6 @@ fun WitnessInviteScreen(
             when {
                 errorMessage != null -> "This invite is closed."
                 invite == null -> "Opening the invite…"
-                invite.own -> "Your invitation"
                 else -> "$name invited you"
             },
             style = AsrType.display(34),
@@ -91,7 +90,6 @@ fun WitnessInviteScreen(
             when {
                 errorMessage != null -> errorMessage
                 invite == null -> "One moment."
-                invite.own -> "This is the link you sent. Whoever opens it becomes your witness."
                 else -> "Become a witness for their challenge."
             },
             style = AsrType.Field,
@@ -122,37 +120,27 @@ fun WitnessInviteScreen(
             Note("◎", "You'll get updates when they keep or break the pact.")
 
             Spacer(Modifier.height(24.dp))
-            if (invite.own) {
-                // Their own link, opened on their own phone. It happens by
-                // accident -- testing it, or tapping it in the thread they
-                // just shared it to -- and the only useful thing to say is
-                // that this one is for somebody else.
-                Note("↗", "This is your own invitation. Send it to the person you want as a witness.")
-                Spacer(Modifier.height(18.dp))
-                AsrPrimaryButton(text = "Back to Asr", onClick = onBack, enabled = true)
-            } else {
-                AsrPrimaryButton(
-                    text = when {
-                        busy -> "Accepting…"
-                        signedIn -> "Accept invitation"
-                        else -> "Sign in to accept"
-                    },
-                    onClick = onAccept,
-                    enabled = !busy,
-                )
-                Spacer(Modifier.height(18.dp))
-                Text(
-                    "Decline invitation",
-                    style = AsrType.Label.copy(fontSize = 13.sp),
-                    color = AsrColors.TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable(enabled = !busy && signedIn, role = Role.Button, onClick = onDecline)
-                        .padding(vertical = 10.dp),
-                )
-            }
+            AsrPrimaryButton(
+                text = when {
+                    busy -> "Accepting…"
+                    signedIn -> "Accept invitation"
+                    else -> "Sign in to accept"
+                },
+                onClick = onAccept,
+                enabled = !busy,
+            )
+            Spacer(Modifier.height(18.dp))
+            Text(
+                "Decline invitation",
+                style = AsrType.Label.copy(fontSize = 13.sp),
+                color = AsrColors.TextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = !busy && signedIn, role = Role.Button, onClick = onDecline)
+                    .padding(vertical = 10.dp),
+            )
         }
         Spacer(Modifier.height(28.dp))
     }

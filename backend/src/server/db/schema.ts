@@ -137,6 +137,8 @@ export interface ActivityTable {
   pact_id: string;
   user_id: string;
   type: "walk_steps" | "focus_session" | "waiting_period";
+  /** The app whose limit this earn was for, when the phone said. */
+  app_package: string | null;
   target: number;
   reward_min: number;
   started_at: Timestamp;

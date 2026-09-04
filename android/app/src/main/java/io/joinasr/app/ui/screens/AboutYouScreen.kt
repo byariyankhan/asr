@@ -96,10 +96,11 @@ fun AboutYouScreen(
         val uri = pending ?: return@LaunchedEffect
         photoError = null
         when (val result = PhotoPrep.prepare(context, uri)) {
-            is PhotoPrep.Result.Ok -> {
-                preview = result.jpeg
-                onPhotoPicked(result.jpeg)
-            }
+            // Held, not sent. Like Personal details and like every other
+            // field on this screen, the photo waits for the button: a photo
+            // that uploads itself the moment it is picked leaves no way to
+            // change your mind before committing to anything.
+            is PhotoPrep.Result.Ok -> preview = result.jpeg
             is PhotoPrep.Result.Failed -> photoError = result.message
         }
         pending = null
@@ -255,6 +256,10 @@ fun AboutYouScreen(
                 val iso = (dobResult as? DateOfBirth.Result.Valid)?.iso ?: return@AsrPrimaryButton
                 val chosenCountry = country ?: return@AsrPrimaryButton
                 val chosenGender = gender ?: return@AsrPrimaryButton
+                // The photo first: it is the change that can fail on its
+                // own, and a refusal should arrive while the fields still
+                // hold what was typed.
+                preview?.let(onPhotoPicked)
                 onSubmit(name.trim(), iso, chosenCountry.value, chosenGender.value)
             },
             enabled = ready && !submitting,

@@ -70,6 +70,9 @@ export async function recordDeviceEvent(userId: string, pactId: string, input: E
           eventId: event.id,
           kind: input.type === "broken" ? "pact_broken" : "pact_completed",
           pactId,
+          // A limit blown past and a pact switched off are both "broken",
+          // and they are not the same message to somebody's mother.
+          reason: input.reason ?? null,
         });
       }
       return { event, created: true };

@@ -18,6 +18,15 @@ data class ActivityCreate(
     val type: String,
     @SerialName("started_at") val startedAt: String,
     @SerialName("deadline_at") val deadlineAt: String,
+    /**
+     * The app whose limit sent them here.
+     *
+     * The server needs it to name the app in what a witness is told --
+     * "reached the TikTok limit" rather than "reached a limit" -- and it
+     * turns the package into a label using the pact's own snapshot, so the
+     * name cannot drift or vanish because the app was uninstalled.
+     */
+    @SerialName("app_package") val appPackage: String? = null,
 )
 
 /**

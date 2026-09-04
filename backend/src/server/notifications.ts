@@ -1,40 +1,106 @@
 import type { Kysely, Transaction } from "kysely";
 import type { Database } from "./db/schema";
+import { relationshipCopy, type WitnessEvent } from "./witness-copy";
+import type { EventReason } from "@/lib/schemas";
 import { newId } from "@/lib/uuid";
 
 type Db = Transaction<Database> | Kysely<Database>;
 
-export type WitnessKind = "pact_started" | "pact_completed" | "pact_broken" | "protection_lost" | "uninstalled";
+export type WitnessKind =
+  | "pact_started"
+  | "pact_completed"
+  | "pact_broken"
+  | "protection_lost"
+  | "uninstalled"
+  | "time_earned";
 export type NotificationKind = WitnessKind | "witness_accepted" | "witness_removed" | "reaction" | "activity_failed";
 
-const PREF_FOR_KIND: Record<WitnessKind, "notify_start" | "notify_success" | "notify_failure"> = {
+const PREF_FOR_KIND: Record<
+  WitnessKind,
+  "notify_start" | "notify_success" | "notify_failure" | "views_progress"
+> = {
   pact_started: "notify_start",
   pact_completed: "notify_success",
   pact_broken: "notify_failure",
   protection_lost: "notify_failure",
   uninstalled: "notify_failure",
+  // Earning time is not a failure and not a milestone -- it is the pact
+  // running as designed. It goes to the witnesses who asked to see progress,
+  // and to nobody who only wanted to hear about the ending.
+  time_earned: "views_progress",
 };
+
+/** Reasons that mean the pact was ended on purpose rather than simply lost. */
+const ABANDONED: ReadonlySet<string> = new Set<EventReason>([
+  "app_removed",
+  "protection_disabled",
+  "user_gave_up",
+]);
+
+/**
+ * Which of the two relationship-aware events this is, or null for the ones
+ * that keep the older plain copy.
+ *
+ * `pact_broken` is both: a limit somebody blew past is a different message
+ * from a pact somebody switched off, and only the second is what the
+ * abandoned copy describes.
+ */
+function relationshipEventFor(kind: WitnessKind, reason?: EventReason | null): WitnessEvent | null {
+  if (kind === "time_earned") return "time_earned";
+  if (kind === "uninstalled") return "challenge_abandoned";
+  if (kind === "pact_broken" && reason && ABANDONED.has(reason)) return "challenge_abandoned";
+  return null;
+}
 
 // One queued push per accepted witness who asked for this kind. Delivery
 // (FCM / Resend) is the watchdog's job; this only writes the ledger rows,
 // and notification_dedupe_idx makes a retry harmless.
 export async function queueWitnessNotifications(
   trx: Db,
-  args: { userId: string; eventId: string; kind: WitnessKind; pactId: string },
+  args: {
+    userId: string;
+    eventId: string;
+    kind: WitnessKind;
+    pactId: string;
+    /** Why the pact closed, when it closed. Decides whether "broken" means
+     *  a limit blown past or a pact switched off. */
+    reason?: EventReason | null;
+    /** The app the limit belonged to, by label. `time_earned` only. */
+    appName?: string;
+    /** Minutes the activity awarded. `time_earned` only. */
+    minutes?: number;
+  },
 ): Promise<number> {
   const witnesses = await trx
     .selectFrom("witness")
     .innerJoin("user as u", "u.id", "witness.user_id")
-    .select(["witness.witness_user_id", "witness.roast_mode", "u.name as user_name"])
+    .select([
+      "witness.witness_user_id",
+      "witness.roast_mode",
+      "witness.relationship",
+      "u.name as user_name",
+    ])
     .where("witness.user_id", "=", args.userId)
     .where("witness.status", "=", "accepted")
     .where(`witness.${PREF_FOR_KIND[args.kind]}`, "=", true)
     .execute();
 
+  const event = relationshipEventFor(args.kind, args.reason);
+
   let queued = 0;
   for (const w of witnesses) {
     if (!w.witness_user_id) continue;
-    const copy = witnessCopy(args.kind, w.user_name, w.roast_mode);
+    // The two events this product has words for read in the voice of the
+    // relationship. Everything else keeps the plainer copy: nobody has
+    // written nine versions of "they started a pact", and inventing them
+    // would be guessing at a tone.
+    const copy = event
+      ? relationshipCopy(event, w.relationship, {
+          userName: w.user_name,
+          appName: args.appName ?? "daily",
+          extraMinutes: args.minutes ?? 0,
+        })
+      : witnessCopy(args.kind, w.user_name, w.roast_mode);
     const inserted = await queueNotification(trx, {
       recipientId: w.witness_user_id,
       aboutUserId: args.userId,
@@ -78,8 +144,18 @@ export async function queueNotification(
   return result.numInsertedOrUpdatedRows === 1n;
 }
 
+/**
+ * The plain copy, for the events nobody has written relationship voices for.
+ *
+ * `uninstalled` and `time_earned` never reach here in practice --
+ * relationshipEventFor claims both -- but they stay answered, because a
+ * function that can return undefined for a case somebody adds later is a
+ * notification that silently does not send.
+ */
 export function witnessCopy(kind: WitnessKind, name: string, roast: boolean): { title: string; body: string } {
   switch (kind) {
+    case "time_earned":
+      return { title: `${name} earned more time`, body: `${name} earned extra minutes inside the rules.` };
     case "pact_started":
       return { title: `${name} made a pact`, body: `${name} started a new pact and named you as a witness.` };
     case "pact_completed":

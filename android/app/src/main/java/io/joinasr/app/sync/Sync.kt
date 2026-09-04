@@ -276,6 +276,7 @@ class Sync(context: Context) {
                 type = activity.type,
                 startedAt = iso(activity.startedAtMillis),
                 deadlineAt = iso(activity.deadlineAtMillis),
+                appPackage = activity.packageName,
             ),
         )
         return result is ApiResult.Ok
