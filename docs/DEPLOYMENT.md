@@ -35,7 +35,31 @@ Add four repository secrets (Settings → Secrets and variables → Actions):
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | the whole Admin SDK JSON, pasted as-is |
 | `CERTBOT_EMAIL` | optional; set it and TLS is issued unattended |
 | `RESEND_API_KEY` | optional; set it and the bootstrap writes it into `.env` |
-| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | optional; Cloudflare R2 for profile photos. Without them `POST /v1/me/avatar` answers 503 |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | optional; Cloudflare R2 for profile photos. Without them `POST /v1/me/avatar` answers 503. **See the shapes below** — three of these four are hex strings of different lengths and the page they are copied from also shows an API token, which is none of them |
+
+### What the four R2 values look like
+
+Cloudflare's "Manage API token" page shows four things at once and only two
+of them belong here. The photo upload failed for days on an API token pasted
+into `R2_ACCOUNT_ID`, so:
+
+| Variable | Shape | Where it is |
+|---|---|---|
+| `R2_ACCOUNT_ID` | 32 hex characters, nothing else | R2 → Overview, right-hand column; also the first label of the S3 endpoint and the id in the dashboard URL |
+| `R2_ACCESS_KEY_ID` | 32 hex characters | "Access Key ID" on the token page |
+| `R2_SECRET_ACCESS_KEY` | 64 hex characters | "Secret Access Key" on the token page |
+| `R2_BUCKET` | the bucket's name | R2 → Overview |
+
+The **token value** on that page — the long string beginning `cfat_` — is
+used by Cloudflare's own API and by nothing here. It is not the account id,
+and it is a credential: if it ends up in the wrong variable, roll it rather
+than moving it.
+
+`GET /v1/health/storage` writes and deletes an object and says which of these
+is wrong before anybody has to read a log:
+`{"configured":true,"writable":false,"error":"account_id_is_not_a_hex_id"}`.
+A pasted S3 endpoint URL is accepted and the id parsed out of it, because
+that is the one thing the dashboard makes easy to copy.
 
 Then run **Actions → Bootstrap the VPS → Run workflow**. It ships the source
 to `/opt/asr/src`, hands the Firebase key over on stdin (never on a command
