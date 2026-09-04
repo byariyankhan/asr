@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.joinasr.app.daysLabel
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -151,7 +152,7 @@ private fun StatusCard(days: Int, protectionReady: Boolean) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Day 1 · ${days - 1} days left",
+                "Day 1 · ${daysLabel(days - 1)} left",
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,
             )

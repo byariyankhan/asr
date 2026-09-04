@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.joinasr.app.daysLabel
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.challenge.DayOutcome
 import io.joinasr.app.challenge.WeeklyProgress
@@ -404,7 +405,7 @@ private fun ChallengeRow(pact: Pact, progress: ChallengeProgress) {
         Spacer(Modifier.height(6.dp))
         Text(
             if (progress.isComplete) {
-                "Finished · ${progress.totalDays} days"
+                "Finished · ${daysLabel(progress.totalDays)}"
             } else {
                 "Day ${progress.dayNumber} of ${progress.totalDays}"
             },

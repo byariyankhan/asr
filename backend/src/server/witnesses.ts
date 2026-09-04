@@ -465,13 +465,24 @@ export async function requireWitnessView(callerId: string, id: string) {
   return row;
 }
 
-export async function canViewUser(callerId: string, ownerId: string): Promise<boolean> {
+/**
+ * Whether the caller may read one particular challenge of somebody's.
+ *
+ * Per challenge, not per person. It used to ask only whether the caller was
+ * an accepted witness of the owner at all, so anybody who had ever watched
+ * one challenge could read every other one the owner had by id -- including
+ * the ones from before they were invited and the ones after they stopped
+ * being a witness. Somebody agreed to watch a challenge. That is the whole
+ * of what they agreed to.
+ */
+export async function canViewPact(callerId: string, ownerId: string, pactId: string): Promise<boolean> {
   if (callerId === ownerId) return true;
   const row = await db
     .selectFrom("witness")
     .select("id")
     .where("user_id", "=", ownerId)
     .where("witness_user_id", "=", callerId)
+    .where("pact_id", "=", pactId)
     .where("status", "=", "accepted")
     .where("views_progress", "=", true)
     .executeTakeFirst();

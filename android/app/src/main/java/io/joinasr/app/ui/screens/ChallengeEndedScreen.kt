@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.joinasr.app.daysLabel
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.enforcement.Breach
 import io.joinasr.app.enforcement.PactApp
@@ -104,7 +105,7 @@ fun ChallengeEndedScreen(
                     "You ended your ${outcome.durationDays}-day challenge on Day $day."
                 }
             } else {
-                "You kept every limit for ${outcome.durationDays} days."
+                "You kept every limit for ${daysLabel(outcome.durationDays)}."
             },
             style = AsrType.Field,
             color = AsrColors.TextSecondary,

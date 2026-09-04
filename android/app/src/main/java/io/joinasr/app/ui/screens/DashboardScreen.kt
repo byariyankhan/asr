@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.joinasr.app.daysLabel
 import io.joinasr.app.apps.InstalledApps
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.earn.EarnRules
@@ -435,9 +436,9 @@ private fun ChallengeCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when {
-                    progress.isComplete -> "${progress.totalDays} days done"
+                    progress.isComplete -> "${daysLabel(progress.totalDays)} done"
                     progress.daysLeft == 1 -> "1 day left"
-                    else -> "${progress.daysLeft} days left"
+                    else -> "${daysLabel(progress.daysLeft)} left"
                 },
                 style = AsrType.Label,
                 color = AsrColors.TextSecondary,

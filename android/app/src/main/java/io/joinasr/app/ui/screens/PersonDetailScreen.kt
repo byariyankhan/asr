@@ -28,6 +28,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.joinasr.app.daysLabelUpper
+import io.joinasr.app.daysLabel
 import io.joinasr.app.data.ProgressApp
 import io.joinasr.app.data.RemotePactEvent
 import io.joinasr.app.data.SupportedPerson
@@ -189,7 +191,7 @@ private fun StreakHero(progress: WitnessProgress?, active: Boolean) {
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                if (progress == null) "—" else "${progress.streakDays} days",
+                if (progress == null) "—" else daysLabel(progress.streakDays),
                 style = AsrType.display(30),
                 color = AsrColors.TextPrimary,
             )
@@ -199,9 +201,9 @@ private fun StreakHero(progress: WitnessProgress?, active: Boolean) {
                     progress == null -> "READING THEIR PROGRESS"
                     current != null -> {
                         val left = (current.of - current.day).coerceAtLeast(0)
-                        "CURRENT STREAK · $left DAYS LEFT"
+                        "CURRENT STREAK · ${daysLabelUpper(left)} LEFT"
                     }
-                    else -> "LONGEST STREAK ${progress.longestStreakDays} DAYS"
+                    else -> "LONGEST STREAK ${daysLabelUpper(progress.longestStreakDays)}"
                 },
                 style = AsrType.Eyebrow.copy(fontSize = 10.sp),
                 color = AsrColors.TextTertiary,
@@ -400,7 +402,7 @@ internal fun ago(isoTimestamp: String?): String {
         minutes < 60 -> "$minutes min ago"
         minutes < 60 * 24 -> "${minutes / 60} hr ago"
         minutes < 60 * 48 -> "yesterday"
-        else -> "${minutes / (60 * 24)} days ago"
+        else -> "${daysLabel((minutes / (60 * 24)).toInt())} ago"
     }
 }
 

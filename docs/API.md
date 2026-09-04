@@ -285,6 +285,16 @@ person declining must not close it for the rest, and "declined" is not a
 state the inviter is shown anywhere. Somebody who changes their mind can open
 the same link again.
 
+A witness reading this sees **only the challenge they were invited to**, and
+only while it runs: `recent_events` carries that pact's events and no other,
+and `completed`, `broken` and `longest_streak_days` come back as `0`. Those
+are the owner's history, and being asked to watch one challenge is not being
+handed it. `GET /pacts/{id}` is scoped the same way — an accepted witness of
+one challenge cannot read another by id.
+
+`streak_days` is days in a row, ending yesterday, on which every limit held.
+Today never counts, and a day the phone never reported breaks it.
+
 ### `GET /witnesses`
 
 Two lists: people witnessing me (pending and accepted), people I witness

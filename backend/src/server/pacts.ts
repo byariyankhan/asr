@@ -2,7 +2,7 @@ import { sql } from "kysely";
 import { db, isUniqueViolation } from "./db/client";
 import { requireOwnedDevice } from "./devices";
 import { queueWitnessNotifications } from "./notifications";
-import { canViewUser } from "./witnesses";
+import { canViewPact } from "./witnesses";
 import { conflict, notFound } from "@/lib/http";
 import type { PactCreate } from "@/lib/schemas";
 import { addDays } from "@/lib/time";
@@ -100,7 +100,7 @@ export async function requireOwnedPact(userId: string, pactId: string) {
 export async function getPactWithEvents(callerId: string, pactId: string) {
   if (!isUuidLike(pactId)) throw notFound("Pact");
   const pact = await db.selectFrom("pact").select(pactColumns).where("id", "=", pactId).executeTakeFirst();
-  if (!pact || !(await canViewUser(callerId, pact.user_id))) throw notFound("Pact");
+  if (!pact || !(await canViewPact(callerId, pact.user_id, pact.id))) throw notFound("Pact");
   const events = await db
     .selectFrom("pact_event")
     .select(["id", "type", "reason", "app_package", "minutes", "occurred_at", "received_at", "source"])

@@ -3,10 +3,19 @@ import { dayInZone, dayNumber } from "@/lib/time";
 
 const DAY_MS = 86_400_000;
 
-// Everything the Progress tab and a witness's "View progress" show, derived
-// from the ledger. No raw usage is involved: "within limits" comes from the
-// daily summary the phone chose to send, or from limit_hit events.
-export async function progressFor(userId: string) {
+/**
+ * Everything the Progress tab and a witness's "View progress" show, derived
+ * from the ledger. No raw usage is involved: "within limits" comes from the
+ * daily summary the phone chose to send, or from limit_hit events.
+ *
+ * `witnessTo` narrows it to one challenge, and is how a witness reads it.
+ * Somebody agreed to watch a challenge; they did not agree to be handed the
+ * person's history. Without it this returned the last three challenges'
+ * events, a lifetime count of how many were completed and broken, and a
+ * longest streak measured across all of them -- to somebody who joined last
+ * Tuesday and may have been invited by a stranger.
+ */
+export async function progressFor(userId: string, witnessTo?: string) {
   const user = await db.selectFrom("user").select(["id", "name"]).where("id", "=", userId).executeTakeFirstOrThrow();
 
   const pacts = await db
@@ -17,9 +26,13 @@ export async function progressFor(userId: string) {
     .execute();
 
   const now = new Date();
-  const current = pacts.find((p) => p.status === "active") ?? null;
-  const completed = pacts.filter((p) => p.status === "completed").length;
-  const broken = pacts.filter((p) => p.status === "broken").length;
+  // A witness reads exactly the challenge they were invited to, and only
+  // while it runs. The owner reads their own current one.
+  const current = witnessTo
+    ? (pacts.find((p) => p.id === witnessTo && p.status === "active") ?? null)
+    : (pacts.find((p) => p.status === "active") ?? null);
+  const completed = witnessTo ? 0 : pacts.filter((p) => p.status === "completed").length;
+  const broken = witnessTo ? 0 : pacts.filter((p) => p.status === "broken").length;
 
   const survivedDays = (p: (typeof pacts)[number]) => {
     if (p.status === "completed") return p.duration_days;
@@ -28,7 +41,7 @@ export async function progressFor(userId: string) {
     }
     return dayNumber(p.starts_at, p.duration_days, now) - 1;
   };
-  const longest = pacts.reduce((m, p) => Math.max(m, survivedDays(p)), 0);
+  const longest = witnessTo ? 0 : pacts.reduce((m, p) => Math.max(m, survivedDays(p)), 0);
 
   let currentView = null;
   if (current) {
@@ -82,7 +95,10 @@ export async function progressFor(userId: string) {
     };
   }
 
-  const recentPactIds = pacts.slice(0, 3).map((p) => p.id);
+  // The owner sees their last three challenges. A witness sees the one they
+  // are watching and nothing else -- not the one before it, and nothing at
+  // all once it has ended.
+  const recentPactIds = witnessTo ? (current ? [current.id] : []) : pacts.slice(0, 3).map((p) => p.id);
   const recent_events =
     recentPactIds.length === 0
       ? []
@@ -97,10 +113,59 @@ export async function progressFor(userId: string) {
   return {
     user,
     current: currentView,
-    streak_days: current ? dayNumber(current.starts_at, current.duration_days, now) : 0,
+    streak_days: current ? await streakDays(current, now) : 0,
     longest_streak_days: longest,
     completed,
     broken,
     recent_events,
   };
+}
+
+/**
+ * Days in a row, ending yesterday, on which every limit held.
+ *
+ * It used to be the day number: start a fifty-day challenge and the screen
+ * read "1 days · CURRENT STREAK" before the first day was over and before
+ * the phone had reported anything at all. That is not a streak, it is a
+ * calendar, and it congratulated somebody for having started.
+ *
+ * Today is never counted. A day is over or it is not, and a streak claimed
+ * at nine in the morning is a claim about the afternoon.
+ *
+ * A day with no summary breaks it. The phone sends one per day, so a missing
+ * one means the day is unknown -- and an unknown day counted as a good one
+ * is the app telling a witness something it does not know. That reads as
+ * harsh on a phone that was off; it is the direction to be wrong in, because
+ * the alternative is a number nobody should trust.
+ */
+async function streakDays(
+  pact: { id: string; timezone: string; starts_at: Date; duration_days: number },
+  now: Date,
+): Promise<number> {
+  const rows = await db
+    .selectFrom("daily_summary")
+    .select(["day", "minutes_used", "limit_min", "earned_min"])
+    .where("pact_id", "=", pact.id)
+    .execute();
+  if (rows.length === 0) return 0;
+
+  const over = new Set<string>();
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const day = typeof row.day === "string" ? row.day : dayInZone(row.day, "UTC");
+    seen.add(day);
+    if (row.minutes_used > row.limit_min + row.earned_min) over.add(day);
+  }
+
+  const firstDay = dayInZone(pact.starts_at, pact.timezone);
+  let streak = 0;
+  // Back from yesterday, in the challenge's own timezone, stopping at the
+  // first day that was not kept, was not reported, or is before it began.
+  for (let back = 1; back <= pact.duration_days; back++) {
+    const day = dayInZone(new Date(now.getTime() - back * DAY_MS), pact.timezone);
+    if (day < firstDay) break;
+    if (!seen.has(day) || over.has(day)) break;
+    streak += 1;
+  }
+  return streak;
 }

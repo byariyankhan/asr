@@ -163,7 +163,9 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
     const progress = await progressFor(view.user_id);
     expect(progress.user.name).toBe("Alice");
     expect(progress.current).toMatchObject({ pact_id: pact.id, day: 1, of: 14, apps_within_limits_today: { within: 1, total: 1 } });
-    expect(progress.streak_days).toBe(1);
+    // Days kept, not days elapsed: the challenge started today, no day has
+    // finished, and nothing has been reported.
+    expect(progress.streak_days).toBe(0);
 
     const detail = await getPactWithEvents(bob, pact.id);
     expect(detail.events.map((e) => e.type)).toEqual(["started"]);

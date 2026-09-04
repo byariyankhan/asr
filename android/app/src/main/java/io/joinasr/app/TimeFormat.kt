@@ -19,3 +19,19 @@ fun formatMinutes(minutes: Int): String {
         else -> "${hours}h ${rest}m"
     }
 }
+
+/**
+ * "1 day", "50 days".
+ *
+ * Not `days`, because half the screens that count days already have a
+ * parameter called that.
+ *
+ * Here for the same reason as [formatMinutes]: six screens counted days and
+ * every one of them wrote `"$n days"`, so the first day of every challenge
+ * read "1 days" — on the dashboard, on the started screen, and in large type
+ * on the card a witness sees.
+ */
+fun daysLabel(count: Int): String = if (count == 1) "1 day" else "$count days"
+
+/** The same, shouted: "1 DAY", "49 DAYS". */
+fun daysLabelUpper(count: Int): String = daysLabel(count).uppercase()

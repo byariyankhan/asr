@@ -28,3 +28,25 @@ class TimeFormatTest {
         formatMinutes(-1)
     }
 }
+
+/**
+ * Six screens counted days and every one wrote `"$n days"`, so the first day
+ * of every challenge read "1 days" — including in thirty-point type on the
+ * card a witness sees.
+ */
+class DaysLabelTest {
+
+    @Test
+    fun `one day is singular`() {
+        assertEquals("1 day", daysLabel(1))
+        assertEquals("1 DAY", daysLabelUpper(1))
+    }
+
+    @Test
+    fun `everything else is plural, including none`() {
+        assertEquals("0 days", daysLabel(0))
+        assertEquals("2 days", daysLabel(2))
+        assertEquals("49 days", daysLabel(49))
+        assertEquals("49 DAYS", daysLabelUpper(49))
+    }
+}
