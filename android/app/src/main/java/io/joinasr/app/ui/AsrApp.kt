@@ -685,6 +685,56 @@ fun AsrApp(
                     tab = AsrTab.Home
                     viewModel.signOut()
                 }
+
+                /**
+                 * A tab button goes to that tab, from wherever you are.
+                 *
+                 * Each of the four has screens stacked on it -- a person's
+                 * progress, the earn flow, Personal Details, the give-up
+                 * question -- and pressing a tab only changed which of the
+                 * four was drawn, so the stack you left was still there when
+                 * you came back. Press Witnesses while reading somebody's
+                 * progress, go to Profile, press Witnesses again: their
+                 * progress, not your circle. The button did not do what it
+                 * says.
+                 *
+                 * So every tab's own state goes back to its root first, for
+                 * all four rather than only the one being opened -- what you
+                 * left behind on the others is not somewhere you asked to
+                 * return to either.
+                 *
+                 * What is deliberately not reset is anything that is not a
+                 * tab: setup, the invite a link opened, and the screen a
+                 * challenge that just ended is waiting on. The bar is not
+                 * drawn during any of those.
+                 */
+                // `target`, not `destination`: that name is taken by the
+                // signed-out flow above and shadowing it here would be a
+                // trap for the next person editing this.
+                val goToTab = { target: AsrTab ->
+                    // Home
+                    reactingTo = null
+                    earningFor = null
+                    askingForSteps = false
+                    walkOnceGranted = false
+                    showingNotifications = false
+                    showingProtectionLost = false
+                    // A reward shown once. Coming back to Home tomorrow to be
+                    // congratulated again for yesterday's walk is worse than
+                    // not seeing it a second time.
+                    earnViewModel.acknowledgeEarned()
+                    // Progress
+                    givingUp = false
+                    // Witnesses
+                    openPerson = null
+                    addingWitness = false
+                    circleTab = CircleTab.Mine
+                    // Profile
+                    profileRoute = null
+                    deletingAccount = false
+
+                    tab = target
+                }
                 Column(Modifier.fillMaxSize().background(AsrColors.Background)) {
                     Box(Modifier.weight(1f)) {
                         when (tab) {
@@ -1040,13 +1090,7 @@ fun AsrApp(
                     }
                     AsrBottomNav(
                         selected = tab,
-                        onSelect = {
-                            // Leaving the tab answers the question. Coming
-                            // back to Progress should be coming back to
-                            // Progress, not to "are you ending this?".
-                            givingUp = false
-                            tab = it
-                        },
+                        onSelect = goToTab,
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     Spacer(Modifier.height(12.dp))
