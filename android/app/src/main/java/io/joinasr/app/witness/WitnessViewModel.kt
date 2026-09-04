@@ -13,7 +13,6 @@ import io.joinasr.app.sync.Sync
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -40,18 +39,23 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
         store.witnesses.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
-     * Whether [witnesses] has answered yet.
+     * The server's own answer about who is watching, or null before it has
+     * given one.
      *
-     * It is read from disk, so its first value is an empty list that means
-     * "not yet" rather than "nobody". Anything that acts on emptiness --
-     * and the app refuses to leave a running challenge with no witnesses --
-     * has to be able to tell those two apart, or it fires at everybody for
-     * the moment before the store replies.
+     * [witnesses] cannot answer this. It is read from this install's disk,
+     * so on a phone that has just signed in its first value is an empty list
+     * meaning "this phone has not been told" -- and the app treats an empty
+     * list as "nobody is watching, do not let this challenge run". Those are
+     * opposite things, and confusing them is what made a phone that took a
+     * challenge over demand a fresh invitation for a challenge three people
+     * were already watching.
+     *
+     * One value carrying both the answer and the fact that there is one, so
+     * there is no moment where it is known to be empty and not yet known to
+     * be full.
      */
-    val witnessesLoaded: StateFlow<Boolean> =
-        store.witnesses
-            .map { true }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    private val _knownWitnesses = MutableStateFlow<List<Witness>?>(null)
+    val knownWitnesses: StateFlow<List<Witness>?> = _knownWitnesses.asStateFlow()
 
     private val _inviting = MutableStateFlow(false)
     val inviting: StateFlow<Boolean> = _inviting.asStateFlow()
@@ -155,6 +159,15 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
                         inviteUrl = result.value.url,
                     )
                     _pendingShare.value = ShareInvite(result.value.relationship, result.value.url)
+                    // The server has one more than it did a moment ago, and
+                    // this is the one place that is known without asking.
+                    _knownWitnesses.value = (_knownWitnesses.value ?: emptyList()) +
+                        Witness(
+                            id = result.value.id,
+                            relationship = result.value.relationship,
+                            invitedAtMillis = System.currentTimeMillis(),
+                            inviteUrl = result.value.url,
+                        )
                 }
 
                 is ApiResult.Failure -> _error.value = result.message
@@ -184,20 +197,20 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
             val token = tokens.current() ?: return@launch
             val result = Api.witnesses.list(token)
             if (result !is ApiResult.Ok) return@launch
-            store.replace(
-                result.value.myWitnesses.map {
-                    Witness(
-                        id = it.id,
-                        relationship = it.relationship,
-                        invitedAtMillis = System.currentTimeMillis(),
-                        inviteUrl = it.inviteUrl,
-                        accepted = it.accepted,
-                        name = it.user?.name,
-                        image = it.user?.image,
-                        reactions = it.reactions,
-                    )
-                },
-            )
+            val mine = result.value.myWitnesses.map {
+                Witness(
+                    id = it.id,
+                    relationship = it.relationship,
+                    invitedAtMillis = System.currentTimeMillis(),
+                    inviteUrl = it.inviteUrl,
+                    accepted = it.accepted,
+                    name = it.user?.name,
+                    image = it.user?.image,
+                    reactions = it.reactions,
+                )
+            }
+            store.replace(mine)
+            _knownWitnesses.value = mine
             _supporting.value = result.value.iWitness
         }
     }

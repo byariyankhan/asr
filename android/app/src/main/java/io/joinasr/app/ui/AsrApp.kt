@@ -176,7 +176,7 @@ fun AsrApp(
     val supporting by witnessViewModel.supporting.collectAsStateWithLifecycle()
     val witnessProgress by witnessViewModel.progress.collectAsStateWithLifecycle()
     val reactions by witnessViewModel.reactions.collectAsStateWithLifecycle()
-    val witnessesLoaded by witnessViewModel.witnessesLoaded.collectAsStateWithLifecycle()
+    val knownWitnesses by witnessViewModel.knownWitnesses.collectAsStateWithLifecycle()
     val invite by witnessViewModel.invite.collectAsStateWithLifecycle()
     val inviteError by witnessViewModel.inviteError.collectAsStateWithLifecycle()
     val inviteBusy by witnessViewModel.inviteBusy.collectAsStateWithLifecycle()
@@ -511,6 +511,11 @@ fun AsrApp(
         // A challenge belongs to the person, not to the install. If this
         // phone has none and the account does, this is where it comes back.
         pactViewModel.restoreFromServer()
+        // And so do its witnesses. Without this the list was only ever asked
+        // for by opening the Witnesses tab, so a phone that had just signed
+        // in believed nobody was watching -- and the gate below acts on
+        // exactly that belief.
+        witnessViewModel.refresh()
     }
 
     // Sign-up has no name field, so the email's local part stands in until
@@ -719,7 +724,7 @@ fun AsrApp(
                 }
             } else if (
                 pactState is PactState.Active &&
-                (justStarted || (witnessesLoaded && witnesses.isEmpty()))
+                (justStarted || knownWitnesses?.isEmpty() == true)
             ) {
                 // A challenge nobody is watching is a challenge in name only.
                 // The pact is committed by now -- it has to be, or there is
@@ -727,9 +732,12 @@ fun AsrApp(
                 // between starting and using the app, and it does not let go
                 // until an invitation has gone out.
                 //
-                // `witnessesLoaded` matters: the list is read from disk and
-                // its first emission is empty, which would flash this screen
-                // at somebody who has witnesses already.
+                // It has to be the server's answer and not this phone's copy.
+                // The copy is read from this install's disk, so on a phone
+                // that just took the challenge over it is empty -- and this
+                // screen would demand a fresh invitation to a challenge
+                // three people are already watching. Null is "not asked yet"
+                // and stops nothing.
                 val started = (pactState as PactState.Active).pact
                 if (witnesses.isEmpty() || !witnessesOffered) {
                     // Figma 08, on the way out rather than on the way in.
