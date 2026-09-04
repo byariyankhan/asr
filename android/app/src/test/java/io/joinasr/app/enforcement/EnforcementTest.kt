@@ -284,8 +284,8 @@ class EnforcementTest {
     fun `every app over its limit is listed, not just the first`() {
         val seen = snapshot(youtube, instagram to 100, youtube to 100)
         assertEquals(
-            listOf(instagram, youtube),
-            Enforcement.overLimit(pact, seen).map { it.packageName }.sorted(),
+            setOf(instagram, youtube),
+            Enforcement.overLimit(pact, seen).map { it.packageName }.toSet(),
         )
     }
 
