@@ -18,6 +18,8 @@ import io.joinasr.app.data.SummaryCreate
 import io.joinasr.app.earn.EarnActivity
 import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.enforcement.Pact
+import io.joinasr.app.permissions.Permissions
+import io.joinasr.app.push.Push
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -57,12 +59,43 @@ class Sync(context: Context) {
             model = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
             osVersion = Build.VERSION.RELEASE,
             appVersion = BuildConfig.VERSION_NAME,
+            // Sent with the very first registration rather than in a second
+            // request afterwards. Every notification in this product is a
+            // push, so a device row without a token is a person nobody can
+            // reach -- the watchdog marks their notifications unregistered
+            // and drops them.
+            fcmToken = Push.token(app),
         )
         val result = Api.devices.register(token, registration)
         return when (result) {
-            is ApiResult.Ok -> result.value.id.also { store.saveDeviceId(it) }
+            is ApiResult.Ok -> result.value.id.also {
+                store.saveDeviceId(it)
+                store.savePushToken(registration.fcmToken)
+            }
             else -> null
         }
+    }
+
+    /**
+     * Sends a push token the moment Firebase issues a new one.
+     *
+     * Not left until the next app start. Between a token rotating and the
+     * next launch is exactly the window in which a pact might break, and a
+     * witness told about it a day later has been told about a different
+     * thing.
+     */
+    suspend fun registerPushToken(pushToken: String) {
+        if (store.pushToken() == pushToken) return
+        val token = tokens.current() ?: return
+        val device = deviceId() ?: return
+        val sent = Api.devices.heartbeat(
+            token = token,
+            deviceId = device,
+            protectionEnabled = Permissions.canDrawOverlays(app),
+            appVersion = BuildConfig.VERSION_NAME,
+            fcmToken = pushToken,
+        )
+        if (sent is ApiResult.Ok) store.savePushToken(pushToken)
     }
 
     /**
@@ -186,7 +219,20 @@ class Sync(context: Context) {
     suspend fun heartbeat(protectionEnabled: Boolean) {
         val token = tokens.current() ?: return
         val device = deviceId() ?: return
-        Api.devices.heartbeat(token, device, protectionEnabled, BuildConfig.VERSION_NAME)
+        // The token rides along on every heartbeat. onNewToken is the fast
+        // path and this is the safety net: a rotation that happened while
+        // the app was uninstalled from Play services' point of view, or a
+        // registration whose answer was lost, is repaired within six hours
+        // instead of never.
+        val pushToken = Push.token(app)
+        val sent = Api.devices.heartbeat(
+            token = token,
+            deviceId = device,
+            protectionEnabled = protectionEnabled,
+            appVersion = BuildConfig.VERSION_NAME,
+            fcmToken = pushToken,
+        )
+        if (sent is ApiResult.Ok && pushToken != null) store.savePushToken(pushToken)
     }
 
     /**
@@ -257,6 +303,21 @@ class Sync(context: Context) {
     suspend fun cancelActivity(activity: EarnActivity) {
         val token = tokens.current() ?: return
         Api.activities.cancel(token, activity.id)
+    }
+
+    /**
+     * Tells the server to forget this phone's push token, and forgets it
+     * here.
+     *
+     * Called on sign-out. The device row stays -- pacts reference it -- but
+     * without a token nothing can be delivered to a phone whose owner has
+     * left it.
+     */
+    suspend fun forgetDevice() {
+        val token = tokens.current() ?: return
+        val device = store.deviceId() ?: return
+        Api.devices.forget(token, device)
+        store.clearDevice()
     }
 
     /** Whether everything queued has gone through. */

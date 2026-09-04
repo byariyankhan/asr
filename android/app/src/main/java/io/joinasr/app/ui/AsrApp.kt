@@ -209,6 +209,14 @@ fun AsrApp(
         askingForSteps = false
         walkOnceGranted = granted
     }
+
+    // Notifications, asked of a witness rather than of everybody at launch.
+    // Somebody who has just agreed to be told when a friend breaks a pact
+    // has said yes to the only thing this permission is for; asking them at
+    // that moment is the difference between a grant and a reflex refusal.
+    val askForNotifications = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
     // Figma 25, opened from a notification about somebody else.
     var reactingTo by remember { mutableStateOf<InboxItem?>(null) }
     // Figma 18. The code from a witness link, held until it is answered.
@@ -316,6 +324,9 @@ fun AsrApp(
         witnessViewModel.clearInvite()
         tab = AsrTab.Witnesses
         circleTab = CircleTab.Supporting
+        if (Permissions.notificationsAreRequestable && !Permissions.hasNotifications(context)) {
+            askForNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     // Deletion is accepted by the server, so the token is spent: signing out

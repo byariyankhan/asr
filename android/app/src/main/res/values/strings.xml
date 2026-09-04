@@ -7,6 +7,13 @@
     <string name="protection_channel_name">Protection</string>
     <string name="protection_channel_description">Shows that your daily limits are being enforced.</string>
     <string name="protection_running">Protection is on</string>
+
+    <!-- The alerts channel: witnesses being told things, and this person
+         being told about their own challenge. Separate from the protection
+         channel so somebody can silence the permanent one without silencing
+         the ones that matter. -->
+    <string name="alerts_channel_name">Accountability</string>
+    <string name="alerts_channel_description">Witness updates, breaches and challenge results.</string>
     <plurals name="protection_apps_limited">
         <item quantity="one">%d app limited today</item>
         <item quantity="other">%d apps limited today</item>

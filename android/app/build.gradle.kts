@@ -5,6 +5,21 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+/**
+ * Firebase is applied only when its config is here.
+ *
+ * google-services.json comes out of the Firebase console and is not in this
+ * repository yet. The plugin fails the build outright when the file is
+ * missing, which would stop CI from compiling anything at all over a feature
+ * that is one file away from working — so it is applied conditionally, and
+ * the app checks at runtime whether Firebase actually came up. Drop the file
+ * in at app/google-services.json and push: nothing else has to change.
+ */
+val firebaseConfigured = file("google-services.json").exists()
+if (firebaseConfigured) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "io.joinasr.app"
     compileSdk = 35
@@ -46,9 +61,11 @@ android {
     buildTypes {
         debug {
             buildConfigField("String", "API_BASE_URL", "\"https://api.joinasr.io\"")
+            buildConfigField("Boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
         }
         release {
             buildConfigField("String", "API_BASE_URL", "\"https://api.joinasr.io\"")
+            buildConfigField("Boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -87,6 +104,11 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    // Push, which is how every witness alert arrives. Inert without
+    // google-services.json: FirebaseApp does not initialise, the token is
+    // never fetched, and Push.kt reports that rather than crashing.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

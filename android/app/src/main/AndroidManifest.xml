@@ -123,6 +123,26 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:theme="@style/Theme.Asr" />
 
+        <!-- Every notification in this product arrives here. exported is
+             false and the intent filter is the one FCM dispatches to; the
+             system binds it directly, so nothing else can. -->
+        <service
+            android:name=".push.AsrMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- The channel alerts land on, so a notification arriving before
+             the app has ever run still has one. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="alerts" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_protection" />
+
         <service
             android:name=".enforcement.EnforcementService"
             android:exported="false"

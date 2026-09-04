@@ -28,6 +28,8 @@ data class DeviceRegistration(
 private data class Heartbeat(
     @SerialName("protection_enabled") val protectionEnabled: Boolean,
     @SerialName("app_version") val appVersion: String,
+    /** Omitted rather than sent as null: the server leaves it alone when absent. */
+    @SerialName("fcm_token") val fcmToken: String? = null,
 )
 
 /**
@@ -83,12 +85,13 @@ class DeviceApi(
         deviceId: String,
         protectionEnabled: Boolean,
         appVersion: String,
+        fcmToken: String? = null,
     ): ApiResult<Unit> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$baseUrl/v1/devices/$deviceId/heartbeat")
             .header("Authorization", "Bearer $token")
             .post(
-                ApiJson.encodeToString(Heartbeat(protectionEnabled, appVersion))
+                ApiJson.encodeToString(Heartbeat(protectionEnabled, appVersion, fcmToken))
                     .toRequestBody(JSON_MEDIA),
             )
             .build()
@@ -104,6 +107,28 @@ class DeviceApi(
             ApiResult.Offline("No connection.")
         }
     }
+
+    /** Sign-out: the server drops the push token so this phone stops being
+     *  reachable for an account that has left it. */
+    suspend fun forget(token: String, deviceId: String): ApiResult<Unit> =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/v1/devices/$deviceId")
+                .header("Authorization", "Bearer $token")
+                .delete()
+                .build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        ApiResult.Ok(Unit)
+                    } else {
+                        parseFailure(response.code, response.body?.string(), null)
+                    }
+                }
+            } catch (e: IOException) {
+                ApiResult.Offline("No connection.")
+            }
+        }
 
     private companion object {
         val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.joinasr.app.data.Api
+import io.joinasr.app.sync.Sync
 import io.joinasr.app.data.ApiResult
 import io.joinasr.app.data.Me
 import io.joinasr.app.data.ProfileUpdate
@@ -31,6 +32,7 @@ sealed interface Session {
 class SessionViewModel(app: Application) : AndroidViewModel(app) {
 
     private val tokens = Api.tokens(app)
+    private val sync = Sync(app)
 
     private val _session = MutableStateFlow<Session>(Session.Unknown)
     val session: StateFlow<Session> = _session.asStateFlow()
@@ -53,6 +55,24 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Registers this phone, with its push token, the moment a session is
+     * real.
+     *
+     * Here rather than anywhere in the pact code, because the people who
+     * most need push are the ones who never start a challenge: a witness
+     * signs up to answer an invitation and nothing else. Registering only
+     * when a pact exists would have left exactly them unreachable, and a
+     * witness who cannot be told is not a witness.
+     *
+     * Failure is silent. It is retried on the next launch and by the
+     * heartbeat, and there is nothing a person can do about it on a sign-in
+     * screen.
+     */
+    private fun registerDevice() {
+        viewModelScope.launch { runCatching { sync.deviceId() } }
+    }
+
     fun clearError() {
         _error.value = null
     }
@@ -63,9 +83,16 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOut() {
         viewModelScope.launch {
-            // Cleared locally first and unconditionally. Asking the server to
-            // revoke is the right thing to add, but a person who taps sign out
-            // on a train must end up signed out regardless of the network.
+            // The push token goes first, while there is still a session to
+            // do it with. Without this the server keeps a live token for the
+            // person who just left, and the next person to sign in on this
+            // phone gets their notifications -- their name, their pact,
+            // their breaches -- on a phone they do not own.
+            //
+            // Best-effort, and the sign-out does not wait on the answer. A
+            // person who taps sign out on a train must end up signed out
+            // regardless of the network.
+            runCatching { sync.forgetDevice() }
             tokens.clear()
             _error.value = null
             _session.value = Session.SignedOut
@@ -140,7 +167,10 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
     /** Turns a token into a session by using it, which is the only real test. */
     private suspend fun resolve(token: String, clearTokenOnUnauthorised: Boolean) {
         when (val me = Api.me.get(token)) {
-            is ApiResult.Ok -> _session.value = Session.SignedIn(me.value)
+            is ApiResult.Ok -> {
+                _session.value = Session.SignedIn(me.value)
+                registerDevice()
+            }
             is ApiResult.Failure -> {
                 if (me.code == 401) {
                     if (clearTokenOnUnauthorised) tokens.clear()

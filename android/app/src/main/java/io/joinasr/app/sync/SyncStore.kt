@@ -64,6 +64,30 @@ class SyncStore(context: Context) {
 
     suspend fun deviceId(): String? = store.data.first()[DEVICE_ID]
 
+    /**
+     * The push token the server has already been given, so a heartbeat
+     * every six hours is not also a write of a value that has not changed.
+     */
+    suspend fun pushToken(): String? = store.data.first()[PUSH_TOKEN]
+
+    suspend fun savePushToken(value: String?) {
+        if (value == null) return
+        store.edit { it[PUSH_TOKEN] = value }
+    }
+
+    /**
+     * Forgets the device row and its token, on sign-out. The install id
+     * stays: it is this installation's identity, not this person's, and
+     * keeping it means signing back in updates one row instead of leaving a
+     * dead one behind.
+     */
+    suspend fun clearDevice() {
+        store.edit {
+            it.remove(DEVICE_ID)
+            it.remove(PUSH_TOKEN)
+        }
+    }
+
     suspend fun saveDeviceId(id: String) {
         store.edit { it[DEVICE_ID] = id }
     }
@@ -118,6 +142,7 @@ class SyncStore(context: Context) {
     private companion object {
         val INSTALL_ID = stringPreferencesKey("install_id")
         val DEVICE_ID = stringPreferencesKey("device_id")
+        val PUSH_TOKEN = stringPreferencesKey("push_token")
         val PACT_ID = stringPreferencesKey("pact_id")
         val PACT_STARTED_AT = longPreferencesKey("pact_started_at")
         val OUTBOX = stringPreferencesKey("outbox")

@@ -70,10 +70,22 @@ at service start and written once, and the outbox is a short list of events
 that have not been sent. Room earns its place with a real usage history, and
 that is the change that will bring it in.
 
-What is still missing is not a screen. Push notifications (no FCM token is
-ever registered, so witness alerts arrive only by email), the subscription
-and Play Billing, and the block screen not appearing on some devices despite
-the service running — that last one is a live bug, deferred deliberately.
+**Notifications are push, and only push.** The server queues one row per
+witness who asked for that kind and the watchdog delivers it through FCM;
+email carries sign-up verification and password resets and nothing else.
+The Android half is now here: the token is registered with the device on
+sign-in, refreshed by `onNewToken` and repaired by every heartbeat, and
+dropped on sign-out so the next person to use the phone does not receive
+somebody else's breaches.
+
+It needs `android/app/google-services.json` from the Firebase console to
+work. The Gradle plugin is applied only when that file exists, so CI keeps
+building without it, and `Push.available()` reports the truth at runtime
+rather than the app pretending.
+
+What is still missing is not a screen: the subscription and Play Billing,
+and the block screen not appearing on some devices despite the service
+running — that last one is a live bug, deferred deliberately.
 
 None of Hilt, Room, WorkManager or Play Billing is a dependency yet. They are
 named below because that is what this document is: the design of the app to
