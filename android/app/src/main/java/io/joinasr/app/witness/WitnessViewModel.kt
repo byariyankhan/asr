@@ -133,7 +133,20 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
             // So the challenge is made sure of first. After the first time
             // this costs nothing: the server's id for it is stored, and
             // finding it is a read from disk.
-            pacts.current()?.let { pact -> runCatching { sync.remotePactId(pact) } }
+            //
+            // And when it cannot be made sure of, that is what gets said.
+            // The server's own answer -- "Start a challenge before inviting
+            // witnesses to it" -- is true from where it is standing and
+            // useless from here, where a challenge has been running for
+            // days; it sends somebody looking for a button that does not
+            // exist instead of at the connection.
+            val pact = pacts.current()
+            if (pact != null && runCatching { sync.remotePactId(pact) }.getOrNull() == null) {
+                _error.value = "Could not reach the server to register this challenge. " +
+                    "Check your connection and try again."
+                _inviting.value = false
+                return@launch
+            }
             when (val result = Api.witnesses.invite(token, relationship)) {
                 is ApiResult.Ok -> {
                     store.add(

@@ -27,6 +27,39 @@ private data class ErrorBody(
 internal val ApiJson = Json {
     ignoreUnknownKeys = true
     isLenient = true
+
+    /**
+     * Defaults are wire values here, not placeholders.
+     *
+     * kotlinx leaves a property at its default out of the JSON entirely
+     * unless told otherwise, and this app had it untold. `reset_time` on a
+     * pact snapshot defaults to "00:00" and the server requires it, so
+     * every single POST /v1/pacts this app has ever sent was rejected as
+     * invalid -- silently, because creating the server's copy of a
+     * challenge is best-effort by design and nothing was watching it fail.
+     *
+     * The account therefore never had a pact on the server. Nothing
+     * depended on that until a witness became something you invite to a
+     * challenge, and then the invite endpoint quite correctly refused:
+     * "Start a challenge before inviting witnesses to it", about a
+     * challenge that had been running on the phone for days.
+     *
+     * The same omission dropped the activity rules out of the snapshot and
+     * left `revokeOtherSessions` off every password change.
+     */
+    encodeDefaults = true
+
+    /**
+     * And nulls stay out.
+     *
+     * With defaults now encoded, every optional property would otherwise go
+     * out as an explicit `null` -- which is not what any of them mean. The
+     * server's optional fields are zod `.optional()`, which rejects null,
+     * and PATCH /v1/me reads an absent field as "leave this alone" and a
+     * present one as "set it to this". Omission is the intent in both
+     * directions.
+     */
+    explicitNulls = false
 }
 
 /**
