@@ -25,6 +25,7 @@ import io.joinasr.app.sync.Sync
 import io.joinasr.app.sync.Uuid7
 import io.joinasr.app.usage.Day
 import io.joinasr.app.usage.UsageReader
+import io.joinasr.app.usage.UsageSnapshot
 import io.joinasr.app.usage.usageReader
 import io.joinasr.app.witness.WitnessStore
 import kotlinx.coroutines.CoroutineScope

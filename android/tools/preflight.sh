@@ -64,6 +64,20 @@ else
   while IFS= read -r line; do fail "$line"; done < /tmp/preflight.err
 fi
 
+# The same mistake, but with a type this project declares itself. The
+# Compose check knows a fixed list of framework symbols and so could not see
+# `UsageSnapshot` used in a new signature in a file whose imports stopped at
+# `UsageReader` -- which is one CI round trip, spent on two identical error
+# lines. This one reads the declarations out of the source instead of
+# knowing any in advance.
+for tree in "$here/app/src/main/java" "$here/app/src/test/java"; do
+  if python3 "$here/tools/project_imports.py" "$tree" >/tmp/preflight.err 2>&1; then
+    pass "project imports resolve in ${tree#"$here/"}"
+  else
+    while IFS= read -r line; do fail "$line"; done < /tmp/preflight.err
+  fi
+done
+
 # A literal ${'$'}{...} in a Kotlin string.
 #
 # It compiles, it is not a warning, and it renders on the phone as the
