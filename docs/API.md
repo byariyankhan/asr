@@ -91,6 +91,25 @@ can be half-typed is a diagnostic that lies. `200` when the bucket takes a
 write, `503` otherwise. `/health` stays cheap, because uptime monitors poll
 it every minute and this costs two round trips to Cloudflare.
 
+## App Links
+
+### `GET /.well-known/assetlinks.json`
+
+Rewritten to `/v1/assetlinks` in `next.config.ts`. No auth, world-readable by
+design: a certificate fingerprint is a public hash of a public certificate.
+
+This is what makes `android:autoVerify="true"` mean anything — Android
+fetches it when the app is installed, and only if it names the app's signing
+certificate does a tap on `joinasr.io/w/<code>` open Asr rather than a
+browser or an "open with" chooser.
+
+The fingerprints come from `ANDROID_CERT_SHA256` because they are not one
+value: a debug build signed on a laptop, CI's debug key, and the key Play
+signs releases with are three different certificates, and a phone verifies
+against whichever signed the app it has. `404` when unset, rather than an
+empty list — an empty list is a valid file meaning "no app may claim these
+links", and Android caches it.
+
 ## Devices
 
 ### `POST /devices`

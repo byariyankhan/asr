@@ -15,7 +15,7 @@ witnesses what happened.
 │ • blocks apps (overlay)      │        │ • pact ledger          │
 │ • keeps limits, reset times  │        │ • outcome events             │
 │ • runs activities            │        │ • witness graph              │
-│ • computes streaks locally   │◀───────│ • heartbeat watchdog         │
+│ • shows what the server has  │◀───────│ • heartbeat watchdog         │
 │ • sends: heartbeats, events, │  FCM   │ • notifications (FCM/email)  │
 │   daily summary              │        │ • Play Billing verification  │
 └──────────────────────────────┘        └──────────────────────────────┘
@@ -36,8 +36,12 @@ witnesses what happened.
 - Blocking an app whose limit is spent, and reporting that it was spent.
   Not deciding that the challenge failed: going over a limit is blocked and
   recorded, never punished. See `ENFORCEMENT.md`.
-- Streak and history screens (computed from the local event log; the server
-  copy exists only so witnesses can see the same numbers).
+- Nothing else. History and streaks were meant to be computed here from a
+  local event log; there is no local event log, because the day is rebuilt
+  from Android's event stream on every poll and nothing needs keeping. Both
+  screens read `GET /me/progress`, which is the same query the witness
+  screens use -- so the person and the people watching cannot be shown two
+  different numbers.
 
 ### The server owns
 
@@ -208,8 +212,12 @@ dashboard until it can actually enforce anything.
 4. Witness accepts: `POST /v1/witnesses/invites/{code}/accept`. The witness
    needs an account but does not need to run any pact themselves.
 5. Witnesses choose what they want to hear about: start, success, failure,
-   daily digest, roast mode (harsher copy on failure). Preferences live on the
-   `witness` row, not on the user.
+   progress, and roast mode (harsher copy on failure). Preferences live on
+   the `witness` row, not on the user, because the same person may want
+   everything about their brother and only the ending about a colleague.
+
+   `notify_digest` is stored and settable and nothing reads it: no digest is
+   ever sent. It is a column waiting for a feature, not a feature.
 
 ## Stack and why
 

@@ -204,7 +204,7 @@ create table witness (
   notify_start      boolean not null default true,
   notify_success    boolean not null default true,
   notify_failure    boolean not null default true,
-  notify_digest     boolean not null default false,
+  notify_digest     boolean not null default false,  -- settable; nothing sends a digest yet
   roast_mode        boolean not null default false,
   views_progress    boolean not null default true,
   invited_at        timestamptz not null default now(),

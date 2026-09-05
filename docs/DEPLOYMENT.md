@@ -26,7 +26,11 @@ The repository is private, so the VPS is never given GitHub credentials:
 the GitHub Actions runner has the checkout and ships it over SSH. Nothing on
 the VPS ever clones or pulls.
 
-Add four repository secrets (Settings → Secrets and variables → Actions):
+Add these repository secrets (Settings → Secrets and variables → Actions).
+Two are required and the rest each switch on one thing; a missing optional
+one degrades that feature and nothing else. `VPS_HOST` and `VPS_SSH_KEY` are
+read by `deploy.yml`, the rest by `bootstrap.yml` (which writes `/opt/asr/.env`)
+and `android.yml`:
 
 | Secret | Value |
 |---|---|
