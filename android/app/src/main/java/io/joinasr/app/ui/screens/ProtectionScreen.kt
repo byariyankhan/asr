@@ -58,6 +58,8 @@ import io.joinasr.app.ui.theme.AsrType
 fun ProtectionScreen(
     onBack: () -> Unit,
     onReviewBlocking: () -> Unit,
+    /** Battery optimisation and the manufacturer's own switches. */
+    onBackgroundActivity: () -> Unit,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -89,7 +91,7 @@ fun ProtectionScreen(
         Text("Enable protection.", style = AsrType.display(38), color = AsrColors.TextPrimary)
         Spacer(Modifier.height(12.dp))
         Text(
-            "Two permissions power the challenge. Notifications are recommended.",
+            "Two permissions power the challenge. The other two keep it running.",
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
         )
@@ -97,7 +99,7 @@ fun ProtectionScreen(
         Spacer(Modifier.height(22.dp))
         AsrCard {
             Text(
-                "2 required  ·  1 recommended",
+                "2 required  ·  2 recommended",
                 style = AsrType.Label,
                 color = AsrColors.TextPrimary,
             )
@@ -143,6 +145,15 @@ fun ProtectionScreen(
                     }.onFailure { context.toastNoSettingsScreen() }
                 }
             },
+        )
+
+        Spacer(Modifier.height(12.dp))
+        PermissionRow(
+            title = "Background activity",
+            detail = "Stops the phone from switching protection off to save battery",
+            granted = state.batteryUnrestricted,
+            actionLabel = "SET UP",
+            onAction = onBackgroundActivity,
         )
 
         Spacer(Modifier.height(18.dp))
@@ -214,5 +225,7 @@ private fun android.content.Context.toastNoSettingsScreen() {
 @Preview(widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 private fun ProtectionPreview() {
-    AsrTheme { ProtectionScreen(onBack = {}, onReviewBlocking = {}, onContinue = {}) }
+    AsrTheme {
+        ProtectionScreen(onBack = {}, onReviewBlocking = {}, onBackgroundActivity = {}, onContinue = {})
+    }
 }

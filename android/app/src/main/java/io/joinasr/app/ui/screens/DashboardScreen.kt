@@ -52,6 +52,7 @@ import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.ui.DashboardViewModel
 import io.joinasr.app.ui.components.AsrIcons
 import io.joinasr.app.ui.components.AsrPrimaryButton
+import io.joinasr.app.ui.components.AsrTextLink
 import io.joinasr.app.ui.components.AsrPill
 import io.joinasr.app.ui.greetingFor
 import io.joinasr.app.ui.theme.AsrColors
@@ -98,6 +99,8 @@ fun DashboardScreen(
     onStartChallenge: () -> Unit,
     /** Opens Figma 27. Only reachable while a grant is actually missing. */
     onProtectionLost: () -> Unit,
+    /** Opens the battery and manufacturer settings that keep the loop alive. */
+    onFixProtection: () -> Unit,
     /** Opens Figma 19. */
     onNotifications: () -> Unit,
     unreadNotifications: Int,
@@ -216,7 +219,7 @@ fun DashboardScreen(
 
         if (!working) {
             Spacer(Modifier.height(10.dp))
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(AsrColors.SurfaceRaised, RoundedCornerShape(16.dp))
@@ -236,19 +239,21 @@ fun DashboardScreen(
                                 "is dropped without a word."
 
                         state.blockDropped ->
-                            "A block screen was refused by Android just now. That happens " +
-                                "when \"display over other apps\" is off or has been " +
-                                "revoked. Turn it back on in Settings and try again."
+                            "Android refused to show the block screen just now, so the " +
+                                "block was drawn over the app instead. Some phones need one " +
+                                "more switch for it to work properly: on Xiaomi, allow " +
+                                "\"Display pop-up windows while running in the background\"."
 
                         else ->
-                            "Protection is not running. Android may have stopped the " +
-                                "background service; opening this screen starts it again, " +
-                                "and turning off battery optimisation for Asr keeps it " +
-                                "running."
+                            "Protection is not running. The phone stopped the background " +
+                                "service; opening this screen starts it again, and the " +
+                                "settings below stop it from happening."
                     },
                     style = AsrType.Legal,
                     color = AsrColors.TextSecondary,
                 )
+                Spacer(Modifier.height(6.dp))
+                AsrTextLink(text = "Keep protection running", onClick = onFixProtection)
             }
         }
 
