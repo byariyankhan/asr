@@ -27,10 +27,11 @@ data class LegalDocument(
  * one a person reads to find out exactly that, and a store reviewer reads it
  * against the manifest.
  *
- * The blanks the frames themselves flag — the operating legal entity, a
- * public contact address, governing law — are left as the frames leave them,
- * because they are the founder's to fill in and inventing them would be
- * worse than an obvious gap.
+ * The blanks the frames themselves flagged — the operating legal entity, a
+ * public contact address, governing law — are filled in from the founder's
+ * own answer: the operator is Ariyan Khan, at the Mirpur address, reachable
+ * at hi@ariyankhan.com (the same address Help & Support writes to), and the
+ * terms are governed by the law of Bangladesh.
  */
 object LegalTexts {
 
@@ -117,9 +118,10 @@ object LegalTexts {
             ),
             LegalSection(
                 "9. Contact",
-                "For privacy questions, use Help & Support inside the app. The " +
-                    "published release should also include the operator's legal name " +
-                    "and a public contact method.",
+                "Asr is operated by Ariyan Khan, House 16, Road S11, Block L, Eastern " +
+                    "Housing (Pallabi Phase 2), Rupnagar, Mirpur, Dhaka, Bangladesh. For " +
+                    "privacy questions or requests, email hi@ariyankhan.com or use Help & " +
+                    "Support inside the app.",
             ),
         ),
     )
@@ -191,10 +193,12 @@ object LegalTexts {
             ),
             LegalSection(
                 "10. Changes and legal details",
-                "We may update these Terms and publish a new effective date. Before " +
-                    "public release, the published Terms should identify the operating " +
-                    "legal entity, contact details, governing law and any " +
-                    "region-specific consumer rights that apply.",
+                "We may update these Terms and publish a new effective date. Asr is " +
+                    "operated by Ariyan Khan, House 16, Road S11, Block L, Eastern Housing " +
+                    "(Pallabi Phase 2), Rupnagar, Mirpur, Dhaka, Bangladesh; contact " +
+                    "hi@ariyankhan.com. These Terms are governed by the laws of " +
+                    "Bangladesh, without taking away any consumer rights you have under " +
+                    "the laws of the country where you live.",
             ),
         ),
     )

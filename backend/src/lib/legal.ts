@@ -7,9 +7,9 @@
  * two must not disagree. `legal.test.ts` parses the Kotlin file and fails
  * when they do: change the text here and there together, or not at all.
  *
- * The blanks the documents flag -- the operating legal entity, a public
- * contact address, governing law -- are the founder's to fill in and are
- * left as gaps rather than invented.
+ * The operator, the contact address and the governing law are the
+ * founder's own answers, not defaults: Ariyan Khan, Mirpur, Dhaka,
+ * hi@ariyankhan.com, the law of Bangladesh.
  */
 export type LegalSection = { heading: string; body: string };
 
@@ -78,7 +78,7 @@ export const privacy: LegalDocument = {
     {
       heading: "9. Contact",
       body:
-        "For privacy questions, use Help & Support inside the app. The published release should also include the operator's legal name and a public contact method.",
+        "Asr is operated by Ariyan Khan, House 16, Road S11, Block L, Eastern Housing (Pallabi Phase 2), Rupnagar, Mirpur, Dhaka, Bangladesh. For privacy questions or requests, email hi@ariyankhan.com or use Help & Support inside the app.",
     },
   ],
 };
@@ -137,7 +137,7 @@ export const terms: LegalDocument = {
     {
       heading: "10. Changes and legal details",
       body:
-        "We may update these Terms and publish a new effective date. Before public release, the published Terms should identify the operating legal entity, contact details, governing law and any region-specific consumer rights that apply.",
+        "We may update these Terms and publish a new effective date. Asr is operated by Ariyan Khan, House 16, Road S11, Block L, Eastern Housing (Pallabi Phase 2), Rupnagar, Mirpur, Dhaka, Bangladesh; contact hi@ariyankhan.com. These Terms are governed by the laws of Bangladesh, without taking away any consumer rights you have under the laws of the country where you live.",
     },
   ],
 };

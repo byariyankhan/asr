@@ -2,6 +2,10 @@
 
 **Protect your time. Keep your word.**
 
+Store listing name: **Asr - Protect Your Time & Focus**. Operated by Ariyan
+Khan, Dhaka; contact `hi@ariyankhan.com`. The launcher label stays the one
+word, because a home screen truncates anything longer.
+
 Asr is an Android app for people who want to use certain apps less and cannot
 do it alone. You pick the apps, set daily limits, lock them behind a
 pact (7, 14, 21 or 30 days, or a custom length), and name one or more **witnesses**. If you break the
