@@ -4,11 +4,11 @@ import { SiteFrame } from "./site-frame";
 const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.io").replace(/\/$/, "");
 
 export const metadata: Metadata = {
-  title: "Asr — Make a pact with your time",
+  title: "Asr - Protect Your Time & Focus",
   description:
     "Asr helps you put selected apps behind a time-limited pact and keep your witnesses informed.",
   openGraph: {
-    title: "Asr — Make a pact with your time",
+    title: "Asr - Protect Your Time & Focus",
     description:
       "Choose the apps that take too much of your day, set a daily limit, and name the people who should know whether you kept your word.",
     url: SITE(),
@@ -28,6 +28,7 @@ export default function LandingPage() {
       footer={[
         { href: "/privacy", label: "Privacy" },
         { href: "/terms", label: "Terms" },
+        { href: "mailto:hi@ariyankhan.com", label: "Contact" },
       ]}
     >
       <main>

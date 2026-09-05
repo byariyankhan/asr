@@ -42,13 +42,19 @@ export function SiteFrame({
       {children}
       <footer className="site-footer">
         <div className="shell footer-inner">
-          <p className="footer-copy">© 2026 Asr. Make your time count.</p>
+          <p className="footer-copy">© 2026 Asr · Ariyan Khan, Dhaka. Make your time count.</p>
           <nav className="footer-links" aria-label="Legal navigation">
-            {footer.map((link) => (
-              <Link key={link.href} href={link.href}>
-                {link.label}
-              </Link>
-            ))}
+            {footer.map((link) =>
+              link.href.startsWith("mailto:") ? (
+                <a key={link.href} href={link.href}>
+                  {link.label}
+                </a>
+              ) : (
+                <Link key={link.href} href={link.href}>
+                  {link.label}
+                </Link>
+              ),
+            )}
           </nav>
         </div>
       </footer>
