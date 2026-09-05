@@ -99,8 +99,24 @@ the limit, and no write is made.
 
 ## Pages
 
-Two links the product sends by email land on a web page when there is no
-app to open them. Both are server-rendered and need no script.
+The public site, served by this application behind the same nginx site as
+the API, so a change to it is a deploy and not a change to the server.
+
+| Path | What it is |
+|---|---|
+| `/` | The landing page: what Asr is, how a pact works, and a Google Play badge that becomes a link once the listing exists |
+| `/privacy` | The privacy policy. The address the Play listing points at |
+| `/terms` | The terms of service |
+| anything else | A styled 404, except the endpoints below and `/w/<code>` |
+
+The privacy policy and the terms are the same words the app shows on its
+own legal screens. They live twice -- `backend/src/lib/legal.ts` and
+`android/.../legal/LegalTexts.kt` -- and `legal.test.ts` reads the Kotlin
+file and fails when the two differ, so they are changed together or not at
+all.
+
+Two more links the product sends by email land on a web page when there is
+no app to open them. Both are server-rendered and need no script.
 
 ### `GET /verify/<token>`
 

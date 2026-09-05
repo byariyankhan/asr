@@ -14,6 +14,10 @@ data class LegalDocument(
  * The privacy policy and terms, verbatim from Figma 36 and 37 except where
  * the frames describe something this app does not do.
  *
+ * The same words are served at joinasr.io/privacy and /terms from
+ * backend/src/lib/legal.ts, and a test there reads this file and fails when
+ * the two differ. Change them together.
+ *
  * Two corrections, both in the same place and both deliberate. The frames
  * say blocking works through Android Accessibility. It does not: it works
  * through Usage Access plus a screen this app puts in front of the blocked
@@ -59,7 +63,11 @@ object LegalTexts {
                     "This app reads the package name of the app in the foreground and " +
                     "how long it was there. It does not read messages, passwords, typed " +
                     "text, photos or anything shown inside another app, and it does not " +
-                    "use Android's accessibility service.",
+                    "use Android's accessibility service.\n\n" +
+                    "What the app measures stays on your phone. The server receives the " +
+                    "apps you chose to limit, their limits, the daily minutes for each of " +
+                    "them, and the moments a limit was reached. It never receives the " +
+                    "list of other apps on your phone, or when you opened what.",
             ),
             LegalSection(
                 "3. Activity rewards",
@@ -84,10 +92,12 @@ object LegalTexts {
             ),
             LegalSection(
                 "6. Sharing",
-                "We may share data with service providers that help us operate " +
-                    "authentication, hosting, notifications, analytics and security. " +
-                    "Witnesses receive only the accountability information described " +
-                    "above. We do not sell personal data to advertisers.",
+                "We use service providers to run the service: hosting, sign-in, push " +
+                    "notifications (Google Firebase), email (Resend) and profile-photo " +
+                    "storage (Cloudflare R2). There is no analytics or advertising " +
+                    "provider in the app. Witnesses receive only the accountability " +
+                    "information described above. We do not sell personal data to " +
+                    "advertisers.",
             ),
             LegalSection(
                 "7. Retention and deletion",

@@ -64,7 +64,7 @@ choice are in `docs/ARCHITECTURE.md` and `docs/ANDROID.md`.
 
 ## Domains
 
-- `joinasr.io`: landing page and witness invite links (`joinasr.io/w/<code>`)
+- `joinasr.io`: landing page, privacy policy and terms (`/privacy`, `/terms`), and witness invite links (`joinasr.io/w/<code>`)
 - `api.joinasr.io`: backend
 - `noreply@joinasr.io`: transactional email
 
