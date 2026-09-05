@@ -72,7 +72,7 @@ inbox, 25 reacts to an event.
 sensor hub keeps whether or not this app is running, and the enforcement
 loop itself for focus sessions — it is the only thing on the phone that can
 see a controlled app come to the front. Earned minutes raise today's
-allowance in `decide`, `pollDelayMillis` and `breach`, and never the pact.
+allowance in `decide`, `pollDelayMillis` and `overLimit`, and never the pact.
 
 Storage is DataStore, not Room. The pact is one small immutable value read
 at service start and written once, and the outbox is a short list of events
@@ -96,20 +96,30 @@ What is still missing is not a screen: the subscription and Play Billing,
 and the block screen not appearing on some devices despite the service
 running — that last one is a live bug, deferred deliberately.
 
-None of Hilt, Room, WorkManager or Play Billing is a dependency yet. They are
-named below because that is what this document is: the design of the app to
-be built, written before it was built. Anything phrased as though it already
-works describes an intention, not code, until it appears in the section
-above.
+This document was written before the app was, and the sections below have
+been brought back to what shipped. Where they still describe an intention
+rather than code they say so in place -- the configurable reset hour and the
+AccessibilityService fallback are the two. Play Billing is the one dependency
+still named and not present.
+
+The rules the enforcement loop follows, and why several of them are the
+opposite of what was first built, are in `ENFORCEMENT.md`.
 
 `docs/FIGMA_SCREENS.md` has the node id of every screen and the order they
 are being built in.
 
 ## Planned stack
 
-Kotlin, Jetpack Compose, single-activity, MVVM with a repository layer, Hilt
-for DI, Room for local persistence, WorkManager for background work, Retrofit
-+ OkHttp for the API, Google Play Billing for subscriptions.
+Kotlin, Jetpack Compose, single-activity, view models over small stores.
+DataStore for local persistence, OkHttp with kotlinx.serialization for the
+API, Firebase Messaging for push, Google Play Billing for subscriptions.
+
+No Hilt, no Room, no Retrofit, no WorkManager. Each was considered and each
+is listed here as an absence on purpose: three view models and a handful of
+stores do not need a DI container, one immutable pact and a short outbox do
+not need a database, a dozen calls do not need code generation, and the work
+that matters cannot be deferred to a scheduler -- it is a foreground service
+because a limit enforced whenever Android feels like it is not a limit.
 
 ## Enforcement loop
 
@@ -120,16 +130,35 @@ comfortable with and keep the other as a fallback that is off by default.
 ### Primary: foreground service + UsageStatsManager + overlay
 
 1. A foreground service (persistent notification, "Asr is protecting your
-   time") polls `UsageStatsManager.queryEvents` every 1 second while the screen
-   is on. This needs the `PACKAGE_USAGE_STATS` special permission, which the
-   user grants in system settings; the onboarding flow explains why and deep
-   links there.
+   time") polls `UsageStatsManager.queryEvents` at a rate that follows what
+   is at stake. This needs the `PACKAGE_USAGE_STATS` special permission,
+   which the user grants in system settings; the onboarding flow explains
+   why and deep links there.
+
+   | Situation | Delay |
+   |---|---|
+   | Screen off | the loop does not run at all; it waits on `ACTION_SCREEN_ON` and does the half-hourly errand |
+   | Nothing limited in front, nothing spent | 15s (`IDLE_MILLIS`) |
+   | A limited app is open with time left | 5s (`WATCHING_MILLIS`) |
+   | Open and inside its last two minutes | 1s (`CLOSE_MILLIS`) |
+   | **Spent, and not open** | 1s — it is one tap away |
+
+   The last row is not an optimisation, it is the fix for a hole: the delay
+   used to be read from the app in front *right now*, so a spent limit on the
+   home screen got the idle fifteen seconds and opening it bought whatever
+   was left of them. Every time, all day.
+
+   The rate never affects the *count*. Minutes come from event timestamps,
+   not from how often we look, so a slow poll delays the block screen and
+   loses nothing from the day.
 2. When a controlled app moves to the foreground, the service starts or
    resumes that app's local usage counter.
 3. When the counter reaches the limit, the service shows a full-screen
-   overlay (`SYSTEM_ALERT_WINDOW`, also granted in settings) on top of the
-   blocked app. The overlay offers: go back, start an activity to earn
-   minutes, or (during a pact) "I give up", which records a break.
+   activity (`SYSTEM_ALERT_WINDOW`, also granted in settings, because a
+   background activity launch needs it) on top of the blocked app. It offers
+   going back or earning minutes. Giving up is not on it: a way out offered
+   at the moment somebody is frustrated is not a decision, it is a button,
+   and it lives on the dashboard instead.
 4. Pressing home or back returns the user to the launcher; the overlay
    re-appears the moment the blocked app is foregrounded again.
 
@@ -166,41 +195,72 @@ are now wrong and somebody will build from them again.
   `protection_enabled` flag that is false if the service was killed and not
   restarted, so silence is noticed.
 
-## Local data (Room)
+## Local data (DataStore)
 
-| Table | Purpose |
+Room was the plan and is not what shipped. There is no usage history on the
+phone to query -- the day is rebuilt from Android's own event stream on every
+poll -- so what is left to store is a handful of small values, and a schema,
+a compiler plugin and a migration path for those is a cost with nothing on
+the other side of it.
+
+| Store | Holds |
 |---|---|
-| `controlled_app` | package, label, limit, reset time, per-day used seconds |
-| `pact` | mirror of the server row plus `locked` flag |
-| `activity` | local progress (steps counted, focus seconds elapsed) |
-| `outbox` | events waiting to be sent, with the UUIDv7 id, retry count, next attempt |
-| `local_event` | full history for the user's own screens (streaks, charts) |
+| `asr_pact` | the pact, as one JSON value. Written once when it is committed; read at service start. Half a pact is a state the loop must never see, so it is one atomic write |
+| `asr_sync` | install id, the server's device id, push token, the server's pact id keyed to the pact's start time, and the outbox |
+| `asr_carried` | minutes spent today on a phone this one is not, until the day rolls over |
+| `asr_witness` | the witness list, so the circle screen is drawn before the first request answers |
+| `asr_outcome` | how the last challenge ended, until the person has been shown |
+| `asr_auth` | the session token |
+| `asr_protection` | when the loop last ran, and when a block screen failed to launch |
 
-Raw usage never leaves Room. Only `outbox` rows go to the server.
+Raw usage never leaves the phone. Only the outbox and the daily summary go to
+the server.
 
 ## Outbox and idempotency
 
-Every server-bound event is written to `outbox` first with an id generated
-on the device (UUIDv7). A WorkManager job with network constraint drains it
-in order, retrying with exponential backoff. The server treats the id as an
-idempotency key, so a retry after a timeout cannot double-report a break or
-double-award minutes. The row is deleted only after a 2xx.
+Every server-bound event is written to the outbox first with an id generated
+on the device -- UUIDv7 for one-off events, and for anything that can be
+noticed repeatedly (a spent limit) an id derived from the pact, the app and
+the day, so the loop noticing it forty times posts one event.
+
+The enforcement loop drains it, oldest first, and stops at the first one that
+does not go through: a phone coming back on a train must not report a breach
+before the challenge it belongs to. A refusal drops the event rather than
+retrying it forever -- a 409 on a closed pact and a 400 on a body this build
+sends wrongly are both permanent, and an outbox that keeps a doomed event is
+a stuck queue. 401 and 429 are the exceptions; those will work later.
 
 ## Heartbeat
 
-A periodic WorkManager job every 6 hours (the minimum reliable interval on
-modern Android is 15 minutes; 6 hours keeps battery impact invisible) posts
-the heartbeat. The app also sends one on every cold start and after every
-outbox drain. The server's watchdog threshold is 24 hours, which tolerates a
-missed period or a night in airplane mode.
+The enforcement loop posts it every 30 minutes, alongside draining the
+outbox — including while the screen is off, when it is the only work the loop
+does. It carries `protection_enabled` read from the system rather than
+assumed: a heartbeat that always says true is worse than none, because it is
+what a witness would be trusting.
+
+Not a WorkManager job. The service is already running -- it has to be -- so a
+scheduler would add a second mechanism to keep alive for something the first
+one can do in a line.
+
+The server's 24-hour threshold tolerates a night in airplane mode. Telling an
+uninstall apart from a flat battery is a separate mechanism and a faster one;
+see `ENFORCEMENT.md`.
 
 ## Daily reset
 
-The user picks a reset time (default 04:00) so a limit does not refresh at
-midnight while they are still scrolling. Counters reset when the device
-clock crosses the reset time in the user's zone. If the phone was off at
-that moment, the reset is applied on next wake based on the last reset
-timestamp. Changing the reset time is locked during a pact.
+Local midnight, in the phone's own zone. The pact snapshot carries
+`reset_time` and the phone always sends `00:00`, because the server counts
+days for the witness screen and a server counting from a different hour than
+the phone would show two different numbers for the same day.
+
+A configurable reset hour was in the design and is not built. It is one
+value in the snapshot when it is wanted; what it cannot be is different on
+the two sides.
+
+Counters are not "reset" so much as recomputed: the accumulator is built for
+a named day and reads events from that day's midnight, so a phone that was
+off at midnight comes back with the right total rather than with a reset it
+missed.
 
 ## Activities
 

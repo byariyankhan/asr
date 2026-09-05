@@ -63,6 +63,7 @@ create table device (
   fcm_token_invalid  boolean not null default false,  -- set when FCM returns UNREGISTERED
   protection_enabled boolean not null default false,  -- as of last heartbeat
   last_heartbeat_at  timestamptz,
+  removal_suspected_at timestamptz,          -- 0009: when FCM first said this install is gone
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
   unique (user_id, install_id)
@@ -86,6 +87,7 @@ create table pact (
                 check (status in ('active', 'completed', 'broken')),
   ended_at      timestamptz,
   snapshot      jsonb not null,               -- see below
+  protection_pending_since timestamptz,       -- 0008: landed on a phone that cannot enforce it yet
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
@@ -104,7 +106,7 @@ updated; witnesses and the reinstall flow read from it.
     { "package": "com.instagram.android", "label": "Instagram", "daily_limit_min": 30 },
     { "package": "com.zhiliaoapp.musically", "label": "TikTok", "daily_limit_min": 0 }
   ],
-  "reset_time": "04:00",
+  "reset_time": "00:00",
   "activities": {
     "walk_steps":     { "target": 3000, "reward_min": 10, "daily_cap_min": 30 },
     "focus_session":  { "target_min": 25, "reward_min": 10, "daily_cap_min": 30 },
@@ -125,7 +127,7 @@ create table pact_event (
   device_id       uuid references device(id) on delete set null,   -- null for server-generated events
   type            text not null check (type in (
                     'started', 'completed', 'broken',
-                    'protection_lost', 'uninstalled', 'restored',
+                    'protection_lost', 'uninstalled', 'restored', 'moved',
                     'limit_hit', 'activity_completed', 'activity_failed'
                   )),
   reason          text check (reason in (
@@ -143,9 +145,20 @@ create table pact_event (
 create index pact_event_pact_idx on pact_event (pact_id, received_at desc);
 ```
 
-`limit_hit` rows are optional telemetry the app may send once per app per day
-so a witness can see "hit the Instagram limit 3 days out of 7". They carry no
-timing beyond the day.
+`limit_hit` is one row per app per day: the id is derived from the pact, the
+app and the day rather than from the clock, so the loop noticing the same
+spent limit forty times posts one event. A witness sees "reached a limit on
+Instagram"; it is not a failure and does not end anything.
+
+`moved` (0007) is the challenge changing handsets. Written by
+`movePactToDevice`, which every `POST /devices` from a new install goes
+through, and it always notifies: a challenge parked on a phone nobody uses is
+the one escape that would otherwise leave nothing behind.
+
+`restored` is declared and never written. It was for a reinstall announcing
+itself, and a reinstall now announces itself by moving the pact, which is
+`moved`. The value stays in the check constraint because removing it buys
+nothing and a migration that fails on an old row buys less.
 
 ### activity
 

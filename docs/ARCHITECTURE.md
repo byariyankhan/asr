@@ -33,7 +33,9 @@ witnesses what happened.
 - Real-time foreground detection and blocking.
 - Per-app usage counters and their daily reset.
 - Activity progress (steps, focus timer, waiting period).
-- Deciding that a rule was broken, and reporting it as an event.
+- Blocking an app whose limit is spent, and reporting that it was spent.
+  Not deciding that the challenge failed: going over a limit is blocked and
+  recorded, never punished. See `ENFORCEMENT.md`.
 - Streak and history screens (computed from the local event log; the server
   copy exists only so witnesses can see the same numbers).
 
@@ -43,8 +45,10 @@ witnesses what happened.
 - The pact ledger: what was promised, when, for how long, with which
   apps and limits, and how it ended.
 - Outcome events reported by the device, deduplicated by idempotency key.
-- Detecting silence: no heartbeat during an active pact means
-  protection was lost or the app was removed.
+- Which single phone a challenge is running on, and moving it when somebody
+  signs in on another one.
+- Detecting silence, and telling an uninstall apart from a phone that is
+  merely switched off.
 - Witness relationships and their notification preferences.
 - Sending notifications and remembering that they were sent.
 - Subscription state, verified against Google Play.
@@ -86,9 +90,9 @@ Definitions and DDL are in `DATABASE.md`.
 | Table | Purpose |
 |---|---|
 | `user` | Account, timezone, notification preferences (Better Auth also owns `session`, `account`, `verification`) |
-| `device` | Android install: FCM token, app version, `last_heartbeat_at`, protection flag |
-| `pact` | One promise: duration, start/end, status, JSON snapshot of controlled apps and limits at lock time |
-| `pact_event` | Ledger rows: `completed`, `broken`, `protection_lost`, `uninstalled`, `restored`, ... with reason code, device time, and server receive time |
+| `device` | Android install: FCM token, app version, `last_heartbeat_at`, protection flag, `removal_suspected_at` |
+| `pact` | One promise: duration, start/end, status, the `device_id` running it, `protection_pending_since`, JSON snapshot of controlled apps and limits at lock time |
+| `pact_event` | Ledger rows: `completed`, `broken`, `limit_hit`, `moved`, `protection_lost`, `uninstalled`, `activity_completed`, `activity_failed`, with reason code, device time, and server receive time |
 | `activity` | One earn-your-time attempt: type, target, reward minutes, deadline, outcome |
 | `witness` | Directed relationship user → witness, status, per-witness notification settings, invite code |
 | `reaction` | A witness's one emoji per event (tomato, shoe, clap...) shown back to the user |
@@ -110,44 +114,79 @@ Nothing references Bookween.
    its side if an API call tries.
 4. Witnesses get "X started a 7-day pact" (if they opted in).
 
-### Breaking a pact
+### Reaching a limit, and ending a pact
 
-1. The phone detects a breach: limit exceeded and the user chose to continue,
-   a controlled app was removed, protection was turned off in settings, or
-   the usage permission was revoked.
-2. The phone writes the event to its local outbox with a fresh UUIDv7 as
-   idempotency key, then `POST /v1/pacts/{id}/events`.
+Going over a limit does not end a challenge. It never did anything the
+product promised by doing so: a person who scrolled past thirty minutes was
+told their word was worthless, for something the app was supposed to prevent
+and had just failed to. So a spent limit blocks the app and posts a
+`limit_hit` event, which is what a witness sees on the progress screen, and
+the challenge carries on.
+
+Three things end one:
+
+| Ending | How |
+|---|---|
+| **Completed** | The last day passes. The phone reports it; `completeElapsedPacts` catches the ones whose phone never did. |
+| **Given up** | The person presses Give up. `POST /v1/pacts/{id}/give-up`, `broken` with reason `user_gave_up`. There has to be a front door, and it is not free: the witnesses hear about it in their own words. |
+| **Abandoned** | The app was removed, or nothing has enforced the challenge for a day. Detected by the server; see below. |
+
+1. The phone writes the event to its local outbox with an id derived from the
+   pact, the app and the day, so reporting it twice is reporting it once.
+2. `POST /v1/pacts/{id}/events`.
 3. Server inserts the event (primary key is the device-generated id, so
-   retries are harmless), marks the pact `broken`, and enqueues witness
-   notifications.
+   retries are harmless), marks the pact `broken` when the event is one of
+   the endings, and enqueues witness notifications.
 4. If the phone was offline, the outbox drains on next connectivity. The
    event carries `occurred_at` from the device clock; the server also stores
    `received_at`. Witness messages use `received_at` for "when we found out"
    and show the device time as "reported time".
 
+### One account, one phone
+
+A phone can measure its own screen and nothing else's, so two phones
+enforcing the same thirty minutes is an hour. Registering a device is
+therefore signing in on it, and signing in on it signs out everywhere else:
+`takeOverOnPhone` pushes `kind=signed_out` to the old phone while its token
+still works, clears that token, deletes every other session, and moves the
+pact across with `movePactToDevice` — which records a `moved` event and tells
+the witnesses, because parking a challenge on a handset nobody uses is the
+one escape that would otherwise leave nothing behind.
+
+`GET /v1/pacts/current` carries the day's minutes so the new phone does not
+hand back a fresh allowance, and `protection_pending_since` starts running
+because the permissions are per install. Two hours unprotected and the
+witnesses are told. The whole rule and its reasoning are in
+`ENFORCEMENT.md`.
+
 ### Detecting silence (protection lost or uninstalled)
 
-The device sends `POST /v1/devices/{id}/heartbeat` roughly every 6 hours via
-WorkManager, plus on every app open and after every event. The watchdog
-(`server/watchdog.ts`, started by `instrumentation.ts`, single-flight via a
-Redis lock) runs every 15 minutes:
+The enforcement service sends `POST /v1/devices/{id}/heartbeat` every 30
+minutes while it runs — including while the screen is off, which is the only
+work it does then. The watchdog (`server/watchdog.ts`, started by
+`instrumentation.ts`, single-flight via a Redis lock) runs every 15 minutes.
 
-```
-for each active pact:
-  if latest heartbeat older than 24h:
-     insert pact_event(type='protection_lost') if not already present
-     notify witnesses
-```
+Two rules, for two different facts:
 
-Uninstall is detected two ways, either of which is enough:
+**The app is gone.** FCM answers `UNREGISTERED` only for an installation
+Google no longer knows about; a phone that is off, or has data switched off,
+has the message accepted and queued. That difference is the whole reason
+`probeForRemovals` exists: it asks with a silent data-only push, and an
+office afternoon with the phone switched off never starts anything. One
+answer is not enough — tokens rotate and phones get restored from backups —
+so the first `not-registered` only records `removal_suspected_at`, and it
+takes a second one two hours later with no heartbeat in between. Then
+`handleDeadDevice` closes the pact as `broken` with reason `fcm_unregistered`.
 
-- FCM returns `UNREGISTERED` for the device token when we try to send
-  anything. That is a definitive signal from Google that the app is gone.
-- Heartbeats stop and the user has no other active device.
+**Nothing has enforced this for a day.** `markProtectionLost`: the phone that
+*owns* the pact has been silent for 24 hours. Ownership is the whole
+question — it used to also accept "any other device of theirs is alive",
+which let a fresh reinstall vouch for the phone it replaced. The copy for
+this one says what it means: we have not heard from this phone in a day.
 
-On reinstall and login the device registers again, a `restored` event is
-written, and the pact continues if it has not ended. V1 rule: any
-`protection_lost` during an active pact counts as a break.
+Signing in on a new phone restores the challenge from the server's snapshot
+and moves ownership to it; the permission gate stands in front of the
+dashboard until it can actually enforce anything.
 
 ### Activities
 

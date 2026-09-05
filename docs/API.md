@@ -95,13 +95,29 @@ it every minute and this costs two round trips to Cloudflare.
 
 ### `POST /devices`
 
-Register or update this install. Called on every app start after login.
+Register this install — which is what signing in on a phone means, and it
+signs the account out everywhere else.
 
 ```json
 { "install_id": "…", "model": "Pixel 8", "os_version": "15", "app_version": "1.0.0", "fcm_token": "…" }
 ```
 
-Returns the `device` row. Idempotent on `(user, install_id)`.
+Returns the `device` row. Idempotent on `(user, install_id)`, so an app start
+on the phone that is already registered changes nothing. From a phone that is
+not, in one request:
+
+1. Pushes `kind=signed_out` to every other device of this account, while
+   their tokens still work — a phone that finds out by getting a 401 finds
+   out whenever it next has a reason to ask.
+2. Clears those tokens and **deletes every session but the caller's**. This
+   is the part no app can ignore.
+3. Moves the active pact to this device with a `moved` event, tells the
+   witnesses, and starts `protection_pending_since` unless this phone has
+   already reported its protection on.
+
+One account runs on one phone because a phone can measure its own screen and
+nothing else's; two phones enforcing the same thirty minutes is an hour. See
+`ENFORCEMENT.md`.
 
 ### `POST /devices/{id}/heartbeat`
 
@@ -110,8 +126,12 @@ Returns the `device` row. Idempotent on `(user, install_id)`.
 ```
 
 `204`. Updates `last_heartbeat_at`, `protection_enabled`, and the token if it
-changed. Called every ~6 h by WorkManager, on app open, and after every event
-post.
+changed. Also clears `removal_suspected_at`, and — when `protection_enabled`
+is true — `protection_pending_since` on this device's active pact: a
+heartbeat is the app saying it is here and working.
+
+Sent by the enforcement loop every 30 minutes, including while the screen is
+off, and immediately in answer to the server's silent `kind=ping`.
 
 ### `DELETE /devices/{id}`
 
@@ -126,7 +146,7 @@ Logout from this device. `204`.
   "device_id": "…",
   "duration_days": 7,
   "timezone": "Asia/Dhaka",
-  "snapshot": { "apps": [...], "reset_time": "04:00", "activities": {...} }
+  "snapshot": { "apps": [...], "reset_time": "00:00", "activities": {...} }
 }
 ```
 
@@ -135,7 +155,24 @@ Logout from this device. `204`.
 
 ### `GET /pacts/current`
 
-The active pact or `404`.
+The active pact or `404`. Everything a phone that has never seen this
+challenge needs to run it:
+
+```json
+{
+  "id": "…", "device_id": "…", "device_model": "Galaxy A54",
+  "duration_days": 30, "timezone": "Asia/Dhaka", "starts_at": "…",
+  "status": "active", "protection_pending_since": null,
+  "snapshot": { "apps": [...], "reset_time": "00:00", "activities": {...} },
+  "today": { "day": "2026-09-05", "apps": [{ "package": "…", "minutes_used": 22 }] }
+}
+```
+
+`today` is the day as the last phone reported it, in the pact's timezone.
+Without it, changing phones handed back a fresh allowance: the new phone can
+only measure its own screen, so it opens on zero. The phone adds these
+minutes to what it can see, less its own share of them — a reinstall on the
+same handset would otherwise count its own morning twice.
 
 ### `GET /pacts?cursor=&limit=`  **witness**
 
@@ -312,14 +349,16 @@ recorded, is written about as they/them, verbs included.
 ```
 
 This phone is the one enforcing the challenge from now on; sets the pact's
-`device_id`. Sent by a phone that restored a pact it did not create — a
-reinstall, a replacement handset, a second phone on the same account. `409
-challenge_over` once it has finished, `404` for somebody else's.
+`device_id`, writes a `moved` event and tells the witnesses. `409
+challenge_over` once it has finished, `404` for somebody else's. Claiming
+from the phone that already owns it changes nothing and says nothing.
+
+Rarely needed now: `POST /devices` moves ownership by itself, because
+registering is signing in. It stays as the explicit form of the same
+operation, and as what `movePactToDevice` is called from in tests.
 
 Ownership is what the uninstall check reads: a dead FCM token closes the
-challenge only when the dead device is the one that owns it. `GET
-/pacts/current` returns the whole pact, snapshot included, which is what a
-phone rebuilds it from.
+challenge only when the dead device is the one that owns it.
 
 ### `GET /witnesses`
 

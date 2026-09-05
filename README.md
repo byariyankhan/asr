@@ -18,21 +18,22 @@ who hold you to it.
 | Path | Contents |
 |---|---|
 | `backend/` | Next.js API (`api.joinasr.io`): accounts, pact ledger, witnesses, notifications |
-| `android/` | Kotlin + Jetpack Compose app. Design system and the auth screens exist; enforcement, usage tracking and the rest are planned — see `docs/ANDROID.md` |
+| `android/` | Kotlin + Jetpack Compose app: the whole product, enforcement loop included — see `docs/ANDROID.md` |
 | `docs/` | Design and operations documents (start with `ARCHITECTURE.md`) |
 | `infra/` | Production `docker-compose.yml`, nginx site, backup script: version of record for the VPS |
 
 ## Read this before writing code
 
 1. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): what runs on the phone, what runs on the server, and why. The **data boundary** section is the most important decision in the project.
-2. [`docs/DATABASE.md`](docs/DATABASE.md): the server tables and the migration convention.
-3. [`docs/API.md`](docs/API.md): every endpoint the Android app calls.
-4. [`docs/ANDROID.md`](docs/ANDROID.md): enforcement loop, permissions, Play policy, offline queue.
-5. [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md): how it runs on the VPS next to Bookween without touching Bookween, and how it moves to its own server later.
-6. [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md): local setup and conventions.
-7. [`docs/DESIGN.md`](docs/DESIGN.md): the colours, type and measures, read out of
+2. [`docs/ENFORCEMENT.md`](docs/ENFORCEMENT.md): the rules this product is. What ends a challenge and what does not, why one account runs on one phone, how often the loop looks and why, and how an uninstall is told apart from a phone that is switched off. Several of these were got wrong first; the last section lists what must not come back.
+3. [`docs/DATABASE.md`](docs/DATABASE.md): the server tables and the migration convention.
+4. [`docs/API.md`](docs/API.md): every endpoint the Android app calls.
+5. [`docs/ANDROID.md`](docs/ANDROID.md): enforcement loop, permissions, Play policy, offline queue.
+6. [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md): how it runs on the VPS next to Bookween without touching Bookween, and how it moves to its own server later.
+7. [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md): local setup and conventions.
+8. [`docs/DESIGN.md`](docs/DESIGN.md): the colours, type and measures, read out of
    Figma. Anything that needs a colour uses these and invents nothing.
-8. [`docs/FIGMA_SCREENS.md`](docs/FIGMA_SCREENS.md): every screen's node id, in build order.
+9. [`docs/FIGMA_SCREENS.md`](docs/FIGMA_SCREENS.md): every screen's node id, in build order.
 
 ## The three rules
 
