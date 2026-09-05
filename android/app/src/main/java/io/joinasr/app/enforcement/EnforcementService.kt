@@ -83,6 +83,10 @@ class EnforcementService : Service() {
     private var lastSummaryMillis = 0L
     private var lastSummarySent: Map<String, Int> = emptyMap()
 
+    /** Whether a limited app was in front on the last pass, so that putting
+     *  it down can be noticed. */
+    private var wasUsingLimitedApp = false
+
     /** True while [end] is running, so a slow write cannot end a pact twice. */
     @Volatile
     private var ending = false
@@ -218,7 +222,7 @@ class EnforcementService : Service() {
 
         reportLimitsReached(current, snapshot, earned, now)
 
-        sendSummaryIfDue(current, now, snapshot.minutesByPackage)
+        sendSummaryIfDue(current, now, snapshot.minutesByPackage, snapshot.foregroundPackage)
         flushIfDue(current, now)
 
         when (val decision = Enforcement.decide(current, snapshot, earned)) {
@@ -344,21 +348,44 @@ class EnforcementService : Service() {
     }
 
     /**
-     * Today's figures, often enough to be worth having.
+     * Today's figures, sent when something happened rather than on a clock.
      *
      * Two things read them. A witness watching a challenge being kept, for
-     * whom half an hour late is fine -- and the next phone, for whom it is
-     * not: whatever has not been sent when somebody signs in elsewhere is a
-     * gap in the day that the new phone will hand back as free minutes. Five
-     * minutes is the width of that gap now.
+     * whom half an hour late is fine -- and the next phone to hold this
+     * challenge, for whom it is not: whatever has not been sent when
+     * somebody signs in elsewhere is a piece of the day the new phone hands
+     * back as free minutes.
      *
-     * Only when they have changed, and only marked as sent when they landed:
-     * an unchanged day is not news, and a failed send that counted as one
+     * A timer would spend a phone's night sending a number that has not
+     * moved. These figures only change while a limited app is actually in
+     * front of somebody, so that is when this sends: once when they put it
+     * down, which is the moment the number is final, and every few minutes
+     * while they are still holding it, so that a long sitting cannot be
+     * carried off by signing in elsewhere mid-scroll. An idle phone sends
+     * nothing at all -- the first line returns, because nothing has changed.
+     *
+     * The half-hourly floor stays for what moves without anybody opening
+     * anything: minutes earned by walking, and the day rolling over.
+     *
+     * Only marked as sent when it landed. A failed send counted as a success
      * would be a hole nobody could see.
      */
-    private suspend fun sendSummaryIfDue(pact: Pact, nowMillis: Long, minutesByPackage: Map<String, Int>) {
+    private suspend fun sendSummaryIfDue(
+        pact: Pact,
+        nowMillis: Long,
+        minutesByPackage: Map<String, Int>,
+        foreground: String?,
+    ) {
+        val using = foreground != null && pact.appFor(foreground) != null
+        val justPutItDown = wasUsingLimitedApp && !using
+        wasUsingLimitedApp = using
+
         if (minutesByPackage == lastSummarySent) return
-        if (nowMillis - lastSummaryMillis < SUMMARY_EVERY_MILLIS) return
+        val due = justPutItDown ||
+            (using && nowMillis - lastSummaryMillis >= SUMMARY_WHILE_USING_MILLIS) ||
+            nowMillis - lastSummaryMillis >= SUMMARY_FLOOR_MILLIS
+        if (!due) return
+
         lastSummaryMillis = nowMillis
         val sent = runCatching { sync.sendSummary(pact, minutesByPackage) }.getOrDefault(false)
         if (sent) lastSummarySent = minutesByPackage
@@ -536,8 +563,12 @@ class EnforcementService : Service() {
         /** How often the loop tries to empty the outbox. */
         private const val FLUSH_EVERY_MILLIS = 30L * 60 * 1000
 
-        /** How often today's figures go up, when they have moved. */
-        private const val SUMMARY_EVERY_MILLIS = 5L * 60 * 1000
+        /** While a limited app is in front: often enough that a long
+         *  sitting cannot be carried off by signing in elsewhere. */
+        private const val SUMMARY_WHILE_USING_MILLIS = 5L * 60 * 1000
+
+        /** And a floor, for what moves without anybody opening anything. */
+        private const val SUMMARY_FLOOR_MILLIS = 30L * 60 * 1000
 
         /** How often to ask what the day already held, until there is an answer. */
         private const val CARRY_RETRY_MILLIS = 60L * 1000
