@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
+import { siteUrl } from "./site-metadata";
 
-export const metadata = { title: "Asr" };
+export const metadata = { title: "Asr", metadataBase: new URL(siteUrl) };
 
 // Mostly an API, plus the pages the links in the product open: /w/<code> is
 // the witness invitation, shared through whatever the sender already uses to
