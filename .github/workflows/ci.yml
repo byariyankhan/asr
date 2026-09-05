@@ -30,6 +30,19 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # Production has one, and the watchdog's lock and the rate limiter's
+      # counters live in it. Without it here, `redis()` answered null and
+      # both fell back to their in-process paths on every run, so the code
+      # that actually runs on the VPS was the code CI never ran.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     defaults:
       run:
@@ -37,6 +50,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://asr:asr@127.0.0.1:5432/asr
+      REDIS_URL: redis://127.0.0.1:6379
       BETTER_AUTH_SECRET: ci-secret-ci-secret-ci-secret-1234
       BETTER_AUTH_URL: http://localhost:3001
 

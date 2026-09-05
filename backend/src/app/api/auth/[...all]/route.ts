@@ -1,6 +1,7 @@
 import { toNextJsHandler } from "better-auth/next-js";
 import { NextResponse } from "next/server";
 import { clientIpFromHeaders } from "@/lib/client-ip";
+import { logRequest } from "@/lib/request-log";
 import { auth } from "@/server/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/server/rate-limit";
 
@@ -22,10 +23,20 @@ async function limited(request: Request): Promise<Response | null> {
   );
 }
 
+// The same one line per request the /v1 routes write. No user id: Better
+// Auth resolves the session inside its own handler, and the sign-in and
+// sign-up calls that matter most here have none yet by definition.
+async function logged(request: Request, run: () => Promise<Response>): Promise<Response> {
+  const startedAt = Date.now();
+  const response = await run();
+  logRequest(request, response.status, startedAt);
+  return response;
+}
+
 export async function POST(request: Request) {
-  return (await limited(request)) ?? handler.POST(request);
+  return logged(request, async () => (await limited(request)) ?? handler.POST(request));
 }
 
 export async function GET(request: Request) {
-  return (await limited(request)) ?? handler.GET(request);
+  return logged(request, async () => (await limited(request)) ?? handler.GET(request));
 }

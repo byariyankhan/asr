@@ -21,3 +21,9 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# Crashlytics: a stack trace from a release build is only useful with the
+# file and line still in it. The plugin uploads the mapping file; these keep
+# what it maps back to.
+-keepattributes SourceFile,LineNumberTable
+-keep public class * extends java.lang.Exception

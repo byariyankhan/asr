@@ -139,16 +139,23 @@ step "Installing the nginx sites"
 # Two names, one upstream. api.joinasr.io is what the app talks to;
 # joinasr.io serves the links the product puts in front of other people --
 # the witness invitation and the App Links file Android verifies it with.
-cp "$ROOT/src/infra/nginx/asr-api" /etc/nginx/sites-available/asr-api
-ln -sf /etc/nginx/sites-available/asr-api /etc/nginx/sites-enabled/asr-api
-# Never clobbers TLS: certbot rewrites the file in place, so copying over a
-# site it has already edited would take the certificate back out.
-if grep -q "ssl_certificate" /etc/nginx/sites-available/asr-site 2>/dev/null; then
-  echo "  asr-site already has TLS; leaving it alone"
-else
-  cp "$ROOT/src/infra/nginx/asr-site" /etc/nginx/sites-available/asr-site
-fi
-ln -sf /etc/nginx/sites-available/asr-site /etc/nginx/sites-enabled/asr-site
+# Never clobbers TLS: certbot rewrites a site file in place, so copying over
+# one it has already edited would take the certificate back out. Both sites,
+# not one: the guard was written for asr-site alone, and a re-run of this
+# script -- which its own header calls safe -- would have left api.joinasr.io
+# on plain HTTP with the certificate re-issued only if CERTBOT_EMAIL, an
+# optional secret, happened to be set.
+install_site() {
+  local name="$1"
+  if grep -q "ssl_certificate" "/etc/nginx/sites-available/$name" 2>/dev/null; then
+    echo "  $name already has TLS; leaving it alone"
+  else
+    cp "$ROOT/src/infra/nginx/$name" "/etc/nginx/sites-available/$name"
+  fi
+  ln -sf "/etc/nginx/sites-available/$name" "/etc/nginx/sites-enabled/$name"
+}
+install_site asr-api
+install_site asr-site
 nginx -t
 systemctl reload nginx
 echo "  api.joinasr.io proxies to 127.0.0.1:3001 (plain HTTP until certbot runs)"

@@ -6,4 +6,5 @@ plugins {
     // Applied by :app only when google-services.json is present. Declared
     // here so the plugin is on the build's classpath either way.
     alias(libs.plugins.google.services) apply false
+    alias(libs.plugins.firebase.crashlytics) apply false
 }

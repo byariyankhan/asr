@@ -256,6 +256,16 @@ trusted to finish offline, and one whose time was set by hand waits. The
 loop also listens for the clock, the zone and the date changing under it and
 recounts the day from what the system reports.
 
+### Crash reports
+
+Crashlytics, through the Firebase project push already uses; nothing else
+in the app reports anything. Crashes report themselves. The failures that
+matter more do not crash: the enforcement loop catches everything, and what
+it catches now goes to Crashlytics as a non-fatal with the place it happened
+(`diagnostics/Crash.kt`), which is the first time a phone in the field can
+say why a limit was not enforced. Inert without `google-services.json`, like
+push. The privacy policy names it and what a report carries.
+
 ### Fallback: AccessibilityService
 
 Faster foreground detection and harder to bypass, but Google rejects apps

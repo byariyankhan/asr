@@ -187,8 +187,12 @@ standalone API ≈ 150–250 MB. Asr adds roughly 300 MB to a machine with about
 
 - `GET /v1/health` checked externally every minute (same uptime monitor as
   Bookween, separate check).
-- `docker compose logs -f api` for errors; the API logs one JSON line per
-  request with user id, route, status, duration.
+- `docker compose logs -f api`: the API writes one JSON line per `/v1` and
+  `/api/auth` request -- time, method, path, status, duration, and the user
+  id once a session was resolved (`backend/src/lib/request-log.ts`). Healthy
+  answers to the health endpoints are not logged; query strings never are,
+  and an invite code in a path is masked. Container logs are capped by the
+  compose file at five files of 20 MB per service.
 - The watchdog writes its last successful run time to Redis; `/v1/health`
   reports `watchdog_stale: true` if that is older than 30 minutes.
 - Backup failure alerts reuse Bookween's `alert.sh` (email), with a distinct

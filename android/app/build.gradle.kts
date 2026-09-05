@@ -18,6 +18,12 @@ plugins {
 val firebaseConfigured = file("google-services.json").exists()
 if (firebaseConfigured) {
     apply(plugin = "com.google.gms.google-services")
+    // Crash reports, through the same Firebase project as push. Nothing in
+    // the app said anything when it died: the block screen "not appearing on
+    // some devices" was a rumour for weeks because no phone could report it.
+    // The plugin uploads R8 mapping files for release builds so a stack
+    // trace from a shrunk APK still names the line.
+    apply(plugin = "com.google.firebase.crashlytics")
 }
 
 android {
@@ -115,6 +121,9 @@ dependencies {
     // never fetched, and Push.kt reports that rather than crashing.
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    // Inert without google-services.json, like messaging: FirebaseApp never
+    // initialises and diagnostics/Crash.kt checks before touching it.
+    implementation(libs.firebase.crashlytics)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

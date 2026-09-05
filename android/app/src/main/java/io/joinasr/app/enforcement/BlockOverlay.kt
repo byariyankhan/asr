@@ -35,6 +35,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.joinasr.app.apps.InstalledApps
+import io.joinasr.app.diagnostics.Crash
 import io.joinasr.app.ui.screens.BlockedScreen
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -108,7 +109,10 @@ class BlockOverlay(context: Context) {
             lifecycle.resume()
             root = view
             owner = lifecycle
-        }.onFailure { shown.value = null }.isSuccess
+        }.onFailure {
+            shown.value = null
+            Crash.report(app, it, "overlay")
+        }.isSuccess
     }
 
     suspend fun hide() = withContext(Dispatchers.Main.immediate) { hideNow() }
