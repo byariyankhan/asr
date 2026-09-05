@@ -6,6 +6,7 @@ import { closePact } from "./events";
 import { sendPush, type PushSender } from "./fcm";
 import { WATCHDOG_LAST_RUN_KEY } from "./health";
 import { queueWitnessNotifications } from "./notifications";
+import { type Outage, recentOutages, recordRun, uptimeBetween } from "./outages";
 import { key, redis } from "./redis";
 import { HttpError } from "@/lib/http";
 import { newId } from "@/lib/uuid";
@@ -48,10 +49,22 @@ export const REMOVAL_CONFIRM_MS = 2 * 60 * 60 * 1000;
 export const DELETION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 export const NOTIFICATION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 export const SUMMARY_RETENTION_MS = 400 * 24 * 60 * 60 * 1000;
-const LOCK_KEY = key("watchdog", "lock");
-const LOCK_MS = 10 * 60 * 1000;
+export const WATCHDOG_LOCK_KEY = key("watchdog", "lock");
+/**
+ * How long the Redis lock lives without being renewed: a run that dies with
+ * its process frees the lock within this. Renewed every LOCK_RENEW_MS while
+ * a run is going, so a slow run never loses it to the next tick.
+ */
+const LOCK_MS = 5 * 60 * 1000;
+const LOCK_RENEW_MS = 60 * 1000;
+// Both check that the lock still carries this run's token, so a run can only
+// ever release or extend the lock it took, never one a later run holds.
+const RELEASE_IF_OWNED = 'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end';
+const EXTEND_IF_OWNED = 'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end';
 
 export type WatchdogReport = {
+  /** This run found the previous one more than OUTAGE_GAP_MS old and wrote the gap down as an outage. */
+  outage_noticed: boolean;
   protection_lost: number;
   removals_found: number;
   protection_off: number;
@@ -64,18 +77,48 @@ export type WatchdogReport = {
   rows_expired: number;
 };
 
+// The process-level half of single-flight. Set before the first await, so
+// the loop's tick and the manual trigger cannot both get past it, Redis or
+// no Redis.
+let running = false;
+
 export async function runWatchdog(opts: { push?: PushSender; now?: Date } = {}): Promise<WatchdogReport | null> {
+  if (running) return null;
+  running = true;
+  try {
+    return await runLocked(opts);
+  } finally {
+    running = false;
+  }
+}
+
+async function runLocked(opts: { push?: PushSender; now?: Date }): Promise<WatchdogReport | null> {
   const client = redis();
+  const token = `${process.pid}:${newId()}`;
+  let renewal: ReturnType<typeof setInterval> | undefined;
   if (client) {
-    const got = await client.set(LOCK_KEY, String(process.pid), "PX", LOCK_MS, "NX").catch(() => null);
-    if (got !== "OK") return null; // another replica is running it
+    const got = await client.set(WATCHDOG_LOCK_KEY, token, "PX", LOCK_MS, "NX").catch(() => null);
+    if (got !== "OK") return null; // another process is running it, or Redis cannot say
+    renewal = setInterval(() => {
+      client.eval(EXTEND_IF_OWNED, 1, WATCHDOG_LOCK_KEY, token, String(LOCK_MS)).catch(() => {});
+    }, LOCK_RENEW_MS);
+    renewal.unref?.();
   }
   try {
     const now = opts.now ?? new Date();
+    // Before anything is judged: how long since the last run is the one fact
+    // every silence rule below needs (server/outages.ts).
+    const outage = await recordRun(now);
+    if (outage) {
+      console.warn("[watchdog] the server was away", JSON.stringify({ from: outage.started_at, to: outage.ended_at }));
+    }
+    const outages = await recentOutages(now);
+    const push = opts.push ?? sendPush;
     const report: WatchdogReport = {
-      protection_lost: await markProtectionLost(now),
-      removals_found: await probeForRemovals(opts.push ?? sendPush, now),
-      protection_off: await reportUnprotectedHandovers(now),
+      outage_noticed: outage !== null,
+      protection_lost: await markProtectionLost(now, outages),
+      removals_found: await probeForRemovals(push, now, outages),
+      protection_off: await reportUnprotectedHandovers(now, outages),
       uninstalled: 0,
       activities_failed: await failExpiredActivities(now),
       pacts_completed: await completeElapsedPacts(now),
@@ -84,8 +127,7 @@ export async function runWatchdog(opts: { push?: PushSender; now?: Date } = {}):
       accounts_purged: await purgeDeletedAccounts(now),
       rows_expired: await expireOldRows(now),
     };
-    const push = opts.push ?? sendPush;
-    const delivered = await deliverNotifications(push, now);
+    const delivered = await deliverNotifications(push, now, outages);
     report.notifications_sent = delivered.sent;
     report.notifications_failed = delivered.failed;
     report.uninstalled = delivered.uninstalled;
@@ -95,14 +137,15 @@ export async function runWatchdog(opts: { push?: PushSender; now?: Date } = {}):
     // new dead token, because the devices it would use were just marked
     // invalid.
     if (delivered.uninstalled > 0) {
-      const second = await deliverNotifications(push, now);
+      const second = await deliverNotifications(push, now, outages);
       report.notifications_sent += second.sent;
       report.notifications_failed += second.failed;
     }
     if (client) await client.set(WATCHDOG_LAST_RUN_KEY, String(Date.now())).catch(() => {});
     return report;
   } finally {
-    if (client) await client.del(LOCK_KEY).catch(() => {});
+    if (renewal) clearInterval(renewal);
+    if (client) await client.eval(RELEASE_IF_OWNED, 1, WATCHDOG_LOCK_KEY, token).catch(() => {});
   }
 }
 
@@ -131,7 +174,7 @@ export async function runWatchdog(opts: { push?: PushSender; now?: Date } = {}):
  * nobody should get an empty line in their shade every half hour for an
  * internal check.
  */
-export async function probeForRemovals(push: PushSender, now: Date): Promise<number> {
+export async function probeForRemovals(push: PushSender, now: Date, outages: readonly Outage[] = []): Promise<number> {
   const quiet = new Date(now.getTime() - PROBE_AFTER_MS);
   const candidates = await db
     .selectFrom("pact")
@@ -140,6 +183,7 @@ export async function probeForRemovals(push: PushSender, now: Date): Promise<num
       "device.id as device_id",
       "device.fcm_token",
       "device.removal_suspected_at",
+      "device.last_heartbeat_at",
     ])
     .where("pact.status", "=", "active")
     .where("device.fcm_token", "is not", null)
@@ -151,6 +195,9 @@ export async function probeForRemovals(push: PushSender, now: Date): Promise<num
 
   let found = 0;
   for (const device of candidates) {
+    // Quiet by the wall clock is the query; quiet for 45 minutes of the
+    // server being there to hear it is the question.
+    if (device.last_heartbeat_at && uptimeBetween(outages, device.last_heartbeat_at, now) < PROBE_AFTER_MS) continue;
     const result = await push(device.fcm_token!, {
       title: "",
       body: "",
@@ -171,7 +218,7 @@ export async function probeForRemovals(push: PushSender, now: Date): Promise<num
       continue;
     }
 
-    if (!(await noteUnregistered(device.device_id, now))) continue;
+    if (!(await noteUnregistered(device.device_id, now, outages))) continue;
     if (await handleDeadDevice(device.device_id, now)) found += 1;
   }
   return found;
@@ -193,7 +240,7 @@ export async function probeForRemovals(push: PushSender, now: Date): Promise<num
  * deleted. Every not-registered answer now comes through here, and the
  * two-answer rule ENFORCEMENT.md promises is the only rule there is.
  */
-export async function noteUnregistered(deviceId: string, now: Date): Promise<boolean> {
+export async function noteUnregistered(deviceId: string, now: Date, outages: readonly Outage[] = []): Promise<boolean> {
   const device = await db
     .selectFrom("device")
     .select(["removal_suspected_at"])
@@ -208,7 +255,9 @@ export async function noteUnregistered(deviceId: string, now: Date): Promise<boo
       .execute();
     return false;
   }
-  if (now.getTime() - device.removal_suspected_at.getTime() < REMOVAL_CONFIRM_MS) return false;
+  // Two hours in which the phone could have spoken: an outage in the
+  // middle of the window is not two hours of the phone saying nothing.
+  if (uptimeBetween(outages, device.removal_suspected_at, now) < REMOVAL_CONFIRM_MS) return false;
 
   // Twice, two hours apart, and the phone has said nothing at all in
   // between. That is an app that is gone.
@@ -253,11 +302,11 @@ function alreadyClosed(error: unknown): false {
  * should find their challenge where they left it. The clock stops the moment
  * a heartbeat says protection is on.
  */
-export async function reportUnprotectedHandovers(now: Date): Promise<number> {
+export async function reportUnprotectedHandovers(now: Date, outages: readonly Outage[] = []): Promise<number> {
   const cutoff = new Date(now.getTime() - PROTECTION_GRACE_MS);
   const stuck = await db
     .selectFrom("pact")
-    .select(["id", "user_id", "device_id"])
+    .select(["id", "user_id", "device_id", "protection_pending_since"])
     .where("status", "=", "active")
     .where("protection_pending_since", "is not", null)
     .where("protection_pending_since", "<", cutoff)
@@ -265,6 +314,7 @@ export async function reportUnprotectedHandovers(now: Date): Promise<number> {
 
   let count = 0;
   for (const pact of stuck) {
+    if (uptimeBetween(outages, pact.protection_pending_since!, now) < PROTECTION_GRACE_MS) continue;
     await db.transaction().execute(async (trx) => {
       const eventId = newId();
       await trx
@@ -301,15 +351,16 @@ export async function reportUnprotectedHandovers(now: Date): Promise<number> {
   return count;
 }
 
-// An active pact whose device has been silent for a day: protection was
-// turned off, the phone is dead, or the app is gone. V1 rule: that breaks
-// the pact. Devices that never heartbeated count from the pact's start.
-export async function markProtectionLost(now: Date): Promise<number> {
+// An active pact whose device has been silent for a day -- a day of the
+// server being there to hear it (server/outages.ts): protection was turned
+// off, the phone is dead, or the app is gone. V1 rule: that breaks the
+// pact. Devices that never heartbeated count from the pact's start.
+export async function markProtectionLost(now: Date, outages: readonly Outage[] = []): Promise<number> {
   const cutoff = new Date(now.getTime() - HEARTBEAT_TIMEOUT_MS);
   const silent = await db
     .selectFrom("pact")
     .leftJoin("device", "device.id", "pact.device_id")
-    .select(["pact.id", "pact.user_id", "pact.device_id"])
+    .select(["pact.id", "pact.user_id", "pact.device_id", "pact.starts_at", "device.last_heartbeat_at"])
     .where("pact.status", "=", "active")
     .where("pact.starts_at", "<", cutoff)
     .where((eb) => eb.or([eb("device.last_heartbeat_at", "is", null), eb("device.last_heartbeat_at", "<", cutoff)]))
@@ -317,6 +368,7 @@ export async function markProtectionLost(now: Date): Promise<number> {
 
   let count = 0;
   for (const pact of silent) {
+    if (uptimeBetween(outages, pact.last_heartbeat_at ?? pact.starts_at, now) < HEARTBEAT_TIMEOUT_MS) continue;
     const done = await db
       .transaction()
       .execute(async (trx) => {
@@ -428,7 +480,7 @@ export async function completeElapsedPacts(now: Date): Promise<number> {
 // handled by the same two-answer rule the probe uses (`noteUnregistered`);
 // only the confirming answer marks the device dead and, if that was the
 // phone running an active pact, records an uninstall and breaks the pact.
-export async function deliverNotifications(push: PushSender, now: Date): Promise<{ sent: number; failed: number; uninstalled: number }> {
+export async function deliverNotifications(push: PushSender, now: Date, outages: readonly Outage[] = []): Promise<{ sent: number; failed: number; uninstalled: number }> {
   const queued = await db
     .selectFrom("notification")
     .innerJoin("user as u", "u.id", "notification.recipient_id")
@@ -478,7 +530,7 @@ export async function deliverNotifications(push: PushSender, now: Date): Promise
         lastError = result.error;
         if (result.unregistered) {
           suspected.add(d.id);
-          if (await noteUnregistered(d.id, now)) deadDevices.add(d.id);
+          if (await noteUnregistered(d.id, now, outages)) deadDevices.add(d.id);
         }
       }
     }
@@ -602,7 +654,8 @@ export async function expireOldRows(now: Date): Promise<number> {
 }
 
 // Started once per API process (src/instrumentation.ts). The Redis lock
-// keeps two processes from running the same tick.
+// keeps two processes from running the same tick, and `running` keeps this
+// loop and the manual trigger from overlapping inside one.
 export function startWatchdogLoop(intervalMs = 15 * 60 * 1000): void {
   const tick = async () => {
     try {

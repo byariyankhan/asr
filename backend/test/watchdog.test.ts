@@ -12,10 +12,24 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
   const { createInvite, acceptInvite } = await import("@/server/witnesses");
   const { runWatchdog, markProtectionLost, failExpiredActivities, completeElapsedPacts, deliverNotifications, purgeDeletedAccounts, expireOldRows, REMOVAL_CONFIRM_MS } =
     await import("@/server/watchdog");
+  const { reportUnprotectedHandovers, noteUnregistered, WATCHDOG_LOCK_KEY } = await import("@/server/watchdog");
+  const { recordRun, recentOutages } = await import("@/server/outages");
+  const { redis } = await import("@/server/redis");
 
-  const HOUR = 3_600_000;
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
   const DAY = 24 * HOUR;
-  const users = { silent: newId(), walker: newId(), finisher: newId(), witness: newId(), leaver: newId() };
+  const users = {
+    silent: newId(),
+    walker: newId(),
+    finisher: newId(),
+    witness: newId(),
+    leaver: newId(),
+    sleeper: newId(),
+    sleeper2: newId(),
+    stuck: newId(),
+    suspect: newId(),
+  };
   const snapshot = {
     apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }],
     reset_time: "04:00",
@@ -37,6 +51,9 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
     await createPact(users.silent, { device_id: devices.silent!, duration_days: 7, timezone: "UTC", snapshot });
     await createPact(users.walker, { device_id: devices.walker!, duration_days: 7, timezone: "UTC", snapshot });
     await createPact(users.finisher, { device_id: devices.finisher!, duration_days: 1, timezone: "UTC", snapshot });
+    await createPact(users.sleeper, { device_id: devices.sleeper!, duration_days: 7, timezone: "UTC", snapshot });
+    await createPact(users.sleeper2, { device_id: devices.sleeper2!, duration_days: 7, timezone: "UTC", snapshot });
+    await createPact(users.stuck, { device_id: devices.stuck!, duration_days: 7, timezone: "UTC", snapshot });
 
     // everyone but the leaver names `witness` as their witness
     for (const k of ["silent", "walker", "finisher"] as const) {
@@ -179,6 +196,105 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
       .values({ id: newId(), recipient_id: users.witness, kind: "reaction", channel: "push", title: "old", body: "b", created_at: new Date(Date.now() - 100 * DAY) })
       .execute();
     expect(await expireOldRows(new Date())).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps its own clock, and writes a gap down as an outage", async () => {
+    // Far in the future, so nothing else running against this database can
+    // be in the way, and so a real-time run afterwards leaves the marker
+    // alone instead of reading the difference as an outage.
+    const t0 = new Date("2031-01-01T00:00:00Z");
+    const at = (ms: number) => new Date(t0.getTime() + ms);
+    await recordRun(t0);
+    // One tick late is not an outage.
+    expect(await recordRun(at(10 * MIN))).toBeNull();
+    const outage = await recordRun(at(10 * MIN + 3 * HOUR));
+    expect(outage).toEqual({ started_at: at(10 * MIN), ended_at: at(10 * MIN + 3 * HOUR) });
+    expect(await recentOutages(at(4 * HOUR))).toContainEqual(outage);
+    // A clock put back does not pull the marker into the past.
+    expect(await recordRun(at(HOUR))).toBeNull();
+    const state = await db.selectFrom("watchdog_state").select("last_run_at").where("id", "=", 1).executeTakeFirstOrThrow();
+    expect(state.last_run_at).toEqual(at(10 * MIN + 3 * HOUR));
+  });
+
+  it("does not hold a server outage against a phone", async () => {
+    const pact = (await getCurrentPact(users.sleeper))!;
+    const now = new Date();
+    await db.updateTable("pact").set({ starts_at: new Date(now.getTime() - 3 * DAY) }).where("id", "=", pact.id).execute();
+    // Silent for 25 hours by the wall clock; the server was away for 20 of them.
+    await db.updateTable("device").set({ last_heartbeat_at: new Date(now.getTime() - 25 * HOUR) }).where("id", "=", devices.sleeper!).execute();
+    const away = [{ started_at: new Date(now.getTime() - 22 * HOUR), ended_at: new Date(now.getTime() - 2 * HOUR) }];
+
+    await markProtectionLost(now, away);
+    expect((await getCurrentPact(users.sleeper))?.status).toBe("active");
+
+    // By the wall clock it is a day. While the server was there to hear it,
+    // five hours less the grace after it came back.
+    await markProtectionLost(now, []);
+    const row = await db.selectFrom("pact").select("status").where("id", "=", pact.id).executeTakeFirstOrThrow();
+    expect(row.status).toBe("broken");
+  });
+
+  it("does break a pact once the silence adds up to a day of the server being there", async () => {
+    const pact = (await getCurrentPact(users.sleeper2))!;
+    const now = new Date();
+    await db.updateTable("pact").set({ starts_at: new Date(now.getTime() - 3 * DAY) }).where("id", "=", pact.id).execute();
+    // Silent 26 hours; the server was away for half an hour of it, which
+    // with the 45 minutes after still leaves a day and three quarters.
+    await db.updateTable("device").set({ last_heartbeat_at: new Date(now.getTime() - 26 * HOUR) }).where("id", "=", devices.sleeper2!).execute();
+    const away = [{ started_at: new Date(now.getTime() - 25 * HOUR), ended_at: new Date(now.getTime() - 24.5 * HOUR) }];
+
+    await markProtectionLost(now, away);
+    const row = await db.selectFrom("pact").select("status").where("id", "=", pact.id).executeTakeFirstOrThrow();
+    expect(row.status).toBe("broken");
+  });
+
+  it("gives a suspicion and a protection clock the same credit", async () => {
+    const now = new Date();
+    // Both clocks started three hours ago; the server was away for two and a
+    // half of them and has been back for twenty minutes.
+    const away = [{ started_at: new Date(now.getTime() - 170 * MIN), ended_at: new Date(now.getTime() - 20 * MIN) }];
+
+    await db.updateTable("device").set({ removal_suspected_at: new Date(now.getTime() - 3 * HOUR) }).where("id", "=", devices.suspect!).execute();
+    expect(await noteUnregistered(devices.suspect!, now, away)).toBe(false);
+    const kept = await db.selectFrom("device").select("fcm_token_invalid").where("id", "=", devices.suspect!).executeTakeFirstOrThrow();
+    expect(kept.fcm_token_invalid).toBe(false);
+    expect(await noteUnregistered(devices.suspect!, now, [])).toBe(true);
+
+    const pact = (await getCurrentPact(users.stuck))!;
+    await db.updateTable("pact").set({ protection_pending_since: new Date(now.getTime() - 3 * HOUR) }).where("id", "=", pact.id).execute();
+    await reportUnprotectedHandovers(now, away);
+    const waiting = await db.selectFrom("pact").select("protection_pending_since").where("id", "=", pact.id).executeTakeFirstOrThrow();
+    expect(waiting.protection_pending_since).not.toBeNull();
+    await reportUnprotectedHandovers(now, []);
+    const told = await db.selectFrom("pact").select("protection_pending_since").where("id", "=", pact.id).executeTakeFirstOrThrow();
+    expect(told.protection_pending_since).toBeNull();
+  });
+
+  it("never runs twice at once in one process", async () => {
+    const push: PushSender = async () => ({ ok: true, id: "x" });
+    const first = runWatchdog({ push });
+    expect(await runWatchdog({ push })).toBeNull();
+    expect(await first).not.toBeNull();
+  });
+
+  describe.skipIf(!process.env.REDIS_URL)("with Redis", () => {
+    const push: PushSender = async () => ({ ok: true, id: "x" });
+
+    it("skips when another process holds the lock, and leaves that lock alone", async () => {
+      const client = redis()!;
+      await client.set(WATCHDOG_LOCK_KEY, "another-process", "PX", 60_000);
+      try {
+        expect(await runWatchdog({ push })).toBeNull();
+        expect(await client.get(WATCHDOG_LOCK_KEY)).toBe("another-process");
+      } finally {
+        await client.del(WATCHDOG_LOCK_KEY);
+      }
+    });
+
+    it("releases its own lock when the run is over", async () => {
+      expect(await runWatchdog({ push })).not.toBeNull();
+      expect(await redis()!.exists(WATCHDOG_LOCK_KEY)).toBe(0);
+    });
   });
 
   it("runs end to end and reports", async () => {

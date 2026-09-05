@@ -303,6 +303,34 @@ create table daily_summary (
 );
 ```
 
+### watchdog_state
+
+One row: when the watchdog last ran. Here and not in Redis because Redis
+restarts with the stack, and this has to survive exactly the event it is
+for.
+
+```sql
+create table watchdog_state (
+  id          integer primary key check (id = 1),
+  last_run_at timestamptz not null
+);
+```
+
+### server_outage
+
+A gap in which the server was away: a watchdog run that found the previous
+one more than 30 minutes old. Silence during an outage, and for 45 minutes
+after it, is not held against any phone (`ENFORCEMENT.md`, "When the server
+itself was away"). Also the outage history, for anybody asking when.
+
+```sql
+create table server_outage (
+  started_at  timestamptz primary key,
+  ended_at    timestamptz not null check (ended_at > started_at),
+  created_at  timestamptz not null default now()
+);
+```
+
 ## What is deliberately absent
 
 - No `installed_app` table. The phone knows its own apps.
@@ -319,6 +347,7 @@ create table daily_summary (
 | `daily_summary` | 400 days, then deleted by a nightly job |
 | `notification` | 90 days |
 | `device` rows with `fcm_token_invalid` and no heartbeat for 180 days | Deleted |
+| `server_outage` | Kept: a few rows a year, and the only record of when the server was away |
 | Deleted accounts | Hard-deleted 7 days after the request; witnesses referencing them get `witness_user_id = null`, `status = removed` |
 
 ## Backups

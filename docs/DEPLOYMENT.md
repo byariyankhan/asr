@@ -239,6 +239,11 @@ standalone API ≈ 150–250 MB. Asr adds roughly 300 MB to a machine with about
   reports `watchdog_stale: true` if that is older than 30 minutes.
 - `/opt/asr/releases.log`: one line per deploy and per rollback, with the
   commits, so "what was running last Tuesday" has an answer.
+- `server_outage`: every gap of more than 30 minutes between two watchdog
+  runs, which is every time the server (or only the loop) was away. The
+  watchdog logs `the server was away` when it writes one, and the silence
+  rules do not count that time against any phone (`ENFORCEMENT.md`):
+  `docker compose exec -T postgres psql -U asr -d asr -c "select * from server_outage order by started_at desc limit 20"`.
 - Backup failure alerts reuse Bookween's `alert.sh` (email), with a distinct
   subject.
 

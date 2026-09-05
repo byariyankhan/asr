@@ -248,6 +248,21 @@ export interface DailySummaryTable {
   received_at: GeneratedTimestamp;
 }
 
+/** The one row saying when the watchdog last ran. `id` is always 1. */
+export interface WatchdogStateTable {
+  id: number;
+  last_run_at: Timestamp;
+}
+
+/** A gap in which the server was away, so silence during it is nobody's
+ *  fault. Written by the watchdog when a run finds the previous one more
+ *  than half an hour old; read by every rule that measures silence. */
+export interface ServerOutageTable {
+  started_at: Timestamp;
+  ended_at: Timestamp;
+  created_at: GeneratedTimestamp;
+}
+
 export interface Database {
   user: UserTable;
   session: SessionTable;
@@ -262,4 +277,6 @@ export interface Database {
   reaction: ReactionTable;
   subscription: SubscriptionTable;
   daily_summary: DailySummaryTable;
+  watchdog_state: WatchdogStateTable;
+  server_outage: ServerOutageTable;
 }

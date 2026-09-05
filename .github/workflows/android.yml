@@ -6,16 +6,52 @@ name: Android
 # be fetched there. This job is therefore the compiler of record. Every change
 # to android/ is proven here or not at all, and each run leaves an installable
 # debug APK behind.
+#
+# No paths filter on the triggers, on purpose. Branch protection requires
+# this workflow's `build` on every pull request, and a job that never starts
+# never reports: with a filter, a backend-only pull request sat at "expected"
+# forever and could not be merged (#6). So the workflow runs for every push
+# and pull request and decides for itself, in seconds, whether anything under
+# android/ changed; a `build` skipped for that reason reports "skipped",
+# which satisfies the rule. A manual run always builds.
 on:
   push:
     branches: [master]
-    paths: ["android/**", ".github/workflows/android.yml"]
   pull_request:
-    paths: ["android/**", ".github/workflows/android.yml"]
   workflow_dispatch:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.diff.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A pull request is compared against its base; a push to master against
+      # what master was before it. When the comparison cannot be made (a first
+      # push, a base that is not in the fetch), the answer is to build.
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          decide() { echo "android=$1" >> "$GITHUB_OUTPUT"; echo "android changed: $1 ($2)"; }
+          if [ "$EVENT" = "workflow_dispatch" ]; then decide true "manual run"; exit 0; fi
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then decide true "no base to compare against"; exit 0; fi
+          changed=$(git diff --name-only "$BASE" "$HEAD" -- android .github/workflows/android.yml)
+          if [ -n "$changed" ]; then
+            decide true "$(printf %s "$changed" | wc -l | tr -d ' ') file(s) under android/ or this workflow"
+          else
+            decide false "nothing under android/ in $BASE..$HEAD"
+          fi
+
   build:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
