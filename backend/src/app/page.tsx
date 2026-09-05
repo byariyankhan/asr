@@ -1,20 +1,27 @@
-import type { Metadata } from "next";
 import { SiteFrame } from "./site-frame";
+import { publicPageMetadata, siteDescription, siteUrl } from "./site-metadata";
 
-const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.io").replace(/\/$/, "");
+export const metadata = publicPageMetadata(
+  "Asr — Android App Blocker & Screen Time Limits",
+  siteDescription,
+  "/",
+);
 
-export const metadata: Metadata = {
-  title: "Asr - Protect Your Time & Focus",
-  description:
-    "Asr helps you put selected apps behind a time-limited pact and keep your witnesses informed.",
-  openGraph: {
-    title: "Asr - Protect Your Time & Focus",
-    description:
-      "Choose the apps that take too much of your day, set a daily limit, and name the people who should know whether you kept your word.",
-    url: SITE(),
-    siteName: "Asr",
-    type: "website",
-  },
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "WebSite", "@id": `${siteUrl}/#website`, name: "Asr", url: siteUrl, inLanguage: "en" },
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${siteUrl}/#app`,
+      name: "Asr",
+      url: siteUrl,
+      description: siteDescription,
+      operatingSystem: "Android",
+      applicationCategory: "ProductivityApplication",
+      // No invented price, ratings, reviews or download URL before release.
+    },
+  ],
 };
 
 /** joinasr.io. What somebody finds when they follow the brand rather than a link. */
@@ -32,14 +39,18 @@ export default function LandingPage() {
       ]}
     >
       <main>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
+        />
         <section className="hero">
           <div className="shell hero-grid">
             <div>
-              <p className="eyebrow">Screen-time commitment</p>
+              <p className="eyebrow">Android app blocker · Screen-time accountability</p>
               <h1>Make a pact with your time.</h1>
               <p className="lede">
-                Choose the apps that take too much of your day, set a daily limit, and name the
-                people who should know whether you kept your word.
+                Set daily limits for the Android apps that take too much of your day. Make a
+                screen-time pact, and invite people you trust to help you keep it.
               </p>
               {/* A placeholder and not a link until the listing exists: a
                   Play URL that answers "item not found" is worse than a
@@ -104,6 +115,40 @@ export default function LandingPage() {
                   protection off, or uninstall Asr, they are told that too.
                 </p>
               </article>
+            </div>
+          </div>
+        </section>
+
+        <section className="section" aria-labelledby="questions">
+          <div className="shell">
+            <div className="section-heading">
+              <p className="eyebrow">Before you start</p>
+              <h2 id="questions">App limits, with accountability.</h2>
+            </div>
+            <div className="promise">
+              <h3>What does Asr do?</h3>
+              <p>
+                Asr is an Android app blocker that combines daily screen-time limits with a
+                commitment to people you trust. Choose the apps, set their limits, and keep
+                those choices for the length of your pact.
+              </p>
+              <h3>What is a witness?</h3>
+              <p>
+                A witness is someone you invite to follow your challenge. They can see the
+                progress you share and receive updates about how the pact ends.
+              </p>
+              <h3>Why does it need usage access and overlay permission?</h3>
+              <p>
+                Usage access lets Asr measure time in the apps you choose. Overlay permission
+                lets it show a block screen when a limit is reached. Android permissions and
+                your phone’s battery settings affect protection.
+              </p>
+              <h3>Can I download Asr now?</h3>
+              <p>
+                Asr is coming to Google Play. This page will link to the official listing
+                when it is available. Read our <a href="/privacy">privacy policy</a> and
+                {" "}<a href="/terms">terms</a> to learn more before installing.
+              </p>
             </div>
           </div>
         </section>
