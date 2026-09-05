@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,9 +19,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,6 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.joinasr.app.BuildConfig
+import io.joinasr.app.diagnostics.TestCrash
 import io.joinasr.app.support.SupportAnswer
 import io.joinasr.app.support.SupportTexts
 import io.joinasr.app.ui.components.AsrBackChevron
@@ -168,6 +174,10 @@ private fun QuestionCard(entry: SupportAnswer) {
 @Composable
 private fun ContactCard(onWrite: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
+    // TEMPORARY: the hidden test-crash trigger, see diagnostics/TestCrash.kt.
+    val context = LocalContext.current
+    var versionTaps by remember { mutableIntStateOf(0) }
+    var askTestCrash by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -212,6 +222,39 @@ private fun ContactCard(onWrite: () -> Unit) {
             "Asr ${BuildConfig.VERSION_NAME}",
             style = AsrType.Legal.copy(fontSize = 11.sp),
             color = AsrColors.TextTertiary,
+            modifier = Modifier.clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                versionTaps += 1
+                if (versionTaps >= TestCrash.TAPS) {
+                    versionTaps = 0
+                    askTestCrash = true
+                }
+            },
+        )
+    }
+
+    // TEMPORARY, with the trigger above. Asks before crashing so a stray
+    // seventh tap never closes the app on somebody; the non-fatal goes out
+    // the moment the question appears.
+    if (askTestCrash) {
+        LaunchedEffect(Unit) { TestCrash.nonFatal(context) }
+        AlertDialog(
+            onDismissRequest = { askTestCrash = false },
+            title = { Text("Send a test crash report?") },
+            text = {
+                Text(
+                    "Asr will close. Open it again afterwards: Crashlytics uploads the " +
+                        "report on the next launch. A non-fatal test report was just recorded too.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { TestCrash.crash() }) { Text("Crash now") }
+            },
+            dismissButton = {
+                TextButton(onClick = { askTestCrash = false }) { Text("Cancel") }
+            },
         )
     }
 }
