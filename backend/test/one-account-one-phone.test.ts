@@ -113,6 +113,25 @@ describe.skipIf(!DATABASE_URL)("signing in on a new phone", async () => {
     expect(await reportUnprotectedHandovers(new Date())).toBe(0);
   });
 
+  it("hands the new phone the day the old one already spent", async () => {
+    const { upsertDailySummary } = await import("@/server/summary");
+    const { dayInZone } = await import("@/lib/time");
+    const pact = (await getCurrentPact(owner))!;
+    const day = dayInZone(new Date(), pact.timezone);
+    // What the old phone reported before it was signed out.
+    await upsertDailySummary(owner, pact.id, {
+      day,
+      apps: [{ package: "com.instagram.android", minutes_used: 30, limit_min: 30, earned_min: 0 }],
+    });
+
+    // Without this the new phone opens on zero -- it can only measure its
+    // own screen -- and thirty minutes of Instagram becomes sixty for the
+    // cost of signing in. Once per phone, every day.
+    const current = (await getCurrentPact(owner))!;
+    expect(current.today.day).toBe(day);
+    expect(current.today.apps).toEqual([{ package: "com.instagram.android", minutes_used: 30 }]);
+  });
+
   it("stops the clock when the new phone says protection is on", async () => {
     await recordHeartbeat(owner, newPhone, { protection_enabled: true, app_version: "1.0.0" });
     expect((await getCurrentPact(owner))!.protection_pending_since).toBeNull();

@@ -78,6 +78,26 @@ data class SummaryCreate(
     val apps: List<SummaryApp>,
 )
 
+/** One app's minutes so far today, as the phone that measured them reported. */
+@Serializable
+data class TodayApp(
+    @SerialName("package") val packageName: String,
+    @SerialName("minutes_used") val minutesUsed: Int,
+)
+
+/**
+ * What has been used today, on whatever phone was running the challenge.
+ *
+ * [day] is the local day in the pact's timezone, and it is checked rather
+ * than trusted: a figure from yesterday added to today's total would block
+ * somebody out of an app they have not opened.
+ */
+@Serializable
+data class TodayUsage(
+    val day: String,
+    val apps: List<TodayApp> = emptyList(),
+)
+
 /** The server's copy of a challenge. Only the id is used by this app. */
 @Serializable
 data class RemotePact(
@@ -103,6 +123,13 @@ data class RemotePact(
     @SerialName("device_id") val deviceId: String? = null,
     /** That handset's name, for saying so on screen rather than an id. */
     @SerialName("device_model") val deviceModel: String? = null,
+    /**
+     * Today's minutes, so a phone that has just taken the challenge over
+     * does not hand out a second allowance for a day somebody has already
+     * spent. A phone measures its own screen and nothing else's; this is
+     * where the rest of the day comes from.
+     */
+    val today: TodayUsage? = null,
 )
 
 @Serializable

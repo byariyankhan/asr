@@ -6,7 +6,7 @@ import { queueWitnessNotifications } from "./notifications";
 import { canViewPact } from "./witnesses";
 import { conflict, notFound } from "@/lib/http";
 import type { PactCreate } from "@/lib/schemas";
-import { addDays } from "@/lib/time";
+import { addDays, dayInZone } from "@/lib/time";
 import { isUuidLike, newId } from "@/lib/uuid";
 
 export const pactColumns = [
@@ -99,7 +99,30 @@ export async function getCurrentPact(userId: string) {
     .select("model")
     .where("id", "=", pact.device_id)
     .executeTakeFirst();
-  return { ...pact, device_model: device?.model ?? null };
+
+  // Today's minutes, as the last phone reported them.
+  //
+  // Without this, changing phones handed somebody a fresh allowance: a phone
+  // can only measure its own screen, so the new one opens on zero and thirty
+  // minutes of Instagram becomes sixty by signing in somewhere else. The day
+  // belongs to the person, not to the handset, and this is the only place
+  // that knows the whole of it.
+  const day = dayInZone(new Date(), pact.timezone);
+  const today = await db
+    .selectFrom("daily_summary")
+    .select(["app_package", "minutes_used"])
+    .where("pact_id", "=", pact.id)
+    .where("day", "=", day)
+    .execute();
+
+  return {
+    ...pact,
+    device_model: device?.model ?? null,
+    today: {
+      day,
+      apps: today.map((row) => ({ package: row.app_package, minutes_used: row.minutes_used })),
+    },
+  };
 }
 
 /**

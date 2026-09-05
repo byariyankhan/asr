@@ -14,7 +14,25 @@ data class UsageSnapshot(
     val foregroundPackage: String?,
     /** The midnight these figures are counted from. */
     val dayStartMillis: Long,
-)
+) {
+    /**
+     * The same day with minutes spent elsewhere folded in.
+     *
+     * A phone measures its own screen and nothing else's, so a challenge
+     * that changed handsets today has a part of its day on the other one.
+     * Added here, once, so that every decision below -- what to block, when
+     * to poll next, what the witnesses are told -- is made against the whole
+     * day rather than this phone's share of it.
+     */
+    fun plus(elsewhere: Map<String, Int>): UsageSnapshot {
+        if (elsewhere.isEmpty()) return this
+        val merged = minutesByPackage.toMutableMap()
+        for ((packageName, minutes) in elsewhere) {
+            merged[packageName] = (merged[packageName] ?: 0) + minutes
+        }
+        return copy(minutesByPackage = merged)
+    }
+}
 
 /**
  * Reads foreground time out of Android and keeps a running total for today.

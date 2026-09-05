@@ -60,6 +60,7 @@ class EnforcementService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var reader: UsageReader
     private lateinit var store: PactStore
+    private lateinit var carried: CarriedUsage
     private lateinit var status: ProtectionStatusStore
     private lateinit var outcomes: OutcomeStore
     private lateinit var witnesses: WitnessStore
@@ -70,6 +71,17 @@ class EnforcementService : Service() {
      *  than on every pass of a loop that can run once a second. */
     @Volatile
     private var lastFlushMillis = 0L
+
+    /** Today's minutes from the phone this challenge came from, and when
+     *  the server was last asked for them. */
+    private var carriedDay: String? = null
+    private var carriedMinutes: Map<String, Int> = emptyMap()
+    private var lastCarryCheckMillis = 0L
+
+    /** The last figures the server was given, and when. Only sent when they
+     *  have changed: an unchanged day is not news. */
+    private var lastSummaryMillis = 0L
+    private var lastSummarySent: Map<String, Int> = emptyMap()
 
     /** True while [end] is running, so a slow write cannot end a pact twice. */
     @Volatile
@@ -107,6 +119,7 @@ class EnforcementService : Service() {
         super.onCreate()
         reader = usageReader(this)
         store = PactStore(this)
+        carried = CarriedUsage(this)
         status = ProtectionStatusStore(this)
         outcomes = OutcomeStore(this)
         witnesses = WitnessStore(this)
@@ -175,8 +188,12 @@ class EnforcementService : Service() {
             return Enforcement.IDLE_MILLIS
         }
 
-        val snapshot = reader.poll()
+        val measured = reader.poll()
         val now = System.currentTimeMillis()
+        // What this phone can see, plus what the day already held when the
+        // challenge arrived here. Everything below decides against the whole
+        // day; nothing below needs to know the difference.
+        val snapshot = measured.plus(carriedToday(now, measured.minutesByPackage))
         val progress = ChallengeProgress.of(current.startedAtMillis, current.durationDays, now)
         // Bonus minutes raise today's allowance. Read on every pass rather
         // than cached, because a walk finishing while an app is open should
@@ -201,7 +218,8 @@ class EnforcementService : Service() {
 
         reportLimitsReached(current, snapshot, earned, now)
 
-        flushIfDue(current, now, snapshot.minutesByPackage)
+        sendSummaryIfDue(current, now, snapshot.minutesByPackage)
+        flushIfDue(current, now)
 
         when (val decision = Enforcement.decide(current, snapshot, earned)) {
             Decision.Allow -> blocking = null
@@ -313,24 +331,68 @@ class EnforcementService : Service() {
      * Empties the outbox now and then while a challenge is running, so an
      * event queued during a tunnel is not still sitting there a day later.
      */
-    private suspend fun flushIfDue(
-        pact: Pact,
-        nowMillis: Long,
-        minutesByPackage: Map<String, Int>,
-    ) {
+    private suspend fun flushIfDue(pact: Pact, nowMillis: Long) {
         if (nowMillis - lastFlushMillis < FLUSH_EVERY_MILLIS) return
         lastFlushMillis = nowMillis
         runCatching {
             sync.drain(pact)
-            // Today's figures, so a witness sees a challenge being kept and
-            // not only the moment one breaks. An upsert, so sending it again
-            // through the day is what keeps their screen current.
-            sync.sendSummary(pact, minutesByPackage)
             // Measured, not assumed. A heartbeat that always says true is
             // worse than none: it is what a witness would be trusting.
             sync.heartbeat(protectionEnabled = Permissions.canDrawOverlays(this))
             signOutIfEvicted()
         }
+    }
+
+    /**
+     * Today's figures, often enough to be worth having.
+     *
+     * Two things read them. A witness watching a challenge being kept, for
+     * whom half an hour late is fine -- and the next phone, for whom it is
+     * not: whatever has not been sent when somebody signs in elsewhere is a
+     * gap in the day that the new phone will hand back as free minutes. Five
+     * minutes is the width of that gap now.
+     *
+     * Only when they have changed, and only marked as sent when they landed:
+     * an unchanged day is not news, and a failed send that counted as one
+     * would be a hole nobody could see.
+     */
+    private suspend fun sendSummaryIfDue(pact: Pact, nowMillis: Long, minutesByPackage: Map<String, Int>) {
+        if (minutesByPackage == lastSummarySent) return
+        if (nowMillis - lastSummaryMillis < SUMMARY_EVERY_MILLIS) return
+        lastSummaryMillis = nowMillis
+        val sent = runCatching { sync.sendSummary(pact, minutesByPackage) }.getOrDefault(false)
+        if (sent) lastSummarySent = minutesByPackage
+    }
+
+    /**
+     * The minutes today already held when this challenge arrived here.
+     *
+     * Asked for once, as soon as there is a reading to subtract this phone's
+     * own share from -- which is why it is here and not at sign-in: on a new
+     * install usage access is granted after the challenge has arrived, and
+     * until it is, this phone reads zero for everything.
+     *
+     * Retried on a minute, because the answer must not be guessed. A failed
+     * request is not an empty day.
+     */
+    private suspend fun carriedToday(nowMillis: Long, ownSoFar: Map<String, Int>): Map<String, Int> {
+        val day = CarriedUsage.today(nowMillis)
+        if (carriedDay != day) {
+            carriedDay = day
+            carriedMinutes = carried.forDay(day)
+            lastCarryCheckMillis = 0L
+        }
+        if (nowMillis - lastCarryCheckMillis >= CARRY_RETRY_MILLIS) {
+            lastCarryCheckMillis = nowMillis
+            if (carried.pendingFor(day)) {
+                val totals = runCatching { sync.usedToday(day) }.getOrNull()
+                if (totals != null) {
+                    carried.resolve(day, totals, ownSoFar)
+                    carriedMinutes = carried.forDay(day)
+                }
+            }
+        }
+        return carriedMinutes
     }
 
     /**
@@ -473,6 +535,12 @@ class EnforcementService : Service() {
 
         /** How often the loop tries to empty the outbox. */
         private const val FLUSH_EVERY_MILLIS = 30L * 60 * 1000
+
+        /** How often today's figures go up, when they have moved. */
+        private const val SUMMARY_EVERY_MILLIS = 5L * 60 * 1000
+
+        /** How often to ask what the day already held, until there is an answer. */
+        private const val CARRY_RETRY_MILLIS = 60L * 1000
 
         /**
          * Starts the loop, if there is anything for it to do.

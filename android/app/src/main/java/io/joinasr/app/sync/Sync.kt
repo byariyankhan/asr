@@ -185,6 +185,23 @@ class Sync(context: Context) {
     }
 
     /**
+     * What the challenge's apps have already had today, wherever it was
+     * spent.
+     *
+     * Null when there is no answer -- no signal, no session, or a figure
+     * stamped with a different day than the one being asked about. Null is
+     * "ask again", never "nothing was used": treating a failed request as a
+     * clean slate is exactly the fresh allowance this exists to remove.
+     */
+    suspend fun usedToday(day: String): Map<String, Int>? {
+        val token = tokens.current() ?: return null
+        val remote = (Api.pacts.current(token) as? ApiResult.Ok)?.value ?: return null
+        val today = remote.today ?: return null
+        if (today.day != day) return null
+        return today.apps.associate { it.packageName to it.minutesUsed }
+    }
+
+    /**
      * Whether this phone's session is gone -- which, for this account, means
      * somebody signed in on another one.
      *
@@ -362,9 +379,9 @@ class Sync(context: Context) {
      * to limit, and only their totals -- never what else is on the phone,
      * and never anything under an app they did not put in the challenge.
      */
-    suspend fun sendSummary(pact: Pact, minutesByPackage: Map<String, Int>) {
-        val token = tokens.current() ?: return
-        val pactId = remotePactId(pact) ?: return
+    suspend fun sendSummary(pact: Pact, minutesByPackage: Map<String, Int>): Boolean {
+        val token = tokens.current() ?: return false
+        val pactId = remotePactId(pact) ?: return false
         val apps = pact.apps.map {
             SummaryApp(
                 packageName = it.packageName,
@@ -372,12 +389,16 @@ class Sync(context: Context) {
                 limitMinutes = it.limitMinutes,
             )
         }
-        if (apps.isEmpty()) return
-        Api.pacts.postSummary(
+        if (apps.isEmpty()) return false
+        // The answer matters here, unlike everywhere else in this class. A
+        // figure the server did not receive is a gap in the day, and the
+        // next phone to hold this challenge would hand that gap back as free
+        // minutes.
+        return Api.pacts.postSummary(
             token = token,
             pactId = pactId,
             body = SummaryCreate(day = LocalDate.now(ZoneId.systemDefault()).toString(), apps = apps),
-        )
+        ) is ApiResult.Ok
     }
 
     /**

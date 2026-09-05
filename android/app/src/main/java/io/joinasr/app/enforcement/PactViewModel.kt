@@ -40,6 +40,7 @@ sealed interface PactState {
 class PactViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = PactStore(application)
+    private val carried = CarriedUsage(application)
     private val outcomes = OutcomeStore(application)
     private val sync = Sync(application)
     private val witnesses = WitnessStore(application)
@@ -101,6 +102,11 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
             // is rare and the local one wins.
             if (remote != null && store.current() == null) {
                 sync.adopt(remote)
+                // The day arrives with the challenge. Whatever these apps
+                // have already had today was spent on a phone this one
+                // cannot see, and until that is known this phone must not
+                // hand out a second allowance for it.
+                carried.expect(CarriedUsage.today())
                 store.save(remote.pact)
             }
             _restoring.value = false
