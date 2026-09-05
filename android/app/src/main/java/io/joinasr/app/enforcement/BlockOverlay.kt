@@ -97,7 +97,13 @@ class BlockOverlay(context: Context) {
             view.setViewTreeLifecycleOwner(lifecycle)
             view.setViewTreeViewModelStoreOwner(lifecycle)
             view.setViewTreeSavedStateRegistryOwner(lifecycle)
-            view.addView(ComposeView(app).apply { setContent { Content() } })
+            // Not `ComposeView(app).apply { setContent { Content() } }`: inside
+            // that `apply`, `Content()` is ComposeView's own Content, which
+            // runs the lambda that calls Content, and the window is a stack
+            // overflow. Set from outside, the name is this class's.
+            val compose = ComposeView(app)
+            compose.setContent { Content() }
+            view.addView(compose)
             manager.addView(view, layoutParams())
             lifecycle.resume()
             root = view
