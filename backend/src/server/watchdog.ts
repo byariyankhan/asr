@@ -7,6 +7,7 @@ import { sendPush, type PushSender } from "./fcm";
 import { WATCHDOG_LAST_RUN_KEY } from "./health";
 import { queueWitnessNotifications } from "./notifications";
 import { key, redis } from "./redis";
+import { HttpError } from "@/lib/http";
 import { newId } from "@/lib/uuid";
 
 // The 15-minute job. Every step is idempotent and scoped by state, so
@@ -88,11 +89,11 @@ export async function runWatchdog(opts: { push?: PushSender; now?: Date } = {}):
     report.notifications_sent = delivered.sent;
     report.notifications_failed = delivered.failed;
     report.uninstalled = delivered.uninstalled;
-    // An uninstall is only discovered while delivering (FCM answers
-    // UNREGISTERED), which queues witness rows the loop has already passed.
-    // One extra pass sends them now instead of 15 minutes from now. Bounded
-    // at one: that pass cannot itself discover a new dead token, because the
-    // devices it would use were just marked invalid.
+    // An uninstall confirmed while delivering queues witness rows the loop
+    // has already passed. One extra pass sends them now instead of 15
+    // minutes from now. Bounded at one: that pass cannot itself confirm a
+    // new dead token, because the devices it would use were just marked
+    // invalid.
     if (delivered.uninstalled > 0) {
       const second = await deliverNotifications(push, now);
       report.notifications_sent += second.sent;
@@ -170,26 +171,67 @@ export async function probeForRemovals(push: PushSender, now: Date): Promise<num
       continue;
     }
 
-    if (!device.removal_suspected_at) {
-      await db
-        .updateTable("device")
-        .set({ removal_suspected_at: now, updated_at: now })
-        .where("id", "=", device.device_id)
-        .execute();
-      continue;
-    }
-    if (now.getTime() - device.removal_suspected_at.getTime() < REMOVAL_CONFIRM_MS) continue;
-
-    // Twice, two hours apart, and the phone has said nothing at all in
-    // between. That is an app that is gone.
-    await db
-      .updateTable("device")
-      .set({ fcm_token_invalid: true, updated_at: now })
-      .where("id", "=", device.device_id)
-      .execute();
+    if (!(await noteUnregistered(device.device_id, now))) continue;
     if (await handleDeadDevice(device.device_id, now)) found += 1;
   }
   return found;
+}
+
+/**
+ * One not-registered answer from Firebase, wherever it came from.
+ *
+ * A probe and a delivery are the same question asked for different reasons,
+ * and the rule for the answer is the same: the first one starts a clock, and
+ * the second one [REMOVAL_CONFIRM_MS] later, with not a word from the phone
+ * in between, is the app being gone. True on that second answer, after the
+ * token is marked dead; false for anything less. A heartbeat or a fresh
+ * registration clears the clock, so "not a word in between" is the column
+ * still being set.
+ *
+ * Delivery used to convict on its own, on one answer: a token that rotated
+ * while a witness was reacting told somebody's mother that the app had been
+ * deleted. Every not-registered answer now comes through here, and the
+ * two-answer rule ENFORCEMENT.md promises is the only rule there is.
+ */
+export async function noteUnregistered(deviceId: string, now: Date): Promise<boolean> {
+  const device = await db
+    .selectFrom("device")
+    .select(["removal_suspected_at"])
+    .where("id", "=", deviceId)
+    .executeTakeFirst();
+  if (!device) return false;
+  if (!device.removal_suspected_at) {
+    await db
+      .updateTable("device")
+      .set({ removal_suspected_at: now, updated_at: now })
+      .where("id", "=", deviceId)
+      .execute();
+    return false;
+  }
+  if (now.getTime() - device.removal_suspected_at.getTime() < REMOVAL_CONFIRM_MS) return false;
+
+  // Twice, two hours apart, and the phone has said nothing at all in
+  // between. That is an app that is gone.
+  await db
+    .updateTable("device")
+    .set({ fcm_token_invalid: true, updated_at: now })
+    .where("id", "=", deviceId)
+    .execute();
+  return true;
+}
+
+/**
+ * The pact was closed by something else between the select and the close.
+ *
+ * Nothing is written in that case: the transaction has rolled back, and the
+ * event this step was about to record would have been a second ending on a
+ * challenge that already has one -- which is what happened when the event
+ * was inserted first and the failed close merely returned. Anything else is
+ * a real error and goes up.
+ */
+function alreadyClosed(error: unknown): false {
+  if (error instanceof HttpError && error.code === "pact_closed") return false;
+  throw error;
 }
 
 /**
@@ -275,30 +317,29 @@ export async function markProtectionLost(now: Date): Promise<number> {
 
   let count = 0;
   for (const pact of silent) {
-    const done = await db.transaction().execute(async (trx) => {
-      const eventId = newId();
-      await trx
-        .insertInto("pact_event")
-        .values({
-          id: eventId,
-          pact_id: pact.id,
-          device_id: pact.device_id,
-          type: "protection_lost",
-          reason: "heartbeat_timeout",
-          app_package: null,
-          minutes: null,
-          occurred_at: now,
-          source: "server",
-        })
-        .execute();
-      try {
+    const done = await db
+      .transaction()
+      .execute(async (trx) => {
         await closePact(trx, pact.id, "broken");
-      } catch {
-        return false; // closed by a device event between select and now
-      }
-      await queueWitnessNotifications(trx, { userId: pact.user_id, eventId, kind: "protection_lost", pactId: pact.id });
-      return true;
-    });
+        const eventId = newId();
+        await trx
+          .insertInto("pact_event")
+          .values({
+            id: eventId,
+            pact_id: pact.id,
+            device_id: pact.device_id,
+            type: "protection_lost",
+            reason: "heartbeat_timeout",
+            app_package: null,
+            minutes: null,
+            occurred_at: now,
+            source: "server",
+          })
+          .execute();
+        await queueWitnessNotifications(trx, { userId: pact.user_id, eventId, kind: "protection_lost", pactId: pact.id });
+        return true;
+      })
+      .catch(alreadyClosed);
     if (done) count += 1;
   }
   return count;
@@ -355,38 +396,38 @@ export async function completeElapsedPacts(now: Date): Promise<number> {
 
   let count = 0;
   for (const pact of elapsed) {
-    const done = await db.transaction().execute(async (trx) => {
-      const eventId = newId();
-      await trx
-        .insertInto("pact_event")
-        .values({
-          id: eventId,
-          pact_id: pact.id,
-          device_id: pact.device_id,
-          type: "completed",
-          reason: null,
-          app_package: null,
-          minutes: null,
-          occurred_at: now,
-          source: "server",
-        })
-        .execute();
-      try {
+    const done = await db
+      .transaction()
+      .execute(async (trx) => {
         await closePact(trx, pact.id, "completed");
-      } catch {
-        return false;
-      }
-      await queueWitnessNotifications(trx, { userId: pact.user_id, eventId, kind: "pact_completed", pactId: pact.id });
-      return true;
-    });
+        const eventId = newId();
+        await trx
+          .insertInto("pact_event")
+          .values({
+            id: eventId,
+            pact_id: pact.id,
+            device_id: pact.device_id,
+            type: "completed",
+            reason: null,
+            app_package: null,
+            minutes: null,
+            occurred_at: now,
+            source: "server",
+          })
+          .execute();
+        await queueWitnessNotifications(trx, { userId: pact.user_id, eventId, kind: "pact_completed", pactId: pact.id });
+        return true;
+      })
+      .catch(alreadyClosed);
     if (done) count += 1;
   }
   return count;
 }
 
-// Push delivery. A token FCM reports as gone marks the device invalid and,
-// if that was the phone running an active pact with no other live device,
-// records an uninstall and breaks the pact.
+// Push delivery. A token FCM reports as gone is one not-registered answer,
+// handled by the same two-answer rule the probe uses (`noteUnregistered`);
+// only the confirming answer marks the device dead and, if that was the
+// phone running an active pact, records an uninstall and breaks the pact.
 export async function deliverNotifications(push: PushSender, now: Date): Promise<{ sent: number; failed: number; uninstalled: number }> {
   const queued = await db
     .selectFrom("notification")
@@ -424,6 +465,7 @@ export async function deliverNotifications(push: PushSender, now: Date): Promise
 
     let providerId: string | null = null;
     let lastError: string | null = null;
+    const suspected = new Set<string>();
     for (const d of devices) {
       const result = await push(d.fcm_token!, {
         title: n.title,
@@ -435,14 +477,21 @@ export async function deliverNotifications(push: PushSender, now: Date): Promise
       } else {
         lastError = result.error;
         if (result.unregistered) {
-          await db.updateTable("device").set({ fcm_token_invalid: true, updated_at: now }).where("id", "=", d.id).execute();
-          deadDevices.add(d.id);
+          suspected.add(d.id);
+          if (await noteUnregistered(d.id, now)) deadDevices.add(d.id);
         }
       }
     }
     if (providerId) {
       await db.updateTable("notification").set({ status: "sent", provider_id: providerId, sent_at: now }).where("id", "=", n.id).execute();
       sent += 1;
+    } else if (devices.every((d) => suspected.has(d.id)) && !devices.every((d) => deadDevices.has(d.id))) {
+      // Every token answered not-registered, and none has been answering
+      // that for two hours yet. Left queued: a token that merely rotated is
+      // replaced by the next heartbeat and the row goes out on the pass
+      // after it; a token that is really gone is confirmed within two hours
+      // and the row is closed then.
+      continue;
     } else {
       const allDead = devices.every((d) => deadDevices.has(d.id));
       await db
@@ -486,30 +535,29 @@ export async function handleDeadDevice(deviceId: string, now: Date): Promise<boo
     .executeTakeFirst();
   if (!pact) return false;
 
-  return db.transaction().execute(async (trx: Transaction<Database>) => {
-    const eventId = newId();
-    await trx
-      .insertInto("pact_event")
-      .values({
-        id: eventId,
-        pact_id: pact.id,
-        device_id: deviceId,
-        type: "uninstalled",
-        reason: "fcm_unregistered",
-        app_package: null,
-        minutes: null,
-        occurred_at: now,
-        source: "server",
-      })
-      .execute();
-    try {
+  return db
+    .transaction()
+    .execute(async (trx: Transaction<Database>) => {
       await closePact(trx, pact.id, "broken");
-    } catch {
-      return false;
-    }
-    await queueWitnessNotifications(trx, { userId: pact.user_id, eventId, kind: "uninstalled", pactId: pact.id });
-    return true;
-  });
+      const eventId = newId();
+      await trx
+        .insertInto("pact_event")
+        .values({
+          id: eventId,
+          pact_id: pact.id,
+          device_id: deviceId,
+          type: "uninstalled",
+          reason: "fcm_unregistered",
+          app_package: null,
+          minutes: null,
+          occurred_at: now,
+          source: "server",
+        })
+        .execute();
+      await queueWitnessNotifications(trx, { userId: pact.user_id, eventId, kind: "uninstalled", pactId: pact.id });
+      return true;
+    })
+    .catch(alreadyClosed);
 }
 
 export async function purgeDeletedAccounts(now: Date): Promise<number> {

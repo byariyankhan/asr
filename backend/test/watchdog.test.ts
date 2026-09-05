@@ -10,7 +10,7 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
   const { createPact, getCurrentPact } = await import("@/server/pacts");
   const { createActivity } = await import("@/server/activities");
   const { createInvite, acceptInvite } = await import("@/server/witnesses");
-  const { runWatchdog, markProtectionLost, failExpiredActivities, completeElapsedPacts, deliverNotifications, purgeDeletedAccounts, expireOldRows } =
+  const { runWatchdog, markProtectionLost, failExpiredActivities, completeElapsedPacts, deliverNotifications, purgeDeletedAccounts, expireOldRows, REMOVAL_CONFIRM_MS } =
     await import("@/server/watchdog");
 
   const HOUR = 3_600_000;
@@ -108,7 +108,7 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
     expect(told.map((t) => t.kind).sort()).toEqual(["pact_completed"]);
   });
 
-  it("delivers queued pushes, marks dead tokens, and treats a dead active device as an uninstall", async () => {
+  it("delivers queued pushes, and takes a dead token during delivery as one answer, not a verdict", async () => {
     const sentTo: string[] = [];
     const push: PushSender = async (token): Promise<PushResult> => {
       sentTo.push(token);
@@ -121,11 +121,33 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
       .values({ id: newId(), recipient_id: users.walker, kind: "reaction", channel: "push", title: "t", body: "b", deep_link: null })
       .execute();
 
-    const result = await deliverNotifications(push, new Date());
-    expect(result.sent).toBeGreaterThanOrEqual(1);
+    const first = await deliverNotifications(push, new Date());
+    expect(first.sent).toBeGreaterThanOrEqual(1);
     expect(sentTo).toContain("tok-witness");
     expect(sentTo).toContain("tok-walker");
-    expect(result.uninstalled).toBe(1);
+
+    // One not-registered answer is a suspicion and nothing more. This used
+    // to close the pact on the spot: a token that had merely rotated told
+    // the witnesses that the app had been deleted. The token is kept, the
+    // row stays queued for the token the next heartbeat brings, and the
+    // challenge is untouched.
+    expect(first.uninstalled).toBe(0);
+    const suspected = await db
+      .selectFrom("device")
+      .select(["fcm_token_invalid", "removal_suspected_at"])
+      .where("id", "=", devices.walker!)
+      .executeTakeFirstOrThrow();
+    expect(suspected.fcm_token_invalid).toBe(false);
+    expect(suspected.removal_suspected_at).not.toBeNull();
+    expect((await getCurrentPact(users.walker))?.status).toBe("active");
+    const pending = await db.selectFrom("notification").select("status").where("recipient_id", "=", users.walker).executeTakeFirstOrThrow();
+    expect(pending.status).toBe("queued");
+
+    // The same answer two hours later, with no heartbeat in between, is the
+    // app being gone -- the rule the probe has always used.
+    const later = new Date(suspected.removal_suspected_at!.getTime() + REMOVAL_CONFIRM_MS + 60_000);
+    const second = await deliverNotifications(push, later);
+    expect(second.uninstalled).toBe(1);
 
     const walkerDevice = await db.selectFrom("device").select("fcm_token_invalid").where("id", "=", devices.walker!).executeTakeFirstOrThrow();
     expect(walkerDevice.fcm_token_invalid).toBe(true);
@@ -133,14 +155,16 @@ describe.skipIf(!DATABASE_URL)("watchdog", async () => {
     expect(walkerPact.status).toBe("broken");
     const ev = await db.selectFrom("pact_event").select("reason").innerJoin("pact", "pact.id", "pact_event.pact_id").where("pact.user_id", "=", users.walker).where("type", "=", "uninstalled").execute();
     expect(ev).toEqual([{ reason: "fcm_unregistered" }]);
+    const closed = await db.selectFrom("notification").select("status").where("recipient_id", "=", users.walker).executeTakeFirstOrThrow();
+    expect(closed.status).toBe("unregistered");
 
-    // The uninstall was discovered during this pass, so its witness rows were
+    // The uninstall was confirmed during this pass, so its witness rows were
     // queued after the loop had already gone by; everything older is sent.
     const statuses = await db.selectFrom("notification").select(["kind", "status"]).where("recipient_id", "=", users.witness).execute();
     expect(statuses.filter((s) => s.status !== "sent").map((s) => s.kind)).toEqual(["uninstalled"]);
 
-    const second = await deliverNotifications(push, new Date());
-    expect(second.uninstalled).toBe(0);
+    const third = await deliverNotifications(push, later);
+    expect(third.uninstalled).toBe(0);
     const after = await db.selectFrom("notification").select("status").where("recipient_id", "=", users.witness).execute();
     expect(after.every((s) => s.status === "sent")).toBe(true);
   });

@@ -57,12 +57,14 @@ AI coach, public feed, leaderboards, parental controls.
 
 Backend: Next.js 16, TypeScript, PostgreSQL 17, Kysely, Better Auth (bearer
 sessions), ioredis, Firebase Admin (FCM), Resend, Zod, Vitest. Android:
-Kotlin, Jetpack Compose, Hilt, Room, WorkManager, Retrofit, Google Play
-Billing. Reasons for each choice are in `docs/ARCHITECTURE.md`.
+Kotlin, Jetpack Compose, DataStore, OkHttp with kotlinx.serialization,
+Firebase Messaging. No Hilt, Room, Retrofit or WorkManager, on purpose;
+Google Play Billing is planned and not yet in the app. Reasons for each
+choice are in `docs/ARCHITECTURE.md` and `docs/ANDROID.md`.
 
 ## Domains
 
-- `joinasr.io`: landing page and witness invite links (`joinasr.io/w/<code>`)
+- `joinasr.io`: landing page, privacy policy and terms (`/privacy`, `/terms`), and witness invite links (`joinasr.io/w/<code>`)
 - `api.joinasr.io`: backend
 - `noreply@joinasr.io`: transactional email
 

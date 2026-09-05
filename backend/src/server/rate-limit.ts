@@ -191,4 +191,8 @@ export const RATE_LIMITS = {
    *  that accepts a megabyte from a client, and nobody changes their face
    *  twenty times an hour. */
   avatar: { name: "avatar", limit: 20, windowSeconds: 3600 },
+  /** the R2 write-and-delete probe, per IP. It takes no session and every
+   *  hit is a paid operation against the bucket; a deploy asks a handful
+   *  of times and nobody else needs it more than that. */
+  storageProbe: { name: "storage-probe", limit: 12, windowSeconds: 3600 },
 } as const satisfies Record<string, RateLimitPolicy>;

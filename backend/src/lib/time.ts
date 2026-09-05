@@ -55,7 +55,12 @@ export function dayNumber(startsAt: Date, durationDays: number, now = new Date()
  * twice.
  */
 export function previousDay(day: string): string {
+  return addDaysToDay(day, -1);
+}
+
+/** A calendar day plus (or minus) whole days, as YYYY-MM-DD. Same arithmetic as `previousDay`. */
+export function addDaysToDay(day: string, days: number): string {
   const at = new Date(`${day}T00:00:00Z`);
-  at.setUTCDate(at.getUTCDate() - 1);
+  at.setUTCDate(at.getUTCDate() + days);
   return at.toISOString().slice(0, 10);
 }

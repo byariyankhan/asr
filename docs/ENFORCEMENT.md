@@ -9,7 +9,7 @@ Three things, and going over a limit is not one of them.
 
 | Ending | Reason code | Who decides |
 |---|---|---|
-| Completed | — | the last day passes |
+| Completed | — | the last day passes, by the server's calendar |
 | Given up | `user_gave_up` | the person, on a screen that names their witnesses |
 | App removed | `fcm_unregistered` | the server, twice, two hours apart |
 | Nothing enforcing it for a day | `heartbeat_timeout` | the server |
@@ -21,6 +21,15 @@ Android reporting a session late — and even when it was right, it told
 somebody their word was worthless for something the app was supposed to
 prevent and had just failed to prevent. A `limit_hit` event goes to the
 witnesses' progress screen instead: *reached a limit on Instagram*.
+
+**Completed is asked, not announced.** The phone's calendar says the last
+day has passed; the server checks the same rule against its own clock before
+recording it, and refuses with `pact_not_elapsed` if they disagree. Then the
+phone carries on enforcing and asks again later. The date is the easiest
+thing on a phone to change, and a month moved forward in Settings used to
+finish a challenge on day three with the witnesses congratulated. Offline, a
+phone that takes its time from the network is trusted; one set by hand
+waits.
 
 **Giving up is a front door and it is not free.** Without one the only way
 out is uninstalling, which is the worst ending available to everybody in it:
@@ -72,6 +81,16 @@ outside like a perfect day: no breaches, because nothing was watching. Two
 hours of it and the witnesses are told in as many words — counted on the
 server, so closing the app is not a way out of it.
 
+**Protection off on the phone that holds it.** The same two-hour clock runs
+when the phone that already has the challenge says its protection is off --
+a heartbeat with `protection_enabled: false`, which the phone sends when
+either usage access or the overlay grant is missing. It used to start only
+on a handover, so a permission taken away on day one arrived as a healthy
+heartbeat that nothing read, and a challenge could run its whole course
+unenforced and end as kept. Two hours, then the witnesses are told; a
+heartbeat saying it is on again stops the clock. The pact is not closed by
+it.
+
 **What this does not close.** A second phone without Asr installed cannot be
 blocked by Asr, and no app can change that. Moving the challenge to a tablet
 in a drawer leaves the real phone unenforced. The answer is not prevention,
@@ -99,6 +118,16 @@ The last row is a fix, not a tuning. The delay used to be read from the app
 in front *right now*, so a spent limit on the home screen got the idle
 fifteen seconds and opening it bought whatever was left of them — every time,
 all day. A limit you can have fifteen seconds at a time is a toll.
+
+**A block is checked, not believed.** The block screen is a background
+activity launch, and a launch Android refuses does not throw -- it returns
+and nothing appears, which on the phones whose skins keep a second switch
+for it was the block screen never coming while the dashboard said LOCKED.
+The loop now reads back what happened: if the blocked app is still in front
+two and a half seconds after the launch, it was dropped, the dashboard is
+told, and the same screen is drawn as an overlay window, which needs no
+exemption. If that cannot be shown either, it tries again in ten seconds
+rather than never.
 
 **The rate never affects the count.** Minutes come from the timestamps in
 Android's event stream, not from how often we look. A slow poll delays the
@@ -150,6 +179,13 @@ have been quiet for 45 minutes:
 - `not-registered` again, two hours later, with no heartbeat in between →
   the app is gone.
 
+The same rule for the same answer wherever it comes from. Delivering a
+notification asks Firebase the same question the probe does, and it used to
+convict on its own, on one answer: a token that rotated while a witness was
+reacting told somebody's mother that the app had been deleted. Every
+`not-registered`, from a probe or a delivery, now goes through one function
+and one clock.
+
 Two answers because one is not enough to tell somebody's mother they deleted
 the app: tokens rotate while an app is offline and phones get restored from
 backups. An app that is really running clears the suspicion three times over
@@ -177,3 +213,9 @@ the pact stayed open with nothing enforcing it.
 - A dashboard drawn over a challenge nothing can enforce.
 - A poll rate read from the app in front rather than from what is at stake.
 - Any accusation built on silence alone.
+- An uninstall declared on one answer from Firebase, from any path.
+- A completion the server was not asked about.
+- A block launch believed without reading back whether it took.
+- A heartbeat that says protection is on when one of the two grants is gone,
+  or that is skipped because one of them is.
+- An event dropped from the outbox for the server's own failure.

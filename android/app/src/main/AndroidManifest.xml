@@ -64,6 +64,22 @@
         <intent>
             <action android:name="android.settings.SETTINGS" />
         </intent>
+
+        <!-- The manufacturers' own battery screens, opened from the
+             keep-it-running step so a person can switch their phone's
+             app-killer off for Asr. Named one by one rather than through
+             QUERY_ALL_PACKAGES: the app needs to see these and nothing
+             else, and a package a phone does not have simply does not
+             resolve. See enforcement/OemSettings.kt. -->
+        <package android:name="com.miui.securitycenter" />
+        <package android:name="com.huawei.systemmanager" />
+        <package android:name="com.coloros.safecenter" />
+        <package android:name="com.oppo.safe" />
+        <package android:name="com.oneplus.security" />
+        <package android:name="com.vivo.permissionmanager" />
+        <package android:name="com.iqoo.secure" />
+        <package android:name="com.samsung.android.lool" />
+        <package android:name="com.asus.mobilemanager" />
     </queries>
 
 
@@ -74,9 +90,14 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Asr">
+        <!-- singleTask: a link opened from a browser, a notification tapped,
+             or the block screen's "earn time" all arrive at the one running
+             instance through onNewIntent, instead of stacking a second copy
+             of the app with fresh view models over the first. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Asr">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

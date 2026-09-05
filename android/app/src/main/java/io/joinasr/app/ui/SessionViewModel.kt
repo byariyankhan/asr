@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.joinasr.app.data.Api
+import io.joinasr.app.data.LocalSignOut
 import io.joinasr.app.sync.Sync
 import io.joinasr.app.data.ApiResult
 import io.joinasr.app.data.Me
@@ -105,6 +106,12 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
             // person who taps sign out on a train must end up signed out
             // regardless of the network.
             runCatching { sync.forgetDevice() }
+            // Then everything of theirs that lives on this phone: the pact,
+            // the witness list, the day carried over from another handset,
+            // the token -- and the service, which used to be left running
+            // over a pact it could no longer report on. Same path a phone
+            // takes when somebody signs in elsewhere, for the same reason.
+            runCatching { LocalSignOut.run(getApplication<Application>()) }
             tokens.clear()
             _error.value = null
             _session.value = Session.SignedOut

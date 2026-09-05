@@ -17,9 +17,19 @@ export async function upsertDailySummary(userId: string, pactId: string, input: 
     throw conflict("day_out_of_range", `Summaries are accepted for ${firstDay} to ${lastDay}.`);
   }
 
-  const allowed = new Set(pact.snapshot.apps.map((a) => a.package));
-  const unknown = input.apps.find((a) => !allowed.has(a.package));
+  // The limit is the one locked in the snapshot, not the one in the body.
+  // The body's `limit_min` is accepted for the wire's sake and ignored: a
+  // witness's "within limits" used to be computed from whatever the phone
+  // sent, so a modified client with `limit_min: 1440` had a perfect streak
+  // beside the real limits shown on the same screen. Earned minutes are
+  // capped at what the pact's own rules allow in a day, for the same reason.
+  const limits = new Map(pact.snapshot.apps.map((a) => [a.package, a.daily_limit_min]));
+  const unknown = input.apps.find((a) => !limits.has(a.package));
   if (unknown) throw conflict("app_not_in_pact", `${unknown.package} is not part of this pact.`);
+  const earnCap = Math.max(
+    0,
+    ...Object.values(pact.snapshot.activities ?? {}).map((rule) => rule?.daily_cap_min ?? 0),
+  );
 
   const now = new Date();
   await db
@@ -30,8 +40,8 @@ export async function upsertDailySummary(userId: string, pactId: string, input: 
         day: input.day,
         app_package: a.package,
         minutes_used: a.minutes_used,
-        limit_min: a.limit_min,
-        earned_min: a.earned_min,
+        limit_min: limits.get(a.package)!,
+        earned_min: Math.min(a.earned_min, earnCap),
         received_at: now,
       })),
     )

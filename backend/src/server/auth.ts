@@ -3,6 +3,7 @@ import { bearer } from "better-auth/plugins";
 import { cancelPendingDeletion } from "./account";
 import { db } from "./db/client";
 import { resetPasswordEmail, sendEmail, verifyEmail } from "./email";
+import { MIN_PASSWORD } from "@/lib/password";
 import { newId } from "@/lib/uuid";
 
 // Mobile-only auth: the Android app signs in through /api/auth/* and gets a
@@ -11,8 +12,11 @@ import { newId } from "@/lib/uuid";
 // relied on; nothing is shared with Bookween's auth.
 //
 // Reset and verification links point at joinasr.io/reset/<token> and
-// /verify/<token>, which are Android App Links: they open the app, which
-// then calls the matching /api/auth endpoint with the token.
+// /verify/<token>. The reset link is an Android App Link, so on a phone with
+// the app it opens the app, which calls /api/auth/reset-password with the
+// token; anywhere else it is a web page (src/app/reset) that does the same.
+// The verification link is always the web page (src/app/verify): opening
+// it is the confirmation, and there is nothing for the app to add.
 export const auth = betterAuth({
   database: { db, type: "postgres" },
   advanced: {
@@ -25,7 +29,7 @@ export const auth = betterAuth({
     // one go and confirms their address afterwards.
     requireEmailVerification: false,
     revokeSessionsOnPasswordReset: true,
-    minPasswordLength: 8,
+    minPasswordLength: MIN_PASSWORD,
     resetPasswordTokenExpiresIn: 60 * 60,
     async sendResetPassword({ user, token }) {
       const mail = resetPasswordEmail(token);

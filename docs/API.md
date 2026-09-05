@@ -62,6 +62,7 @@ Per user (or per IP before auth), enforced in Redis:
 | invites created | 20 per day (charged on the invite, not on the attempt) |
 | public invite lookup | 60 per minute per IP |
 | event ingestion | 120 per hour per device |
+| storage probe (`/health/storage`, `/health?probe=storage`) | 12 per hour per IP |
 | everything else | 300 per minute |
 
 A 429 carries `Retry-After` and says the wait in its message, because a
@@ -90,6 +91,45 @@ ate `?probe=storage` the first time somebody tried it, and a diagnostic that
 can be half-typed is a diagnostic that lies. `200` when the bucket takes a
 write, `503` otherwise. `/health` stays cheap, because uptime monitors poll
 it every minute and this costs two round trips to Cloudflare.
+
+Rate limited per IP (12 per hour), because every hit is a paid write to the
+bucket from a request that carries no session. A deploy asks a handful of
+times; nobody else needs it more than that. `429` with `Retry-After` past
+the limit, and no write is made.
+
+## Pages
+
+The public site, served by this application behind the same nginx site as
+the API, so a change to it is a deploy and not a change to the server.
+
+| Path | What it is |
+|---|---|
+| `/` | The landing page: what Asr is, how a pact works, and a Google Play badge that becomes a link once the listing exists |
+| `/privacy` | The privacy policy. The address the Play listing points at |
+| `/terms` | The terms of service |
+| anything else | A styled 404, except the endpoints below and `/w/<code>` |
+
+The privacy policy and the terms are the same words the app shows on its
+own legal screens. They live twice -- `backend/src/lib/legal.ts` and
+`android/.../legal/LegalTexts.kt` -- and `legal.test.ts` reads the Kotlin
+file and fails when the two differ, so they are changed together or not at
+all.
+
+Two more links the product sends by email land on a web page when there is
+no app to open them. Both are server-rendered and need no script.
+
+### `GET /verify/<token>`
+
+The email-confirmation link. Opening it is the confirmation: the page hands
+the token to Better Auth and says whether the address is now confirmed, the
+link has expired (they work for an hour), or it was already used.
+
+### `GET /reset/<token>`
+
+The password-reset link, for a browser. On a phone with the app installed
+the same URL is an App Link and opens the app instead. The page is a form
+for the new password, posted to a server action that calls
+`/api/auth/reset-password`; every other session is signed out on success.
 
 ## App Links
 
@@ -148,6 +188,14 @@ nothing else's; two phones enforcing the same thirty minutes is an hour. See
 changed. Also clears `removal_suspected_at`, and — when `protection_enabled`
 is true — `protection_pending_since` on this device's active pact: a
 heartbeat is the app saying it is here and working.
+
+When `protection_enabled` is **false** and this device holds an active pact,
+`protection_pending_since` is set if it was not already: the two-hour clock
+a handover starts. The phone reports `false` when either usage access or
+"display over other apps" is missing, because either one missing is a
+challenge nothing enforces. Two hours of it and the witnesses are told
+(`protection_off`); a later `true` clears the clock. The pact is not closed
+by it.
 
 Sent by the enforcement loop every 30 minutes, including while the screen is
 off, and immediately in answer to the server's silent `kind=ping`.
@@ -220,7 +268,15 @@ with the event, or `200` with the existing event if the id was seen before.
 Allowed device types: `broken`, `completed`, `limit_hit`,
 `activity_completed`, `restored`. A `broken` or `completed` event closes the
 pact and triggers witness notifications. Anything else on a closed
-pact returns `409`.
+pact returns `409 pact_closed`.
+
+A `completed` event is checked against the server's own calendar: it is
+refused with `409 pact_not_elapsed` until today, in the pact's timezone, is
+on or after the day following the pact's last day (the phone's own rule,
+plus two hours of grace for a clock that runs ahead). The date is the
+easiest thing on a phone to change, and without this a month moved forward
+in Settings finished a challenge on day three. The phone treats this answer
+as "keep enforcing", not as an error.
 
 ### `POST /pacts/{id}/give-up`
 

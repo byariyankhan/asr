@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 import androidx.core.content.ContextCompat
@@ -65,6 +66,39 @@ object Permissions {
 
     fun canDrawOverlays(context: Context): Boolean = Settings.canDrawOverlays(context)
 
+    /**
+     * Both grants the loop needs, as one answer. This is what a heartbeat
+     * reports as `protection_enabled`, because it is what a witness would be
+     * trusting: usage access is what makes anything measurable, the overlay
+     * grant is what makes anything blockable, and either one missing is a
+     * challenge nothing enforces.
+     */
+    fun protectionOn(context: Context): Boolean = hasUsageAccess(context) && canDrawOverlays(context)
+
+    /**
+     * Whether Android has agreed to leave this app alone when the phone
+     * dozes. Not required for the loop -- it only runs while the screen is
+     * on -- but a service on a phone that restricts the app is the one that
+     * gets killed at the first opportunity and not brought back.
+     */
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        val power = context.getSystemService<PowerManager>() ?: return true
+        return runCatching { power.isIgnoringBatteryOptimizations(context.packageName) }.getOrDefault(true)
+    }
+
+    /**
+     * The list every phone has, rather than the per-app request dialog. The
+     * dialog needs a permission Play grants by exception and refuses for
+     * most reasons; the list needs nothing, and the person finds Asr on it.
+     */
+    fun batteryOptimizationIntent(): Intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+
+    /** The app's own Settings page, where Battery lives under some name on every phone. */
+    fun appDetailsIntent(context: Context): Intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.fromParts("package", context.packageName, null),
+    )
+
     fun overlayIntent(context: Context): Intent = Intent(
         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
         Uri.fromParts("package", context.packageName, null),
@@ -113,6 +147,8 @@ data class PermissionState(
     val usageAccess: Boolean,
     val overlay: Boolean,
     val notifications: Boolean,
+    /** Whether Android has agreed not to restrict the app. Recommended, like notifications. */
+    val batteryUnrestricted: Boolean = true,
 ) {
     /** Notifications are recommended, not required: losing them costs the
      *  witness updates, not the limits themselves. */
@@ -123,6 +159,7 @@ data class PermissionState(
             usageAccess = Permissions.hasUsageAccess(context),
             overlay = Permissions.canDrawOverlays(context),
             notifications = Permissions.hasNotifications(context),
+            batteryUnrestricted = Permissions.isIgnoringBatteryOptimizations(context),
         )
     }
 }

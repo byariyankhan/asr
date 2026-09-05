@@ -1,6 +1,7 @@
 package io.joinasr.app.ui
 
 import android.Manifest
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -44,6 +45,7 @@ import io.joinasr.app.ui.components.AsrBottomNav
 import io.joinasr.app.ui.components.AsrTab
 import io.joinasr.app.ui.screens.AboutYouScreen
 import io.joinasr.app.ui.screens.AddWitnessesScreen
+import io.joinasr.app.ui.screens.BackgroundActivityScreen
 import io.joinasr.app.ui.screens.BlockingDisclosureScreen
 import io.joinasr.app.ui.screens.ChallengeStartedScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
@@ -136,6 +138,8 @@ private sealed interface SetupStep {
     data object DailyLimits : SetupStep
     data object Protection : SetupStep
     data object BlockingDisclosure : SetupStep
+    /** Battery optimisation and the manufacturer's switches, from the Protection step. */
+    data object Background : SetupStep
     data object Review : SetupStep
 }
 
@@ -306,6 +310,11 @@ fun AsrApp(
     var chosenDays by remember { mutableIntStateOf(ChallengeDuration.DEFAULT_DAYS) }
     var chosenApps by remember { mutableStateOf(emptyList<AppEntry>()) }
     var chosenLimits by remember { mutableStateOf(emptyMap<String, Int>()) }
+
+    // The keep-it-running screen, opened from the dashboard's warning when
+    // the loop is not alive. Not a tab and not setup: a repair, from where
+    // the damage shows.
+    var fixingProtection by remember { mutableStateOf(false) }
 
     // The one place the loop is started from inside the app. Starting an
     // already-running service costs one onStartCommand, and the service
@@ -647,7 +656,15 @@ fun AsrApp(
                         // Figma 10, which explains what the overlay reads
                         // before Settings opens rather than after.
                         onReviewBlocking = { setupStep = SetupStep.BlockingDisclosure },
+                        onBackgroundActivity = { setupStep = SetupStep.Background },
                         onContinue = { setupStep = SetupStep.Review },
+                    )
+
+                    // Not in the Figma file: the two settings that stop a
+                    // manufacturer's battery layer from killing the loop.
+                    SetupStep.Background -> BackgroundActivityScreen(
+                        onBack = { setupStep = SetupStep.Protection },
+                        onDone = { setupStep = SetupStep.Protection },
                     )
 
                     // Figma 11. Everything chosen, in one place, before
@@ -753,9 +770,24 @@ fun AsrApp(
                 // something that happens inside it, not the price of entry.
                 val activePact = (pactState as? PactState.Active)?.pact
                 val signOut = {
-                    destination = Destination.Welcome
-                    tab = AsrTab.Home
-                    viewModel.signOut()
+                    if (activePact != null) {
+                        // Signing out would leave the challenge with nothing
+                        // enforcing it and no way to say so: the heartbeats
+                        // need the session that just left. A day later the
+                        // witnesses would be told the phone went dark, about
+                        // somebody who pressed a button on the profile
+                        // screen. The front door is Give up, on Progress.
+                        Toast.makeText(
+                            context,
+                            "You have a challenge running. Finish it, or give it up " +
+                                "from Progress, before signing out.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    } else {
+                        destination = Destination.Welcome
+                        tab = AsrTab.Home
+                        viewModel.signOut()
+                    }
                 }
 
                 /**
@@ -791,6 +823,7 @@ fun AsrApp(
                     walkOnceGranted = false
                     showingNotifications = false
                     showingProtectionLost = false
+                    fixingProtection = false
                     // A reward shown once. Coming back to Home tomorrow to be
                     // congratulated again for yesterday's walk is worse than
                     // not seeing it a second time.
@@ -933,6 +966,11 @@ fun AsrApp(
                                         onBack = { showingProtectionLost = false },
                                         onDismiss = { showingProtectionLost = false },
                                     )
+                                } else if (fixingProtection) {
+                                    BackgroundActivityScreen(
+                                        onBack = { fixingProtection = false },
+                                        onDone = { fixingProtection = false },
+                                    )
                                 } else {
                                     DashboardScreen(
                                         pact = activePact,
@@ -941,6 +979,7 @@ fun AsrApp(
                                             startingChallenge = true
                                         },
                                         onProtectionLost = { showingProtectionLost = true },
+                                        onFixProtection = { fixingProtection = true },
                                         onNotifications = {
                                             inboxViewModel.refresh()
                                             showingNotifications = true

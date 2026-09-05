@@ -15,7 +15,7 @@ Read this before touching anything.
 | `android/` | Claude | The app. Being built from Figma, screen by screen. |
 | `backend/` | Claude | Live in production at `https://api.joinasr.io`. |
 | `infra/`, `.github/` | Claude | Deploy, nginx, TLS, the VPS. See the warning below. |
-| `web/` | whoever is assigned it | The `joinasr.io` marketing site. |
+| `backend/src/app/` (`page.tsx`, `privacy/`, `terms/`, `site.css`) | Claude | The `joinasr.io` site: landing, privacy, terms, 404. Served by the API application; there is no separate `web/` folder on `master`. |
 | `docs/` | shared | Say in the commit which file you changed and why. |
 
 If a directory is not yours, do not edit it — not even a one-line fix, not

@@ -14,6 +14,7 @@ import com.google.firebase.messaging.RemoteMessage
 import io.joinasr.app.MainActivity
 import io.joinasr.app.R
 import io.joinasr.app.data.LocalSignOut
+import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.sync.Sync
 import kotlinx.coroutines.CoroutineScope
@@ -73,10 +74,19 @@ class AsrMessagingService : FirebaseMessagingService() {
         // return anyway; saying so here is cheaper than working that out
         // again in six months.
         if (message.data["kind"] == PING) {
+            // And the one moment a phone that has killed the service can
+            // bring it back. The server only probes a phone it has not heard
+            // from in three quarters of an hour, which on a phone whose
+            // manufacturer stops background services is exactly a phone
+            // whose loop is dead. A high-priority push is one of the few
+            // things Android lets start a foreground service from the
+            // background, so it is used for that; start() does nothing when
+            // there is no pact or no usage access.
+            EnforcementService.start(applicationContext)
             scope.launch {
                 runCatching {
                     Sync(applicationContext).heartbeat(
-                        protectionEnabled = Permissions.canDrawOverlays(applicationContext),
+                        protectionEnabled = Permissions.protectionOn(applicationContext),
                     )
                 }
             }

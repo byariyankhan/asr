@@ -100,6 +100,22 @@ export async function recordHeartbeat(userId: string, deviceId: string, input: H
       .where("status", "=", "active")
       .where("protection_pending_since", "is not", null)
       .execute();
+  } else {
+    // And a heartbeat that says protection is off starts that same clock,
+    // for the phone that already holds the challenge. Until now only a
+    // handover started it: a permission taken away on the original phone
+    // arrived here as a healthy heartbeat with `false` in it, nothing
+    // read the false, and a challenge could run its whole course with
+    // nothing enforcing it and end with the witnesses told that the person
+    // had kept their word. Two hours, then they are told what is true.
+    await db
+      .updateTable("pact")
+      .set({ protection_pending_since: now, updated_at: now })
+      .where("user_id", "=", userId)
+      .where("device_id", "=", deviceId)
+      .where("status", "=", "active")
+      .where("protection_pending_since", "is", null)
+      .execute();
   }
 }
 
