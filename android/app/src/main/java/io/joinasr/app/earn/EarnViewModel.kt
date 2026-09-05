@@ -3,6 +3,7 @@ package io.joinasr.app.earn
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.enforcement.Pact
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.sync.Sync
@@ -142,6 +143,7 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun finish(activity: EarnActivity) {
         val now = System.currentTimeMillis()
         store.award(activity.packageName, activity.rewardMinutes)
+        Analytics.log(Analytics.extraTimeEarned(activity.type))
         store.clearActive()
         _justEarned.value = activity
         runCatching { sync.completeActivity(activity, now) }

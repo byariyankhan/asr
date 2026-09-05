@@ -35,7 +35,7 @@ data class LegalDocument(
  */
 object LegalTexts {
 
-    const val EFFECTIVE = "Effective September 3, 2026"
+    const val EFFECTIVE = "Effective September 5, 2026"
 
     val privacy = LegalDocument(
         eyebrow = "PRIVACY",
@@ -94,13 +94,20 @@ object LegalTexts {
             LegalSection(
                 "6. Sharing",
                 "We use service providers to run the service: hosting, sign-in, push " +
-                    "notifications and crash reports (Google Firebase), email (Resend) " +
-                    "and profile-photo storage (Cloudflare R2). A crash report carries " +
-                    "the app version, the phone model and Android version, and where in " +
-                    "the app the failure happened; never your usage, your witnesses or " +
-                    "anything you typed. There is no analytics or advertising provider " +
-                    "in the app. Witnesses receive only the accountability information " +
-                    "described above. We do not sell personal data to advertisers.",
+                    "notifications, crash reports and product analytics (Google " +
+                    "Firebase), email (Resend) and profile-photo storage (Cloudflare R2). " +
+                    "A crash report carries the app version, the phone model and Android " +
+                    "version, and where in the app the failure happened; never your " +
+                    "usage, your witnesses or anything you typed. Analytics receives a " +
+                    "small number of product events, such as an account being created, a " +
+                    "challenge starting, an invitation going out or a challenge ending, " +
+                    "with the app version, the phone model, your country and language and " +
+                    "a random identifier for the installation; never the apps you limit, " +
+                    "your minutes, your name, your email address or your witnesses. The " +
+                    "advertising identifier is switched off. There is no advertising " +
+                    "provider in the app. Witnesses receive only the accountability " +
+                    "information described above. We do not sell personal data to " +
+                    "advertisers.",
             ),
             LegalSection(
                 "7. Retention and deletion",

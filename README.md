@@ -62,7 +62,7 @@ AI coach, public feed, leaderboards, parental controls.
 Backend: Next.js 16, TypeScript, PostgreSQL 17, Kysely, Better Auth (bearer
 sessions), ioredis, Firebase Admin (FCM), Resend, Zod, Vitest. Android:
 Kotlin, Jetpack Compose, DataStore, OkHttp with kotlinx.serialization,
-Firebase Messaging and Crashlytics. No Hilt, Room, Retrofit or WorkManager, on purpose;
+Firebase Messaging, Crashlytics and Analytics (ten product events, see `docs/ANDROID.md`). No Hilt, Room, Retrofit or WorkManager, on purpose;
 Google Play Billing is planned and not yet in the app. Reasons for each
 choice are in `docs/ARCHITECTURE.md` and `docs/ANDROID.md`.
 

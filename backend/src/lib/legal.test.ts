@@ -10,7 +10,8 @@ import { EFFECTIVE, privacy, terms, type LegalSection } from "./legal";
  * so this reads the Kotlin source, resolves its string concatenations, and
  * compares section by section. The alternative is two documents that were
  * the same on the day they were written, which is how a privacy policy ends
- * up naming an analytics provider that was never installed.
+ * up naming a provider that was never installed -- or, the other way round,
+ * promising there is no analytics on the day analytics is added.
  */
 const KOTLIN = path.resolve(
   __dirname,
@@ -70,12 +71,11 @@ describe("the legal texts the app and the site show", () => {
     expect(kotlin.sections).toEqual(terms.sections);
   });
 
-  it("do not name a provider the app does not have", () => {
-    for (const doc of [privacy, terms]) {
-      for (const section of doc.sections) {
-        expect(section.body.toLowerCase()).not.toMatch(/\banalytics provider\b.*\bwe use\b/);
-      }
-    }
-    expect(privacy.sections.find((s) => s.heading === "6. Sharing")?.body).toContain("no analytics");
+  it("name the analytics the app has, and what it never receives", () => {
+    const sharing = privacy.sections.find((s) => s.heading === "6. Sharing")?.body ?? "";
+    expect(sharing).toContain("product analytics (Google Firebase)");
+    expect(sharing).toContain("never the apps you limit, your minutes, your name, your email address or your witnesses");
+    expect(sharing).toContain("The advertising identifier is switched off.");
+    expect(sharing).not.toContain("no analytics");
   });
 });
