@@ -696,23 +696,43 @@ the container healthcheck and uptime monitoring. No auth, no details.
 
 ### `POST /internal/watchdog`
 
-Runs the watchdog once, out of band. Guarded by an `x-internal-secret`
-header compared against `INTERNAL_SECRET` in constant time; without a match
-the route answers `404`, so its existence is not advertised. Returns the run
-report, or `{ "skipped": … }` when another run holds the lock. For ops and
-as a cron fallback if the in-process loop is ever replaced.
+Runs the watchdog once, out of band. Two conditions, both required: an
+`x-internal-secret` header equal to `INTERNAL_SECRET` (constant-time
+compare; a secret that is unset or shorter than 32 characters matches
+nothing), and a request that did **not** come through nginx. nginx sets
+`X-Real-IP` and `X-Forwarded-For` on everything it proxies and the API's
+port is bound to `127.0.0.1`, so only a caller on the VPS itself qualifies;
+everything else answers `404` before the secret is looked at, which is why a
+leaked secret is still not enough from the internet. Returns the run report,
+or `{ "skipped": … }` when another run holds the lock. For ops on the box
+and as a cron fallback if the in-process loop is ever replaced:
+
+```bash
+curl -sS -X POST -H "x-internal-secret: $(sed -n 's/^INTERNAL_SECRET=//p' /opt/asr/.env)" http://127.0.0.1:3001/v1/internal/watchdog
+```
 
 ### Watchdog
 
 Not an endpoint. A loop started by the API process on boot
-(`src/instrumentation.ts`) runs every 15 minutes. A Redis lock with a
-10-minute TTL makes it single-flight, so a second replica is safe. Every
-step is idempotent and scoped by state: running it twice, or after a crash
-mid-run, changes nothing the second time.
+(`src/instrumentation.ts`) runs every 15 minutes. Single-flight twice over:
+a Redis lock (`SET NX` with a 5-minute TTL, renewed every minute while the
+run is going, released only by the run that took it — the release and the
+renewal check the lock still carries that run's token), so a second replica
+is safe and a run that dies with its process frees the lock within five
+minutes; and a mutex in the process, so the loop and the manual trigger
+cannot overlap even without Redis. Every step is idempotent and scoped by
+state: running it twice, or after a crash mid-run, changes nothing the
+second time.
 
+0. Write down that it is running (`watchdog_state`). A previous run more
+   than 30 minutes old is a gap the server was away for, recorded in
+   `server_outage`; every rule below that measures silence subtracts the
+   outages inside that silence, plus 45 minutes after each, so a server
+   that was down cannot convict the phones that could not reach it
+   (`ENFORCEMENT.md`, "When the server itself was away").
 1. Mark `protection_lost` and break the pact for active pacts whose device
-   has been silent for 24 h (reason `heartbeat_timeout`). A pact started
-   less than 24 h ago is never touched.
+   has been silent for 24 h of the server being up (reason
+   `heartbeat_timeout`). A pact started less than 24 h ago is never touched.
 2. Mark `activity_failed` for pending activities past their deadline, and
    write the ledger event if the pact is still active.
 3. Mark `completed` for active pacts past `ends_at` with no break.
@@ -721,11 +741,13 @@ mid-run, changes nothing the second time.
    400 days, dead devices 180 days).
 6. Drain the notification queue via FCM, up to 200 rows per run, sending to
    every live device of the recipient. A token FCM reports as
-   `UNREGISTERED` marks that device invalid; if it was the phone running an
-   active pact and the user has no other live device, that is an uninstall:
-   an `uninstalled` event is written (reason `fcm_unregistered`) and the
-   pact breaks. Because that is discovered mid-drain, one extra delivery
-   pass follows so the witnesses hear about it in the same run.
+   `UNREGISTERED` is one not-registered answer under the same two-answer
+   rule the probe uses: a first answer starts a clock, and a second one two
+   hours of uptime later with no heartbeat in between marks the device
+   invalid. If that was the phone running an active pact, that is an
+   uninstall: an `uninstalled` event is written (reason `fcm_unregistered`)
+   and the pact breaks. Because that is discovered mid-drain, one extra
+   delivery pass follows so the witnesses hear about it in the same run.
 7. Write its finish time to Redis, which is what `/health` reads to report
    `watchdog_stale`.
 

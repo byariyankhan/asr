@@ -204,6 +204,30 @@ the device most likely to satisfy that is the fresh install that replaced the
 one being reported dead, so a reinstall vouched for the phone it replaced and
 the pact stayed open with nothing enforcing it.
 
+## When the server itself was away
+
+Every rule above measures silence: a day without a heartbeat, two hours
+without protection, a suspicion standing for two hours. Silence is only
+evidence while the server was there to be spoken to. A server that was down
+for a day used to come back and, in its first run, break every running
+challenge at once and tell every witness — the phones had been talking to a
+wall.
+
+So the watchdog keeps its own clock. Each run writes down that it ran
+(`watchdog_state`); a run that finds the previous one more than half an hour
+old writes the gap down as an outage (`server_outage`). In Postgres, not
+Redis, because Redis restarts with the stack and this has to survive exactly
+the event it records. Every silence rule then counts only the time the
+server was up: an outage is subtracted from the silence it falls inside,
+plus three-quarters of an hour after it, because the phones did not know
+the server was away and each will check in at its next half-hourly
+heartbeat. A phone that heartbeated ten minutes before a thirty-hour outage
+is, when the server comes back, ten minutes silent.
+
+A gap in the watchdog counts as an outage whether the whole server was down
+or only the loop, which errs on the side of the phone: at worst a real
+uninstall is noticed a little later.
+
 ## Things that must not come back
 
 - A limit that fails a challenge.
@@ -213,6 +237,7 @@ the pact stayed open with nothing enforcing it.
 - A dashboard drawn over a challenge nothing can enforce.
 - A poll rate read from the app in front rather than from what is at stake.
 - Any accusation built on silence alone.
+- Silence the server was not there to hear, counted against a phone.
 - An uninstall declared on one answer from Firebase, from any path.
 - A completion the server was not asked about.
 - A block launch believed without reading back whether it took.
