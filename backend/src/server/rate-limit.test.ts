@@ -45,7 +45,16 @@ describe("room, then consume", () => {
   it("says how long to wait, not only that it will not", async () => {
     const policy = { name: `t4-${Date.now()}`, limit: 1, windowSeconds: 7200 };
     await consumeRateLimit(policy, "a");
-    await expect(assertRateLimitRoom(policy, "a")).rejects.toThrow(/Try again in about \d+ hours?\./);
+    // The wording depends on how much of the window is left, and the Redis
+    // limiter's windows are aligned to the clock rather than to the first
+    // hit: two hours, "about 34 minutes" or "a minute" are all honest
+    // answers at different times of day. What is asserted is that the
+    // message names a wait at all, and that the header carries it.
+    await expect(assertRateLimitRoom(policy, "a")).rejects.toMatchObject({
+      status: 429,
+      message: expect.stringMatching(/Try again in (a minute|about an hour|about \d+ (minutes|hours))\./),
+      extra: { retryAfter: expect.any(Number) },
+    });
   });
 
   it("the ordinary path says it too", async () => {
