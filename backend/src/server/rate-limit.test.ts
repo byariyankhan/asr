@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { assertRateLimit, assertRateLimitRoom, checkRateLimit, consumeRateLimit } from "./rate-limit";
 
-// REDIS_URL is unset under vitest, so this exercises the in-process fallback
-// that also takes over during a Redis outage.
-describe("checkRateLimit (local fallback)", () => {
+// With REDIS_URL unset (a developer's machine) this exercises the in-process
+// fallback that also takes over during a Redis outage; with it set (CI, which
+// runs a Redis service) the same assertions run against Redis. Policy names
+// carry a timestamp so a shared Redis never sees a stale counter.
+describe("checkRateLimit (Redis when configured, local fallback otherwise)", () => {
   it("allows up to the limit, then refuses with a reset time", async () => {
     const policy = { name: `t-${Date.now()}`, limit: 3, windowSeconds: 60 };
     const results = [];

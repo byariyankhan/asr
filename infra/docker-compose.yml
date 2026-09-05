@@ -7,10 +7,23 @@
 # Moving this stack to another machine is a directory copy plus a pg_dump.
 name: asr
 
+# Every container's stdout is a json-file on the VPS's disk, and Docker's
+# default keeps all of it forever. The API now writes a line per request,
+# which is the point of it and also a disk that fills in a year. Five files
+# of twenty megabytes each, per service, is weeks of history and a bounded
+# amount of disk.
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    <<: *logging
     environment:
       POSTGRES_USER: asr
       POSTGRES_PASSWORD: ${PG_PASS}
@@ -28,6 +41,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    <<: *logging
     command: redis-server --requirepass ${REDIS_PASS}
     ports:
       - "127.0.0.1:6380:6379"
@@ -44,6 +58,7 @@ services:
       context: ./src/backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    <<: *logging
     environment:
       # Written by the deploy at `up -d` time. /v1/health reports it, and the
       # deploy refuses to pass until the live answer matches the commit it
