@@ -25,6 +25,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -49,7 +50,6 @@ import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ActivityProgressScreen
 import io.joinasr.app.ui.screens.ActivityTrackingScreen
 import io.joinasr.app.challenge.ChallengeProgress
-import io.joinasr.app.ui.screens.ChallengeElsewhereScreen
 import io.joinasr.app.ui.screens.ChallengeEndedScreen
 import io.joinasr.app.ui.screens.GiveUpScreen
 import io.joinasr.app.ui.screens.ChooseActivityScreen
@@ -166,8 +166,6 @@ fun AsrApp(
     val session by viewModel.session.collectAsStateWithLifecycle()
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
     val restoringPact by pactViewModel.restoring.collectAsStateWithLifecycle()
-    val challengeElsewhere by pactViewModel.elsewhere.collectAsStateWithLifecycle()
-    val takingOver by pactViewModel.takingOver.collectAsStateWithLifecycle()
     val endedUnseen by pactViewModel.endedUnseen.collectAsStateWithLifecycle()
     val witnesses by witnessViewModel.witnesses.collectAsStateWithLifecycle()
     val pendingShare by witnessViewModel.pendingShare.collectAsStateWithLifecycle()
@@ -284,16 +282,22 @@ fun AsrApp(
     var startingChallenge by remember { mutableStateOf(false) }
 
     /**
-     * Whether the person is moving a challenge from another phone onto this
-     * one, and how far through the permissions they are.
+     * The two grants that make a challenge mean anything, re-read whenever
+     * the app comes back to the front.
      *
-     * The same two screens as setup, for the same two grants, because taking
-     * a challenge over needs them exactly as much as starting one does --
-     * and a phone that has just reinstalled the app has neither. Not stored:
-     * backing out leaves the challenge where it was.
+     * They are granted per install and can be taken away in Settings at any
+     * moment, so this is a fact about right now and not something to
+     * remember. A challenge is not allowed to run behind a screen that says
+     * it is protected while neither of these is on.
      */
-    var movingHere by remember { mutableStateOf(false) }
-    var moveStep by remember { mutableStateOf<SetupStep>(SetupStep.UsageAccess) }
+    var protection by remember { mutableStateOf(PermissionState.read(context)) }
+    // Nothing tells an app that a Settings toggle flipped, so the only
+    // honest moment to look is when it comes back to the front -- which is
+    // exactly the moment somebody returns from granting one.
+    LifecycleResumeEffect(Unit) {
+        protection = PermissionState.read(context)
+        onPauseOrDispose {}
+    }
 
     // Held here and nowhere else, for the length of the setup flow only. A
     // half-made challenge is not something the app should remember: it is
@@ -501,7 +505,6 @@ fun AsrApp(
     // property cannot be, and `!!` on the thing that tells somebody their
     // challenge broke is not where to be casual.
     val ended = endedUnseen
-    val elsewhere = challengeElsewhere
     val code = inviteCode
     val signedIn = session is Session.SignedIn
 
@@ -599,53 +602,6 @@ fun AsrApp(
                     },
                     onDismiss = pactViewModel::acknowledgeEnded,
                 )
-            } else if (elsewhere != null && pactState is PactState.None) {
-                // The account has a challenge and this phone is not the one
-                // running it: a second handset, or the same one after a
-                // reinstall. Not a dashboard, because a dashboard here would
-                // be drawn from numbers this phone cannot measure -- and not
-                // an offer to start one, because starting a second challenge
-                // is the one thing that must not happen.
-                if (!movingHere) {
-                    ChallengeElsewhereScreen(
-                        challenge = elsewhere,
-                        busy = takingOver,
-                        onContinueHere = {
-                            // Straight through when the grants are already
-                            // here, which is the phone that has run a
-                            // challenge before. A reinstall has neither, and
-                            // an uninstall is exactly how they were lost.
-                            if (PermissionState.read(context).requiredGranted) {
-                                pactViewModel.takeOverOnThisPhone()
-                            } else {
-                                moveStep = SetupStep.UsageAccess
-                                movingHere = true
-                            }
-                        },
-                    )
-                } else when (moveStep) {
-                    SetupStep.BlockingDisclosure -> BlockingDisclosureScreen(
-                        onBack = { moveStep = SetupStep.Protection },
-                        onGranted = { moveStep = SetupStep.Protection },
-                        onSkip = { moveStep = SetupStep.Protection },
-                    )
-
-                    SetupStep.Protection -> ProtectionScreen(
-                        onBack = { moveStep = SetupStep.UsageAccess },
-                        onReviewBlocking = { moveStep = SetupStep.BlockingDisclosure },
-                        // The challenge moves here on this press and not
-                        // before: everything up to it can be backed out of.
-                        onContinue = {
-                            movingHere = false
-                            pactViewModel.takeOverOnThisPhone()
-                        },
-                    )
-
-                    else -> UsageAccessScreen(
-                        onBack = { movingHere = false },
-                        onGranted = { moveStep = SetupStep.Protection },
-                    )
-                }
             } else if (startingChallenge && pactState is PactState.None) {
                 when (setupStep) {
                     // Figma 04. Its frame has no chevron, drawn when setup
@@ -701,7 +657,7 @@ fun AsrApp(
                         days = chosenDays,
                         apps = chosenApps,
                         limits = chosenLimits,
-                        protectionReady = PermissionState.read(context).requiredGranted,
+                        protectionReady = protection.requiredGranted,
                         onBack = { setupStep = SetupStep.Protection },
                         // The one place a challenge is committed. From here it
                         // survives the app being killed, which is the whole
@@ -762,13 +718,35 @@ fun AsrApp(
                     ChallengeStartedScreen(
                         days = started.durationDays,
                         witnesses = witnesses.size,
-                        protectionReady = PermissionState.read(context).requiredGranted,
+                        protectionReady = protection.requiredGranted,
                         onContinue = {
                             justStarted = false
                             witnessesOffered = false
                         },
                     )
                 }
+            } else if (pactState is PactState.Active && !protection.requiredGranted) {
+                // A running challenge and nothing able to enforce it. There
+                // is no version of this worth showing a dashboard over: the
+                // numbers would be honest and mean nothing, because no app
+                // is being blocked and no limit can be measured.
+                //
+                // It is a gate rather than the banner it used to be because
+                // of what the banner allowed. Revoke usage access and the
+                // app went on drawing a challenge; sign in on a new phone
+                // and the challenge arrived without the permissions, which
+                // are per install. Both are the same hole, and both looked
+                // from the outside like a perfect day -- no breaches,
+                // because nothing was watching.
+                //
+                // Two hours of this and the witnesses are told in as many
+                // words. The server counts that, not this screen: closing
+                // the app has to not be a way out of it.
+                ProtectionLostScreen(
+                    onBack = {},
+                    onDismiss = {},
+                    dismissible = false,
+                )
             } else {
                 // Null when nothing is running, which every tab now handles.
                 // The bar and its four screens are the app; a challenge is

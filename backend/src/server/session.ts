@@ -2,7 +2,7 @@ import { unauthorized } from "@/lib/http";
 import { auth } from "./auth";
 import { assertRateLimit, RATE_LIMITS, type RateLimitPolicy } from "./rate-limit";
 
-export type Caller = { userId: string; name: string; email: string };
+export type Caller = { userId: string; name: string; email: string; sessionId: string };
 
 // Every /v1 route starts here: a valid bearer session, then the per-user
 // rate limit for the route's policy (default: the general API limit).
@@ -13,7 +13,7 @@ export async function requireCaller(
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) throw unauthorized();
   await assertRateLimit(policy, session.user.id);
-  return { userId: session.user.id, name: session.user.name, email: session.user.email };
+  return { userId: session.user.id, name: session.user.name, email: session.user.email, sessionId: session.session.id };
 }
 
 /**
@@ -32,7 +32,7 @@ export async function optionalCaller(request: Request): Promise<Caller | null> {
   try {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session) return null;
-    return { userId: session.user.id, name: session.user.name, email: session.user.email };
+    return { userId: session.user.id, name: session.user.name, email: session.user.email, sessionId: session.session.id };
   } catch {
     // A malformed or expired token on a public route is not an error, it is
     // an anonymous reader.

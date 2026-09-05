@@ -15,6 +15,16 @@ import { newId } from "@/lib/uuid";
 // earlier steps queue are sent in the same run.
 
 export const HEARTBEAT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+/**
+ * How long a challenge may sit on a phone that cannot enforce it.
+ *
+ * Short, and deliberately far shorter than the day a silent phone gets. A
+ * silent phone might be a flat battery; this is a phone that is awake,
+ * signed in, holding somebody's challenge, and blocking nothing -- and the
+ * person is looking at the screen that asks them to fix it. Two hours is
+ * long enough to be at work and short enough that it cannot be a strategy.
+ */
+export const PROTECTION_GRACE_MS = 2 * 60 * 60 * 1000;
 export const DELETION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 export const NOTIFICATION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 export const SUMMARY_RETENTION_MS = 400 * 24 * 60 * 60 * 1000;
@@ -23,6 +33,7 @@ const LOCK_MS = 10 * 60 * 1000;
 
 export type WatchdogReport = {
   protection_lost: number;
+  protection_off: number;
   uninstalled: number;
   activities_failed: number;
   pacts_completed: number;
@@ -42,6 +53,7 @@ export async function runWatchdog(opts: { push?: PushSender; now?: Date } = {}):
     const now = opts.now ?? new Date();
     const report: WatchdogReport = {
       protection_lost: await markProtectionLost(now),
+      protection_off: await reportUnprotectedHandovers(now),
       uninstalled: 0,
       activities_failed: await failExpiredActivities(now),
       pacts_completed: await completeElapsedPacts(now),
@@ -70,6 +82,73 @@ export async function runWatchdog(opts: { push?: PushSender; now?: Date } = {}):
   } finally {
     if (client) await client.del(LOCK_KEY).catch(() => {});
   }
+}
+
+/**
+ * A challenge that changed phones and was never switched back on.
+ *
+ * Moving to a new phone takes the challenge with it, and takes none of the
+ * permissions: usage access and drawing over other apps are granted per
+ * install. Between signing in and granting them there is a live challenge
+ * that nothing enforces, and from the outside that looks exactly like a
+ * perfect day -- no breaches, because nothing is watching.
+ *
+ * The app will not let anybody past that screen, so this is for the person
+ * who signs in and puts the phone down. Two hours, then the witnesses are
+ * told in as many words: the challenge is running and nothing is stopping
+ * the apps.
+ *
+ * The pact is not closed. It is not broken -- nobody has used anything they
+ * agreed not to -- and the person who grants the permission at hour three
+ * should find their challenge where they left it. The clock stops the moment
+ * a heartbeat says protection is on.
+ */
+export async function reportUnprotectedHandovers(now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - PROTECTION_GRACE_MS);
+  const stuck = await db
+    .selectFrom("pact")
+    .select(["id", "user_id", "device_id"])
+    .where("status", "=", "active")
+    .where("protection_pending_since", "is not", null)
+    .where("protection_pending_since", "<", cutoff)
+    .execute();
+
+  let count = 0;
+  for (const pact of stuck) {
+    await db.transaction().execute(async (trx) => {
+      const eventId = newId();
+      await trx
+        .insertInto("pact_event")
+        .values({
+          id: eventId,
+          pact_id: pact.id,
+          device_id: pact.device_id,
+          type: "protection_lost",
+          reason: "permission_revoked",
+          app_package: null,
+          minutes: null,
+          occurred_at: now,
+          source: "server",
+        })
+        .execute();
+      await queueWitnessNotifications(trx, {
+        userId: pact.user_id,
+        eventId,
+        kind: "protection_off",
+        pactId: pact.id,
+      });
+      // Said once. The column is the "we have not told anybody yet" flag as
+      // much as it is the clock, and a witness told every fifteen minutes
+      // stops reading anything this app sends.
+      await trx
+        .updateTable("pact")
+        .set({ protection_pending_since: null, updated_at: now })
+        .where("id", "=", pact.id)
+        .execute();
+    });
+    count += 1;
+  }
+  return count;
 }
 
 // An active pact whose device has been silent for a day: protection was

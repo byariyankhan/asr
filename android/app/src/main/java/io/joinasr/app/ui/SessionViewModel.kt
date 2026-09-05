@@ -53,6 +53,18 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
                 resolve(stored, clearTokenOnUnauthorised = true)
             }
         }
+        // One account, one phone: signing in on another handset ends the
+        // session here, and the push that says so clears the token from
+        // outside this class. Without watching for that, somebody looking at
+        // the app when it arrives keeps looking at a signed-in screen whose
+        // every request now fails.
+        viewModelScope.launch {
+            tokens.token.collect { token ->
+                if (token.isNullOrBlank() && _session.value is Session.SignedIn) {
+                    _session.value = Session.SignedOut
+                }
+            }
+        }
     }
 
     /**

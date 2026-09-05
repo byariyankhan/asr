@@ -60,6 +60,16 @@ fun ProtectionLostScreen(
     onBack: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Whether there is anything behind this screen to go back to.
+     *
+     * False while a challenge is running and a required grant is off. Then
+     * this is not a warning about the dashboard, it is instead of it: a
+     * challenge nothing can enforce must not be shown as a challenge being
+     * kept, and a way past this screen would be a way to keep it in name
+     * only.
+     */
+    dismissible: Boolean = true,
 ) {
     val context = LocalContext.current
     var permissions by remember { mutableStateOf(PermissionState.read(context)) }
@@ -76,16 +86,34 @@ fun ProtectionLostScreen(
             .padding(horizontal = 24.dp),
     ) {
         Spacer(Modifier.height(20.dp))
-        AsrBackChevron(onBack)
+        // No chevron when this is the screen instead of the dashboard: a
+        // back arrow that cannot go back is worse than no back arrow.
+        if (dismissible) AsrBackChevron(onBack) else Spacer(Modifier.height(28.dp))
 
         Spacer(Modifier.height(28.dp))
-        Text("PROTECTION LOST", style = AsrType.Eyebrow, color = AsrColors.Breach)
-        Spacer(Modifier.height(16.dp))
-        Text("Your challenge is exposed.", style = AsrType.display(30), color = AsrColors.TextPrimary)
+        Text(
+            if (dismissible) "PROTECTION LOST" else "PROTECTION REQUIRED",
+            style = AsrType.Eyebrow,
+            color = AsrColors.Breach,
+        )
         Spacer(Modifier.height(16.dp))
         Text(
-            "A required protection is off. Controlled apps cannot be reliably " +
-                "blocked until access is restored.",
+            if (dismissible) "Your challenge is exposed." else "Turn protection on to continue.",
+            style = AsrType.display(30),
+            color = AsrColors.TextPrimary,
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            if (dismissible) {
+                "A required protection is off. Controlled apps cannot be reliably " +
+                    "blocked until access is restored."
+            } else {
+                // Said plainly, because the two hours are real and start now.
+                "Your challenge is running and nothing on this phone can enforce " +
+                    "it. These permissions are granted per phone, so a new one -- " +
+                    "or a reinstall -- starts without them. Your witnesses are told " +
+                    "if this is still off in two hours."
+            },
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
         )
@@ -146,20 +174,27 @@ fun ProtectionLostScreen(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Spacer(Modifier.height(20.dp))
-        Text(
-            "Back to dashboard",
-            style = AsrType.Label.copy(fontSize = 13.sp),
-            color = AsrColors.TextSecondary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable(role = Role.Button, onClick = onDismiss)
-                .padding(vertical = 10.dp),
-        )
+        if (dismissible) {
+            Spacer(Modifier.height(20.dp))
+            BackToDashboard(onDismiss)
+        }
         Spacer(Modifier.height(28.dp))
     }
+}
+
+@Composable
+private fun BackToDashboard(onDismiss: () -> Unit) {
+    Text(
+        "Back to dashboard",
+        style = AsrType.Label.copy(fontSize = 13.sp),
+        color = AsrColors.TextSecondary,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClick = onDismiss)
+            .padding(vertical = 10.dp),
+    )
 }
 
 @Composable

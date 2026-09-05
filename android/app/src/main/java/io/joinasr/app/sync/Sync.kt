@@ -151,6 +151,10 @@ class Sync(context: Context) {
         }
         if (apps.isEmpty()) return null
 
+        // Registering is what moves the challenge onto this phone, signs the
+        // last one out and tells the witnesses -- all of it server-side, in
+        // this one request. It is not here for the id it returns.
+        deviceId()
         return RemoteChallenge(
             pact = Pact(
                 apps = apps,
@@ -158,83 +162,46 @@ class Sync(context: Context) {
                 durationDays = remote.durationDays ?: ChallengeDuration.DEFAULT_DAYS,
             ),
             remoteId = remote.id,
-            onThisPhone = remote.deviceId != null && remote.deviceId == deviceId(),
-            phone = remote.deviceModel?.takeIf { it.isNotBlank() },
         )
     }
 
     /**
-     * This phone takes the challenge over: it enforces it from now on, and
-     * whichever handset was doing so stops.
+     * Writes down the server's id for a challenge this phone has just been
+     * handed, before it starts enforcing it.
      *
-     * Deliberately not part of [remoteChallenge]. A challenge runs on one
-     * phone, because two phones each measure only their own screen and the
-     * limit would quietly become two limits; so moving it is a decision
-     * somebody makes, on a screen that says what it means, and not something
-     * that happens because they signed in somewhere.
+     * Nothing claims anything here. One account runs on one phone, so
+     * registering this install *is* taking the challenge over -- the server
+     * moves it, signs the last phone out and tells the witnesses, all inside
+     * the request [deviceId] already made to get here. By the time this runs
+     * the challenge is already this phone's.
      *
-     * It is also where the permissions get asked for again, which a phone
-     * that has just reinstalled the app no longer has -- an uninstall takes
-     * usage access and the overlay grant with it. Restoring a challenge
-     * without them would have restored a challenge that blocks nothing.
-     *
-     * The id is stored first and against this pact's start time, so an event
-     * detected in the second before the claim lands still knows where to go.
+     * What is left is local: the id, keyed to this pact's start time, so an
+     * event detected in the next second is filed against the challenge that
+     * exists rather than against a second one this phone would otherwise try
+     * to create.
      */
-    suspend fun takeOver(challenge: RemoteChallenge): Boolean {
-        // First, and before anything that can fail. Somebody who pressed the
-        // button with no signal still ends up enforcing this challenge here,
-        // and an event detected before the claim lands has to be filed
-        // against the pact that already exists rather than against a second
-        // one this phone would otherwise try to create.
-        store.saveRemotePact(challenge.remoteId, challenge.pact.startedAtMillis, claimed = false)
-        val token = tokens.current() ?: return false
-        val device = deviceId() ?: return false
-        val claimed = Api.pacts.claim(token, challenge.remoteId, device) is ApiResult.Ok
-        if (claimed) store.markPactClaimed(challenge.pact.startedAtMillis)
-        return claimed
+    suspend fun adopt(challenge: RemoteChallenge) {
+        store.saveRemotePact(challenge.remoteId, challenge.pact.startedAtMillis)
     }
 
     /**
-     * Whether this phone should stop enforcing [pact], and the place a
-     * hand-over that could not reach the server finishes landing.
+     * Whether this phone's session is gone -- which, for this account, means
+     * somebody signed in on another one.
      *
-     * Asked now and then by the enforcement loop, and it does two jobs
-     * because they are the same question asked from either side.
+     * Asked by the enforcement loop now and then, because the push that says
+     * so can be missed: no Play services, notifications switched off, a
+     * phone that was in flight mode when it was sent. Without a second way
+     * of finding out, this phone would go on blocking apps for a challenge
+     * it no longer holds until somebody opened the app.
      *
-     * The first: a claim made with no signal. Somebody pressed "continue on
-     * this phone" on a train, so this phone is enforcing the challenge while
-     * the server still names the one they left behind -- and that is the
-     * handset its uninstall watchdog is watching. Retrying until it lands is
-     * the only way that record becomes true.
-     *
-     * The second: the challenge was moved somewhere else. Then this phone
-     * has to actually let go of it, because two phones enforcing the same
-     * thirty minutes is an hour, and two reporting the same day is a witness
-     * watching one number overwrite the other all day long.
-     *
-     * False for everything uncertain -- no token, no signal, a server pact
-     * that is not this one. Standing down is only ever right on a definite
-     * answer, and a phone in a tunnel must keep enforcing.
+     * Only a 401 counts. Offline is not evicted, a 500 is not evicted, and a
+     * phone that stops enforcing because a server had a bad minute would be
+     * a worse bug than the one this closes.
      */
-    suspend fun handedOver(pact: Pact): Boolean {
-        val id = store.remotePactId(pact.startedAtMillis) ?: return false
-        val ours = store.deviceId() ?: return false
+    suspend fun evicted(): Boolean {
         val token = tokens.current() ?: return false
-
-        if (!store.pactClaimed(pact.startedAtMillis)) {
-            if (Api.pacts.claim(token, id, ours) is ApiResult.Ok) {
-                store.markPactClaimed(pact.startedAtMillis)
-            }
-            // Either way this phone is the one running it: it is the one
-            // somebody chose. Nothing to stand down from.
-            return false
-        }
-
-        val remote = (Api.pacts.current(token) as? ApiResult.Ok)?.value ?: return false
-        if (remote.id != id) return false
-        val owner = remote.deviceId ?: return false
-        return owner != ours
+        val result = Api.me.get(token)
+        return result is ApiResult.Failure && result.code == 401
     }
 
     /**

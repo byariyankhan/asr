@@ -13,6 +13,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import io.joinasr.app.MainActivity
 import io.joinasr.app.R
+import io.joinasr.app.data.LocalSignOut
 import io.joinasr.app.sync.Sync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +51,17 @@ class AsrMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        // One account, one phone. This message means somebody signed in on
+        // another handset, and it is acted on rather than only read: without
+        // it this phone would keep blocking apps for a challenge that has
+        // moved out of it until something happened to make it ask the
+        // server a question, which for a phone in a pocket is half an hour.
+        //
+        // Shown as well as acted on. Waking up to an app that has signed
+        // itself out and says nothing about why is worse than the sign-out.
+        if (message.data["kind"] == SIGNED_OUT) {
+            scope.launch { runCatching { LocalSignOut.run(applicationContext) } }
+        }
         val notification = message.notification
         val title = notification?.title ?: message.data["title"] ?: return
         val body = notification?.body ?: message.data["body"].orEmpty()
@@ -63,6 +75,9 @@ class AsrMessagingService : FirebaseMessagingService() {
 
     companion object {
         const val CHANNEL_ID = "alerts"
+
+        /** The server's word for "you signed in somewhere else". */
+        private const val SIGNED_OUT = "signed_out"
 
         /**
          * The channel these arrive on.

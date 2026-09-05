@@ -93,6 +93,8 @@ export interface PactTable {
   status: Generated<PactStatus>;
   ended_at: Timestamp | null;
   snapshot: JSONColumnType<Snapshot>;
+  /** When this challenge landed on a phone that cannot yet enforce it. */
+  protection_pending_since: Timestamp | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }

@@ -17,6 +17,7 @@ import androidx.core.content.getSystemService
 import io.joinasr.app.MainActivity
 import io.joinasr.app.R
 import io.joinasr.app.challenge.ChallengeProgress
+import io.joinasr.app.data.LocalSignOut
 import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.earn.EarnStore
 import io.joinasr.app.permissions.Permissions
@@ -328,30 +329,24 @@ class EnforcementService : Service() {
             // Measured, not assumed. A heartbeat that always says true is
             // worse than none: it is what a witness would be trusting.
             sync.heartbeat(protectionEnabled = Permissions.canDrawOverlays(this))
-            standDownIfHandedOver(pact)
+            signOutIfEvicted()
         }
     }
 
     /**
-     * Lets go of a challenge that is being run somewhere else now.
+     * Lets go of everything when this phone is no longer the one signed in.
      *
-     * A challenge runs on one handset. When somebody moves it to another
-     * phone that phone says so, and this one has to actually stop -- two
-     * phones enforcing the same thirty minutes is sixty minutes, and two
-     * phones reporting the same day is a witness watching one number
-     * overwrite the other all day long.
+     * One account runs on one phone. Somebody signing in on another handset
+     * ends this session, moves the challenge across and tells the witnesses
+     * -- and this phone is supposed to hear that as a push and stop. Pushes
+     * get missed, so the loop asks as well: a 401 is the same answer by a
+     * slower road.
      *
-     * Clearing the pact is the whole stand-down: the flow this service reads
-     * it from stops the loop. It is not an ending -- no outcome is written,
-     * no event is queued, nobody is told anything -- because nothing ended.
-     * The challenge is still running; it is running over there.
-     *
-     * Only ever on a definite yes. [Sync.handedOver] answers false for no
-     * signal, and a phone in a tunnel must not drop the limits it is
-     * enforcing.
+     * Not an ending. No outcome is written and nobody is told, because
+     * nothing ended: the challenge is being kept somewhere else now.
      */
-    private suspend fun standDownIfHandedOver(pact: Pact) {
-        if (sync.handedOver(pact)) store.clear()
+    private suspend fun signOutIfEvicted() {
+        if (sync.evicted()) LocalSignOut.run(this)
     }
 
     /**

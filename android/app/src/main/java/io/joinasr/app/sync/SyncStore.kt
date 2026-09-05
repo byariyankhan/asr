@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -105,34 +104,10 @@ class SyncStore(context: Context) {
         return preferences[PACT_ID]
     }
 
-    suspend fun saveRemotePact(id: String, startedAtMillis: Long, claimed: Boolean = true) {
+    suspend fun saveRemotePact(id: String, startedAtMillis: Long) {
         store.edit {
             it[PACT_ID] = id
             it[PACT_STARTED_AT] = startedAtMillis
-            it[PACT_CLAIMED] = claimed
-        }
-    }
-
-    /**
-     * Whether the server has been told that this phone is the one running
-     * the pact that started at [startedAtMillis].
-     *
-     * True for a pact this phone created -- creating one names the device in
-     * the same request. False between somebody moving a challenge here and
-     * the claim landing, which can be a while: they may have pressed the
-     * button on a train. Until it lands the server still names a handset
-     * that is enforcing nothing, and that is the one its uninstall watchdog
-     * is watching.
-     */
-    suspend fun pactClaimed(startedAtMillis: Long): Boolean {
-        val preferences = store.data.first()
-        if (preferences[PACT_STARTED_AT] != startedAtMillis) return false
-        return preferences[PACT_CLAIMED] ?: false
-    }
-
-    suspend fun markPactClaimed(startedAtMillis: Long) {
-        store.edit {
-            if (it[PACT_STARTED_AT] == startedAtMillis) it[PACT_CLAIMED] = true
         }
     }
 
@@ -170,7 +145,6 @@ class SyncStore(context: Context) {
         val PUSH_TOKEN = stringPreferencesKey("push_token")
         val PACT_ID = stringPreferencesKey("pact_id")
         val PACT_STARTED_AT = longPreferencesKey("pact_started_at")
-        val PACT_CLAIMED = booleanPreferencesKey("pact_claimed")
         val OUTBOX = stringPreferencesKey("outbox")
 
         val json = Json {

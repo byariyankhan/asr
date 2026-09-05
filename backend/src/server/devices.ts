@@ -78,6 +78,22 @@ export async function recordHeartbeat(userId: string, deviceId: string, input: H
     .where("user_id", "=", userId)
     .executeTakeFirst();
   if (result.numUpdatedRows === 0n) throw notFound("Device");
+
+  // A heartbeat that says protection is on is the only proof there is that a
+  // phone which just took a challenge over can actually enforce it: usage
+  // access and the overlay grant are both per install, and this field is
+  // measured on the phone rather than assumed. So it is what stops the
+  // two-hour clock the handover started.
+  if (input.protection_enabled) {
+    await db
+      .updateTable("pact")
+      .set({ protection_pending_since: null, updated_at: now })
+      .where("user_id", "=", userId)
+      .where("device_id", "=", deviceId)
+      .where("status", "=", "active")
+      .where("protection_pending_since", "is not", null)
+      .execute();
+  }
 }
 
 // Logout from a device: forget its push token so nothing is sent to a phone

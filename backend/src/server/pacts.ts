@@ -1,4 +1,5 @@
-import { sql } from "kysely";
+import { sql, type Transaction } from "kysely";
+import type { Database } from "./db/schema";
 import { db, isUniqueViolation } from "./db/client";
 import { requireOwnedDevice } from "./devices";
 import { queueWitnessNotifications } from "./notifications";
@@ -19,6 +20,7 @@ export const pactColumns = [
   "status",
   "ended_at",
   "snapshot",
+  "protection_pending_since",
   "created_at",
   "updated_at",
 ] as const;
@@ -103,11 +105,10 @@ export async function getCurrentPact(userId: string) {
 /**
  * This phone is the one enforcing the challenge now.
  *
- * A pact names the device running it, and that used to be settled forever at
- * creation. But the challenge belongs to the person, not to the handset: they
- * reinstall, they lose the phone, they sign in on a second one. Whichever
- * phone has the pact loaded and the service running is the one whose word
- * about it means anything, and it says so here.
+ * One account runs on one phone, so a challenge is never in two places: it
+ * is wherever the person last signed in, and it gets there by itself.
+ * [registerDevice] calls this the moment a new handset announces itself,
+ * which is why nobody is ever asked to move a challenge by hand.
  *
  * It is what makes the uninstall check honest as well. "Did the device
  * running this challenge disappear" is only a real question if the answer can
@@ -118,45 +119,65 @@ export async function claimPact(userId: string, pactId: string, deviceId: string
   if (pact.status !== "active") {
     throw conflict("challenge_over", "That challenge is no longer running.");
   }
-  await requireOwnedDevice(userId, deviceId);
+  const device = await requireOwnedDevice(userId, deviceId);
   if (pact.device_id === deviceId) return pact;
+  return db.transaction().execute((trx) => movePactToDevice(trx, pact.id, userId, device, new Date()));
+}
 
-  const now = new Date();
-  return db.transaction().execute(async (trx) => {
-    const moved = await trx
-      .updateTable("pact")
-      .set({ device_id: deviceId, updated_at: now })
-      .where("id", "=", pactId)
-      .returning(pactColumns)
-      .executeTakeFirstOrThrow();
+/**
+ * Moves an active pact onto [device], records it, and tells the witnesses.
+ *
+ * Two things happen here that both matter.
+ *
+ * The witnesses are told, and not because changing phones is suspicious --
+ * somebody whose handset died is doing the honest thing and the words say
+ * so. It is because this is the one move that could be an escape leaving
+ * nothing behind: sign in on a tablet in a drawer and the phone they
+ * actually use stops being enforced, reports nothing, and looks perfect. It
+ * costs a message, the way pressing Give up does.
+ *
+ * And `protection_pending_since` starts running, unless the phone taking it
+ * over has already said its protection is on. Permissions are granted per
+ * install: a new phone -- or the same phone after a reinstall -- has none of
+ * them, so between here and the person granting them there is a live
+ * challenge that nothing is enforcing. The watchdog reads this column and
+ * gives them two hours before saying so out loud.
+ */
+export async function movePactToDevice(
+  trx: Transaction<Database>,
+  pactId: string,
+  userId: string,
+  device: { id: string; protection_enabled: boolean },
+  now: Date,
+) {
+  const moved = await trx
+    .updateTable("pact")
+    .set({
+      device_id: device.id,
+      protection_pending_since: device.protection_enabled ? null : now,
+      updated_at: now,
+    })
+    .where("id", "=", pactId)
+    .returning(pactColumns)
+    .executeTakeFirstOrThrow();
 
-    // On the record, and the witnesses are told.
-    //
-    // Not because moving phones is suspicious -- somebody replacing a broken
-    // handset is doing the honest thing and the copy says so. It is because
-    // this is the only move that could be an escape and leave nothing
-    // behind: a challenge runs on one phone, so taking it onto a tablet in a
-    // drawer would leave the phone they actually use unblocked, reporting
-    // nothing, looking perfect. That has to cost a message, exactly like
-    // pressing Give up does.
-    const eventId = newId();
-    await trx
-      .insertInto("pact_event")
-      .values({
-        id: eventId,
-        pact_id: pactId,
-        device_id: deviceId,
-        type: "moved",
-        reason: null,
-        app_package: null,
-        minutes: null,
-        occurred_at: now,
-        source: "server",
-      })
-      .execute();
-    await queueWitnessNotifications(trx, { userId, eventId, kind: "pact_moved", pactId });
-    return moved;
-  });
+  const eventId = newId();
+  await trx
+    .insertInto("pact_event")
+    .values({
+      id: eventId,
+      pact_id: pactId,
+      device_id: device.id,
+      type: "moved",
+      reason: null,
+      app_package: null,
+      minutes: null,
+      occurred_at: now,
+      source: "server",
+    })
+    .execute();
+  await queueWitnessNotifications(trx, { userId, eventId, kind: "pact_moved", pactId });
+  return moved;
 }
 
 export async function requireOwnedPact(userId: string, pactId: string) {
