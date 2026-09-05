@@ -5,6 +5,7 @@ import { queueWitnessNotifications } from "./notifications";
 import { requireOwnedPact } from "./pacts";
 import { conflict } from "@/lib/http";
 import type { EventCreate } from "@/lib/schemas";
+import { addDaysToDay, dayInZone } from "@/lib/time";
 
 export const eventColumns = [
   "id",
@@ -20,6 +21,34 @@ export const eventColumns = [
 ] as const;
 
 const CLOSING: ReadonlySet<string> = new Set(["broken", "completed"]);
+
+/** Room for a device clock that runs a little ahead of the server's. */
+export const COMPLETION_GRACE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Whether the phone's own completion rule can honestly be true yet.
+ *
+ * The phone completes a challenge on the first local day after its last one
+ * -- day eight of seven, at midnight -- and the server's `ends_at` is the
+ * exact instant N days after the start, which can be almost a day later. So
+ * this is the phone's rule, computed here: today in the pact's zone is on or
+ * past the day after the last day. Two hours of grace for a clock that runs
+ * ahead; nothing for one that has been moved.
+ *
+ * Without this the ledger believed any `completed` a device sent, and a
+ * phone whose date had been pushed a month forward closed a pact on day
+ * three with the witnesses congratulated. The date is the easiest thing on
+ * a phone to change, and the server is the only party with a clock of its
+ * own.
+ */
+export function hasRunItsCourse(
+  pact: { starts_at: Date; duration_days: number; timezone: string },
+  now: Date,
+): boolean {
+  const firstDay = dayInZone(pact.starts_at, pact.timezone);
+  const doneOn = addDaysToDay(firstDay, pact.duration_days);
+  return dayInZone(new Date(now.getTime() + COMPLETION_GRACE_MS), pact.timezone) >= doneOn;
+}
 
 // A device reports an outcome. The event id was generated on the phone and is
 // the primary key, so a retried POST after a lost response returns the row
@@ -43,6 +72,9 @@ export async function recordDeviceEvent(userId: string, pactId: string, input: E
 
   if (pact.status !== "active") {
     throw conflict("pact_closed", `This pact is already ${pact.status}.`);
+  }
+  if (input.type === "completed" && !hasRunItsCourse(pact, new Date())) {
+    throw conflict("pact_not_elapsed", "This pact has not run its course yet.");
   }
 
   try {

@@ -37,9 +37,11 @@ const PREF_FOR_KIND: Record<
   // it onto a handset nobody uses would leave the real one unblocked with
   // nothing on the record. This is that record.
   pact_moved: "views_progress",
-  // A challenge that landed on a phone nobody granted the permissions on.
-  // This one is a failure: there is a live challenge and nothing enforcing
-  // it, which is the exact thing a witness signed up to be told about.
+  // A challenge with nothing enforcing it for two hours: it landed on a
+  // phone nobody granted the permissions on, or the permissions were taken
+  // away on the phone it was already on. This one is a failure: there is a
+  // live challenge and nothing enforcing it, which is the exact thing a
+  // witness signed up to be told about.
   protection_off: "notify_failure",
 };
 
@@ -211,12 +213,12 @@ export function witnessCopy(kind: WitnessKind, name: string, roast: boolean): { 
     case "protection_off":
       return roast
         ? {
-            title: `${name} never switched it back on`,
-            body: `${name} moved the challenge to a new phone two hours ago and still has not turned blocking on. Nothing is being blocked.`,
+            title: `${name} switched blocking off`,
+            body: `${name}'s phone has not been blocking anything for two hours. The challenge is still running. Nothing is stopping the apps.`,
           }
         : {
             title: `${name}'s challenge is not being enforced`,
-            body: `${name} moved to a new phone and blocking has not been turned on there. The challenge is running, but nothing is stopping the apps.`,
+            body: `Blocking has been off on ${name}'s phone for two hours. The challenge is running, but nothing is stopping the apps.`,
           };
     case "protection_lost":
       return roast
