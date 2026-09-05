@@ -43,6 +43,11 @@ obvious from inside one folder is exactly the kind that breaks another.
    secret.
 5. **Push your work before you stop.** An uncommitted tree on one laptop is
    invisible to everyone else and cannot be reviewed, kept, or recovered.
+6. **A migration must keep working with the previous release's code.** Add
+   in one release, rename or drop in a later one. Production rolls back by
+   swapping the image and leaving the schema (`docs/DEPLOYMENT.md`,
+   "Rollback"); a migration the old code cannot live with makes that
+   rollback, and the seconds between migrate and container swap, fail.
 
 ## Do not touch the server
 

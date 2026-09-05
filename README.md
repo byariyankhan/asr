@@ -24,7 +24,7 @@ who hold you to it.
 | `backend/` | Next.js API (`api.joinasr.io`): accounts, pact ledger, witnesses, notifications |
 | `android/` | Kotlin + Jetpack Compose app: the whole product, enforcement loop included — see `docs/ANDROID.md` |
 | `docs/` | Design and operations documents (start with `ARCHITECTURE.md`) |
-| `infra/` | Production `docker-compose.yml`, nginx site, backup script: version of record for the VPS |
+| `infra/` | Production `docker-compose.yml`, nginx site, backup and rollback scripts: version of record for the VPS |
 
 ## Read this before writing code
 

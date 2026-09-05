@@ -57,14 +57,21 @@ services:
     build:
       context: ./src/backend
       dockerfile: Dockerfile
+      args:
+        # Baked into the image (an ENV and a label). /v1/health reports it,
+        # and the deploy refuses to pass until the live answer is the commit
+        # it just shipped — the check that would have caught the API silently
+        # not restarting for several releases. Being in the image rather than
+        # set at `up -d` time, it also cannot drift from the image running.
+        ASR_COMMIT: ${ASR_COMMIT:-}
+    # `current` is a moving pointer, not a build artefact. The deploy builds
+    # into it and keeps what it started as asr-api:deploy-<sha>; rollback.sh
+    # re-points it at one of those and recreates the container. Either way a
+    # plain `docker compose up -d` starts whichever release is current.
+    image: asr-api:current
     restart: unless-stopped
     <<: *logging
     environment:
-      # Written by the deploy at `up -d` time. /v1/health reports it, and the
-      # deploy refuses to pass until the live answer matches the commit it
-      # just shipped — the check that would have caught the API silently not
-      # restarting for several releases.
-      ASR_COMMIT: ${ASR_COMMIT:-}
       DATABASE_URL: postgresql://asr:${PG_PASS}@postgres:5432/asr
       REDIS_URL: redis://:${REDIS_PASS}@redis:6379
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}

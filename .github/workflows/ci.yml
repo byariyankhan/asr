@@ -101,3 +101,20 @@ jobs:
       # machine with no database up.
       - name: Test
         run: pnpm test
+
+  # The rollback script runs on the VPS and nowhere else, so this is the only
+  # place it is exercised before the day it is needed in a hurry: a real
+  # docker daemon, a stub api that bakes its commit in the way the real image
+  # does, and the same tags, pointer, recreate and health verification.
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: bash -n infra/*.sh
+
+      - name: Rollback, end to end
+        env:
+          ROLLBACK_TEST_REQUIRE_DOCKER: "1"
+        run: bash infra/rollback.test.sh

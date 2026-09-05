@@ -41,10 +41,11 @@ for port in 5433 6380 3001; do
   fi
 done
 
-step "Installing the compose file and backup script"
+step "Installing the compose file, the backup script and the rollback script"
 mkdir -p "$ROOT/backups"
 cp "$ROOT/src/infra/docker-compose.yml" "$ROOT/docker-compose.yml"
 install -m 700 "$ROOT/src/infra/backup.sh" "$ROOT/backup.sh"
+install -m 700 "$ROOT/src/infra/rollback.sh" "$ROOT/rollback.sh"
 
 step "Writing $ROOT/.env"
 if [ -f "$ROOT/.env" ]; then
