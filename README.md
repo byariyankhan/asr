@@ -1,6 +1,6 @@
 # Asr
 
-**Protect your time. Keep your word.**
+**Asr - Protect Your Time & Focus.**
 
 Store listing name: **Asr - Protect Your Time & Focus**. Operated by Ariyan
 Khan, Dhaka; contact `hi@ariyankhan.com`. The launcher label stays the one
