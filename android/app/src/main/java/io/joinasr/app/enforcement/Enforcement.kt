@@ -99,10 +99,20 @@ object Enforcement {
      *
      * The tension: the block screen should arrive the moment a limit is
      * reached, and polling costs battery all day whether or not anything is
-     * happening. So the loop looks closely only when it is nearly time —
-     * inside the last two minutes of a watched app that is currently open —
-     * and idles otherwise. Somebody who is nowhere near a limit is not worth
-     * a query a second.
+     * happening. So the loop looks closely when it is nearly time — inside
+     * the last two minutes of a watched app that is open — and idles
+     * otherwise. Somebody who is nowhere near a limit is not worth a query a
+     * second.
+     *
+     * With one exception, which used to be a hole big enough to walk
+     * through. This answered from the app in front *right now*, so somebody
+     * on their home screen got the idle delay -- and opening an app whose
+     * day was already spent bought them however much of those fifteen
+     * seconds was left before the loop next looked. Every time. A limit that
+     * can be had fifteen seconds at a time is not a limit, it is a toll.
+     *
+     * So a spent app is watched as closely as an open one. It is one tap
+     * away, and the tap is the only thing that has not happened yet.
      */
     fun pollDelayMillis(
         pact: Pact?,
@@ -110,14 +120,21 @@ object Enforcement {
         earnedMinutes: Map<String, Int> = emptyMap(),
     ): Long {
         if (pact == null || !pact.isEnforceable) return IDLE_MILLIS
-        val foreground = snapshot.foregroundPackage ?: return IDLE_MILLIS
-        val app = pact.appFor(foreground) ?: return IDLE_MILLIS
-        val allowed = app.limitMinutes + (earnedMinutes[foreground] ?: 0)
-        val remaining = allowed - (snapshot.minutesByPackage[foreground] ?: 0)
-        return if (remaining <= CLOSE_MINUTES) CLOSE_MILLIS else WATCHING_MILLIS
+        val foreground = snapshot.foregroundPackage
+        val open = foreground?.let { pact.appFor(it) }
+        if (open != null) {
+            val allowed = open.limitMinutes + (earnedMinutes[open.packageName] ?: 0)
+            val remaining = allowed - (snapshot.minutesByPackage[open.packageName] ?: 0)
+            return if (remaining <= CLOSE_MINUTES) CLOSE_MILLIS else WATCHING_MILLIS
+        }
+        // Nothing limited is in front. Whether that is worth idling through
+        // depends on what is waiting: an app with nothing left today has to
+        // be blocked on the tap, not a quarter of a minute after it.
+        return if (overLimit(pact, snapshot, earnedMinutes).isEmpty()) IDLE_MILLIS else CLOSE_MILLIS
     }
 
-    /** Within this many minutes of a limit, the loop watches closely. */
+    /** Within this many minutes of a limit -- or with a limit already spent
+     *  and the app one tap away -- the loop watches closely. */
     const val CLOSE_MINUTES = 2
 
     /** A watched app is open and nearly out of time. */

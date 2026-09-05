@@ -120,6 +120,34 @@ class EnforcementTest {
         )
     }
 
+    /**
+     * The hole this closes: the delay used to be chosen from the app in
+     * front right now, so somebody sitting on their home screen with a spent
+     * limit got the idle delay -- and opening that app bought them whatever
+     * was left of fifteen seconds before the loop next looked. Every time
+     * they opened it, all day.
+     */
+    @Test
+    fun `a spent limit is watched from the home screen, because it is one tap away`() {
+        val spent = snapshot(null, instagram to 20)
+        assertEquals(Enforcement.CLOSE_MILLIS, Enforcement.pollDelayMillis(pact, spent))
+
+        // Same while some other, unwatched app is in front.
+        val elsewhere = snapshot(messages, instagram to 20, messages to 3)
+        assertEquals(Enforcement.CLOSE_MILLIS, Enforcement.pollDelayMillis(pact, elsewhere))
+    }
+
+    @Test
+    fun `earned minutes put a spent app back to idle`() {
+        val spent = snapshot(null, instagram to 20)
+        // Fifteen minutes walked for: the limit is not spent any more, and
+        // there is nothing waiting to be blocked on the next tap.
+        assertEquals(
+            Enforcement.IDLE_MILLIS,
+            Enforcement.pollDelayMillis(pact, spent, mapOf(instagram to 15)),
+        )
+    }
+
     @Test
     fun `it watches loosely with time to spare and closely near the limit`() {
         assertEquals(
