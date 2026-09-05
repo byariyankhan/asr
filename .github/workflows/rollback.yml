@@ -1,0 +1,128 @@
+name: Rollback production
+
+# One command back to a release that already served, run on the VPS by
+# /opt/asr/rollback.sh (infra/rollback.sh explains the mechanism). Manual
+# only, from Actions → Rollback production → Run workflow.
+#
+#   commit    empty: the release before the one running. Otherwise a full or
+#             7-character sha, which must be one of the kept releases: the
+#             newest five that came up healthy. A dry run lists them.
+#   dry_run   show the running release, the kept ones and what a rollback
+#             would do, and change nothing.
+#
+# Shares the deploy's concurrency group, so a rollback never runs in the
+# middle of a deploy or the other way round. A rollback does not undo
+# migrations — docs/DEPLOYMENT.md, "Rollback".
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Commit to go back to (full or 7-char sha). Empty: the release before the running one."
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "Dry run: show what would happen, change nothing"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      # Only for infra/vps-host-key.pub; nothing from the checkout is shipped.
+      - uses: actions/checkout@v4
+
+      # Byte for byte the deploy's step, on purpose: a rollback happens on a
+      # bad day, and a bad day is no time for a second, slightly different
+      # way of trusting the server. Change one, change both.
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # The pinned file holds key material only; the address comes from
+          # the secret, and the two are joined here.
+          : > ~/.ssh/known_hosts
+          while read -r type key rest; do
+            case "$type" in ""|\#*) continue ;; esac
+            printf "%s %s %s\n" "$VPS_HOST" "$type" "$key" >> ~/.ssh/known_hosts
+          done < infra/vps-host-key.pub
+          chmod 600 ~/.ssh/known_hosts
+          echo "pinned $(grep -c . ~/.ssh/known_hosts) host key(s) for the VPS"
+
+          printf "Host *\n  StrictHostKeyChecking yes\n  UserKnownHostsFile ~/.ssh/known_hosts\n" > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+          if ! ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 root@"$VPS_HOST" true 2>/tmp/ssh_err; then
+            cat /tmp/ssh_err >&2
+            if grep -qiE "HOST IDENTIFICATION HAS CHANGED|Host key verification failed" /tmp/ssh_err; then
+              echo
+              echo "The VPS is presenting a host key that is NOT the pinned one."
+              echo "Refusing to continue, and refusing to accept the new key."
+              echo "Verify it out of band before touching infra/vps-host-key.pub."
+              exit 1
+            fi
+            echo "could not reach the VPS to pre-verify; the step that follows retries on its own"
+          else
+            echo "host key matches the pinned one"
+          fi
+
+
+      # The commit is validated here before it becomes part of a remote
+      # command line; the script validates it again on the box.
+      - name: Roll back
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          COMMIT: ${{ inputs.commit }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -o pipefail
+          COMMIT=$(printf %s "$COMMIT" | tr -d "[:space:]")
+          COMMIT="${COMMIT#deploy-}"
+          if [ -n "$COMMIT" ] && ! printf %s "$COMMIT" | grep -Eq "^[0-9a-f]{7,40}$"; then
+            echo "commit must be a full or 7-character sha; got: $COMMIT"
+            exit 1
+          fi
+          flag=--yes
+          if [ "$DRY_RUN" = "true" ]; then flag=--dry-run; fi
+          echo "running: /opt/asr/rollback.sh $flag $COMMIT"
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+              root@"$VPS_HOST" "/opt/asr/rollback.sh $flag $COMMIT" </dev/null \
+            | tee "$RUNNER_TEMP/rollback.out"
+
+      # From the public internet, like the deploy's own check: the box saying
+      # it serves a commit is not the same as the app being able to reach it.
+      # The commit comes from the script's last line; an image from before the
+      # commit was baked in does not know its own, and then health alone is
+      # checked.
+      - name: Verify health from the public internet
+        if: ${{ !inputs.dry_run }}
+        run: |
+          target=$(sed -n "s/^rollback: now serving \([0-9a-f]\{40\}\) .*/\1/p" "$RUNNER_TEMP/rollback.out" | tail -n1)
+          if [ -z "$target" ]; then
+            echo "the rolled-back image does not report a commit; checking health only"
+          fi
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            body=$(curl -fsS --max-time 10 https://api.joinasr.io/v1/health 2>/dev/null || true)
+            echo "health: ${body:-<no answer>}"
+            if printf %s "$body" | grep -q "\"ok\":true" \
+               && { [ -z "$target" ] || printf %s "$body" | grep -q "\"commit\":\"$target\""; }; then
+              echo "healthy${target:+, and serving $target}"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo
+          echo "The API did not report healthy${target:+ on $target} after the rollback."
+          echo "Look at the Roll back step above: the script says what it did and what it went back to."
+          exit 1

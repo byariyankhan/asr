@@ -12,6 +12,8 @@ site. Nothing under `/opt/bookween` is modified, and Bookween's
   docker-compose.yml           postgres :5433, redis :6380, api :3001, migrate
   .env
   backup.sh
+  rollback.sh                  one command back to a kept release
+  releases.log                 one line per deploy and per rollback
   src/                         git checkout of byariyankhan/asr
   backups/
 ```
@@ -96,7 +98,8 @@ The script it runs is idempotent and refuses to overwrite an existing
 
 1. **Checks its preconditions**: DNS resolves for `joinasr.io` and
    `api.joinasr.io`, and reports on ports 5433/6380/3001.
-2. **Installs** `docker-compose.yml` and `backup.sh` into `/opt/asr`.
+2. **Installs** `docker-compose.yml`, `backup.sh` and `rollback.sh` into
+   `/opt/asr`.
 3. **Writes `/opt/asr/.env`** (mode 600) with `PG_PASS`, `REDIS_PASS`,
    `BETTER_AUTH_SECRET` and `INTERNAL_SECRET` from `openssl rand`, the URLs,
    and the three Firebase fields read out of the service-account JSON.
@@ -159,23 +162,62 @@ docker compose run --rm migrate
 docker compose up -d api --force-recreate
 ```
 
-Then it tags the live image `asr-api:deploy-<sha>`, keeps the newest three,
-and prunes dangling images and build cache over 5GB — all after the new
-container is up, and in a block that cannot fail the deploy.
+Then it keeps the image that came up as `asr-api:deploy-<sha>` (the newest
+five stay; a build that never came up healthy is not kept, so every kept tag
+is a release that served), notes the deploy in `/opt/asr/releases.log`, and
+prunes older releases, dangling images and build cache over 5GB — all after
+the new container is up, and in a block that cannot fail the deploy.
 
 Finally it fetches `https://api.joinasr.io/v1/health` from the public
-internet. A deploy that does not end in a healthy answer is a failed deploy.
+internet. A deploy that does not end in a healthy answer **for this commit**
+is a failed deploy. The commit is baked into the image by the Dockerfile (an
+`ASR_COMMIT` build arg, kept as an ENV and a label), so the answer can only
+be right if the container really was recreated from the new build.
 
-**Rollback.** To a kept image:
+## Rollback
+
+One command, on the VPS:
 
 ```bash
-docker tag asr-api:deploy-<sha> <the compose image tag>
-docker compose up -d api --force-recreate
+/opt/asr/rollback.sh            # the release before the one running
+/opt/asr/rollback.sh <sha>      # a specific kept release, full or 7-char sha
+/opt/asr/rollback.sh --list     # what is kept, and what a rollback would do
 ```
 
-Further back: re-run the workflow from an older commit. Neither undoes a
-migration — restore a pre-deploy dump from `/opt/asr/backups` if the schema
-changed.
+Or without a shell: **Actions → Rollback production → Run workflow**, with
+the commit left empty (the previous release) or filled in, and *dry run*
+ticked to only look. It runs the same script over the deploy's pinned SSH
+and then checks `/v1/health` from the public internet the way a deploy does.
+It shares the deploy's concurrency group, so the two never overlap.
+
+What it does: re-points `asr-api:current` at the kept image, recreates
+`api` from it without building anything, and waits until the container is
+healthy and `/v1/health` answers with that image's commit. A target that
+does not come up is undone — `current` goes back to the image that was
+running and that one is recreated — so a failed rollback leaves the API
+where it was, not down. Every rollback is a line in `/opt/asr/releases.log`.
+With no argument it only ever goes further back; an explicit `<sha>` can go
+forward again. `infra/rollback.test.sh` runs the whole thing against a real
+docker daemon in CI, with a stub API standing in for the image.
+
+What it does not do: **touch the database.** The schema stays where the
+newest release migrated it. That is safe because of the rule below; if a
+schema really has to go back, the choices are, from least to most loss:
+
+1. Leave it. An additive migration is harmless to the older code.
+2. `docker compose run --rm migrate pnpm db:migrate:down` undoes the newest
+   migration. Whatever was written into what it drops is gone.
+3. Restore the pre-deploy dump from `/opt/asr/backups`. Everything written
+   since that deploy is gone.
+
+**A migration must keep working with the previous release's code.** Add a
+column, table or index in one release and start writing it in that same
+release; rename or drop only in a later one, once nothing that runs reads
+the old shape. That is what makes an image-only rollback always safe, and
+it is also what keeps the seconds between `migrate` and the container swap
+from failing requests, because the old container is still serving while the
+migration runs. CI's up/down/up is the other half: a migration whose `down`
+fails cannot be undone at all.
 
 ## Resource budget
 
@@ -195,6 +237,8 @@ standalone API ≈ 150–250 MB. Asr adds roughly 300 MB to a machine with about
   compose file at five files of 20 MB per service.
 - The watchdog writes its last successful run time to Redis; `/v1/health`
   reports `watchdog_stale: true` if that is older than 30 minutes.
+- `/opt/asr/releases.log`: one line per deploy and per rollback, with the
+  commits, so "what was running last Tuesday" has an answer.
 - Backup failure alerts reuse Bookween's `alert.sh` (email), with a distinct
   subject.
 

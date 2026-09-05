@@ -92,6 +92,7 @@ jobs:
           mv /opt/asr/src.new /opt/asr/src
           cp /opt/asr/src/infra/docker-compose.yml /opt/asr/docker-compose.yml
           install -m 700 /opt/asr/src/infra/backup.sh /opt/asr/backup.sh
+          install -m 700 /opt/asr/src/infra/rollback.sh /opt/asr/rollback.sh
           REMOTE
 
       # api and migrate are built one at a time on purpose: they share a
@@ -116,23 +117,24 @@ jobs:
       # the deploy BEFORE migrate touches anything — a deploy that cannot take
       # its safety backup should not be migrating.
       #
-      # ASR_COMMIT is what makes the restart provable: compose puts it in the
-      # container's environment, /v1/health reports it, and the next step
-      # refuses to pass until the public answer is this commit. It also
-      # guarantees the recreate, since the container's config differs from the
-      # running one on every deploy.
+      # ASR_COMMIT is what makes the restart provable: the Dockerfile bakes it
+      # into the image (an ENV and a label), /v1/health reports it, and the
+      # next step refuses to pass until the public answer is this commit. A
+      # new image also guarantees the recreate, and --force-recreate makes
+      # sure of it.
       #
-      # Image retention runs last, in a `set +e` block ending in `|| true`, and
-      # only after the new container is up: housekeeping must never fail a
-      # deploy or take the API down. The live image is tagged
-      # asr-api:deploy-<sha>, the newest 3 kept, everything older removed along
-      # with dangling images and build cache over a 5GB cap.
+      # Release retention runs last, in a `set +e` block ending in `|| true`,
+      # and only after the new container is up: housekeeping must never fail a
+      # deploy or take the API down. The image that came up healthy is kept as
+      # asr-api:deploy-<sha> — a build that never came up is not, so every
+      # kept tag is a release that served — the newest five stay, every other
+      # asr-api tag goes, along with dangling images and build cache over a
+      # 5GB cap. The deploy is noted in /opt/asr/releases.log.
       #
-      # Fast rollback to a kept release:
-      #   docker tag asr-api:deploy-<sha> <the compose image tag>
-      #   docker compose up -d api --force-recreate
-      # A rollback does NOT undo migrations — restore a pre-deploy dump from
-      # /opt/asr/backups if the schema changed.
+      # Rollback is one command, /opt/asr/rollback.sh (infra/rollback.sh), or
+      # the "Rollback production" workflow: it re-points asr-api:current at a
+      # kept release and recreates api from it, verified by health. It does
+      # NOT undo migrations — docs/DEPLOYMENT.md, "Rollback".
       #
       # Retried as a whole: every step in it is safe to run again from
       # scratch, so a dropped connection cannot leave things half-done.
@@ -143,13 +145,14 @@ jobs:
           cat > /tmp/asr-deploy.sh <<'REMOTE'
           set -e
           cd /opt/asr
+          export ASR_COMMIT="$SHA"
           docker compose build api
           docker compose build migrate
           mkdir -p /opt/asr/backups
           docker compose exec -T postgres pg_dump -U asr -d asr -Fc </dev/null > "/opt/asr/backups/pre-deploy-$(date -u +%Y%m%d-%H%M%S).dump"
           ls -t /opt/asr/backups/pre-deploy-*.dump | tail -n +6 | xargs -r rm
           docker compose run --rm -T migrate </dev/null
-          if ! ASR_COMMIT="$SHA" docker compose up -d api --force-recreate --wait --wait-timeout 180; then
+          if ! docker compose up -d api --force-recreate --wait --wait-timeout 180; then
             echo "the new api container did not come up healthy. its logs:"
             docker compose logs --tail 200 api || true
             exit 1
@@ -159,10 +162,17 @@ jobs:
             cid=$(docker compose ps -q api)
             imgid=$(docker inspect -f "{{.Image}}" "$cid")
             docker tag "$imgid" "asr-api:deploy-${SHA:0:7}"
-            echo "tagged this release as asr-api:deploy-${SHA:0:7}"
-            docker images --format "{{.CreatedAt}}|{{.Repository}}:{{.Tag}}" \
-              | grep "|asr-api:deploy-" | sort -r | tail -n +4 | cut -d"|" -f2 \
-              | xargs -r -n1 docker rmi
+            echo "kept this release as asr-api:deploy-${SHA:0:7}"
+            printf "%s deploy %s (deploy-%s)\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SHA" "${SHA:0:7}" >> /opt/asr/releases.log
+            # The newest five releases stay. Older ones go, and so does every
+            # other asr-api tag (the pre-rollback.sh `latest`, for one);
+            # `current` is the pointer and is never removed.
+            docker images asr-api --format "{{.CreatedAt}}|{{.Tag}}" \
+              | grep "|deploy-" | sort -r | tail -n +6 | cut -d"|" -f2 \
+              | sed "s/^/asr-api:/" | xargs -r -n1 docker rmi
+            docker images asr-api --format "{{.Tag}}" \
+              | grep -v -e "^current$" -e "^deploy-" -e "^<none>$" \
+              | sed "s/^/asr-api:/" | xargs -r -n1 docker rmi
             docker image prune -f
             docker builder prune -f --keep-storage 5GB || docker builder prune -f --max-used-space 5GB || docker builder prune -af
           } || true

@@ -50,9 +50,8 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
-          # .git is excluded from the tarball, so the commit has to travel as
-          # a file. /v1/health reports it and the deploy asserts against it.
-          git rev-parse HEAD > .asr-commit
+          # .git is excluded from the tarball; the commit travels as ASR_COMMIT
+          # on the setup script's command line and is baked into the image.
           tar czf /tmp/asr-src.tgz --exclude=.git --exclude=node_modules --exclude=.next .
           scp -i ~/.ssh/deploy_key /tmp/asr-src.tgz root@"$VPS_HOST":/tmp/asr-src.tgz
           ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" bash -s <<'REMOTE'
@@ -84,7 +83,7 @@ jobs:
           CERTBOT_EMAIL: ${{ secrets.CERTBOT_EMAIL }}
         run: |
           ssh -i ~/.ssh/deploy_key -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
-            root@"$VPS_HOST" "CERTBOT_EMAIL='${CERTBOT_EMAIL}' bash /opt/asr/src/infra/first-time-setup.sh /root/asr-firebase-key.json"
+            root@"$VPS_HOST" "CERTBOT_EMAIL='${CERTBOT_EMAIL}' ASR_COMMIT='${GITHUB_SHA}' bash /opt/asr/src/infra/first-time-setup.sh /root/asr-firebase-key.json"
 
       # first-time-setup.sh writes .env once and then never touches it again,
       # which is right — it must not be able to clobber live credentials. The
@@ -183,12 +182,9 @@ jobs:
           PY
           shred -u /root/.asr-secrets 2>/dev/null || rm -f /root/.asr-secrets
           docker compose config -q
-          # ASR_COMMIT is what /v1/health reports and what the deploy asserts
-          # against. Restarting without it leaves the live answer saying
-          # "commit": null, which reads as the deploy check being broken when
-          # it is only this workflow having recreated the container.
-          commit=$(cat /opt/asr/src/.asr-commit 2>/dev/null || true)
-          ASR_COMMIT="$commit" docker compose up -d api --force-recreate
+          # The commit /v1/health reports is baked into the image, so a
+          # recreate keeps it; nothing to hand over here.
+          docker compose up -d api --force-recreate
           # </dev/null or compose exec swallows the rest of this heredoc as its
           # own stdin. Prints lengths, never values.
           #

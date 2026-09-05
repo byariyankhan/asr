@@ -50,4 +50,13 @@ ENV HOSTNAME=0.0.0.0
 # alpine has wget (busybox) but not curl.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -qO- http://127.0.0.1:3000/v1/health >/dev/null 2>&1 || exit 1
+# The commit this image was built from, baked into the image itself rather
+# than handed to the container at start: /v1/health reports it, so a running
+# container can only claim a commit it was really built from, and a kept
+# image (asr-api:deploy-<sha>) can say what it is before rollback.sh starts
+# it. Declared last so a new commit invalidates none of the layers above;
+# ENV and LABEL are metadata, not layers.
+ARG ASR_COMMIT=""
+ENV ASR_COMMIT=$ASR_COMMIT
+LABEL io.joinasr.commit=$ASR_COMMIT
 CMD ["node", "server.js"]

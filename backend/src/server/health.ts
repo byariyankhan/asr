@@ -146,15 +146,16 @@ export async function probeStorage(): Promise<StorageProbe> {
 }
 
 /**
- * The commit this container was started from.
+ * The commit this container's image was built from.
  *
- * Set by the deploy at `up -d` time, which makes it evidence rather than
- * decoration: a deploy that builds an image and never recreates the
- * container leaves the old value here, and the deploy's own health check
- * refuses to pass. That exact failure ran silently for several releases —
- * `docker compose run migrate` was reading the deploy script off stdin and
- * swallowing every line after itself, so the API was never restarted while
- * the workflow went green.
+ * Baked into the image by the Dockerfile (a build arg the deploy passes),
+ * which makes it evidence rather than decoration: a deploy that builds an
+ * image and never recreates the container leaves the old value here, and the
+ * deploy's own health check refuses to pass. That exact failure ran silently
+ * for several releases — `docker compose run migrate` was reading the deploy
+ * script off stdin and swallowing every line after itself, so the API was
+ * never restarted while the workflow went green. It is also how rollback.sh
+ * proves the container it recreated from a kept image is the one serving.
  */
 const COMMIT = process.env.ASR_COMMIT?.trim() || null;
 
