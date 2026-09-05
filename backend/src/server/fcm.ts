@@ -1,7 +1,20 @@
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
 
-export type PushMessage = { title: string; body: string; data?: Record<string, string> };
+export type PushMessage = {
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  /**
+   * A message the person never sees.
+   *
+   * Sent to ask Firebase a question rather than to tell anybody anything:
+   * whether this installation still exists. A notification block would put
+   * an empty line in somebody's shade every half hour, which is a way to
+   * lose a user over an internal check.
+   */
+  silent?: boolean;
+};
 export type PushResult = { ok: true; id: string } | { ok: false; unregistered: boolean; error: string };
 export type PushSender = (token: string, message: PushMessage) => Promise<PushResult>;
 
@@ -39,7 +52,7 @@ export const sendPush: PushSender = async (token, message) => {
   try {
     const id = await getMessaging(firebase).send({
       token,
-      notification: { title: message.title, body: message.body },
+      ...(message.silent ? {} : { notification: { title: message.title, body: message.body } }),
       data: message.data,
       android: { priority: "high" },
     });

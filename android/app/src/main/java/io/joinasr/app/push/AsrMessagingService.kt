@@ -14,6 +14,7 @@ import com.google.firebase.messaging.RemoteMessage
 import io.joinasr.app.MainActivity
 import io.joinasr.app.R
 import io.joinasr.app.data.LocalSignOut
+import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.sync.Sync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +63,25 @@ class AsrMessagingService : FirebaseMessagingService() {
         if (message.data["kind"] == SIGNED_OUT) {
             scope.launch { runCatching { LocalSignOut.run(applicationContext) } }
         }
+        // The server asking Firebase whether this app is still installed. It
+        // has its answer by the time this arrives -- the message getting here
+        // is the answer -- so this is only the fast way to clear a suspicion
+        // it may already have started: a heartbeat says so directly, rather
+        // than leaving it to be cleared on the next half-hourly one.
+        //
+        // Nothing is shown. There is no title on it, so the line below would
+        // return anyway; saying so here is cheaper than working that out
+        // again in six months.
+        if (message.data["kind"] == PING) {
+            scope.launch {
+                runCatching {
+                    Sync(applicationContext).heartbeat(
+                        protectionEnabled = Permissions.canDrawOverlays(applicationContext),
+                    )
+                }
+            }
+            return
+        }
         val notification = message.notification
         val title = notification?.title ?: message.data["title"] ?: return
         val body = notification?.body ?: message.data["body"].orEmpty()
@@ -78,6 +98,9 @@ class AsrMessagingService : FirebaseMessagingService() {
 
         /** The server's word for "you signed in somewhere else". */
         private const val SIGNED_OUT = "signed_out"
+
+        /** The server asking Firebase whether this install still exists. */
+        private const val PING = "ping"
 
         /**
          * The channel these arrive on.

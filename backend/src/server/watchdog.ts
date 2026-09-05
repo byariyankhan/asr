@@ -25,6 +25,25 @@ export const HEARTBEAT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
  * long enough to be at work and short enough that it cannot be a strategy.
  */
 export const PROTECTION_GRACE_MS = 2 * 60 * 60 * 1000;
+/**
+ * How long a phone must have been quiet before it is worth asking Firebase
+ * about it. One missed heartbeat: a phone that checked in twenty minutes ago
+ * is plainly there.
+ */
+export const PROBE_AFTER_MS = 45 * 60 * 1000;
+
+/**
+ * How long a suspicion has to stand before it is said out loud.
+ *
+ * One answer from Firebase is not enough to tell somebody's mother they
+ * deleted the app. Tokens rotate, phones get restored from backups, and a
+ * wrong accusation is worse than a slow true one. Two hours, a second
+ * answer, and not a word from the phone in between -- an app that is really
+ * running clears this three times over in that window, because it heartbeats
+ * every half hour.
+ */
+export const REMOVAL_CONFIRM_MS = 2 * 60 * 60 * 1000;
+
 export const DELETION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 export const NOTIFICATION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 export const SUMMARY_RETENTION_MS = 400 * 24 * 60 * 60 * 1000;
@@ -33,6 +52,7 @@ const LOCK_MS = 10 * 60 * 1000;
 
 export type WatchdogReport = {
   protection_lost: number;
+  removals_found: number;
   protection_off: number;
   uninstalled: number;
   activities_failed: number;
@@ -53,6 +73,7 @@ export async function runWatchdog(opts: { push?: PushSender; now?: Date } = {}):
     const now = opts.now ?? new Date();
     const report: WatchdogReport = {
       protection_lost: await markProtectionLost(now),
+      removals_found: await probeForRemovals(opts.push ?? sendPush, now),
       protection_off: await reportUnprotectedHandovers(now),
       uninstalled: 0,
       activities_failed: await failExpiredActivities(now),
@@ -82,6 +103,93 @@ export async function runWatchdog(opts: { push?: PushSender; now?: Date } = {}):
   } finally {
     if (client) await client.del(LOCK_KEY).catch(() => {});
   }
+}
+
+/**
+ * Asks Firebase whether the phone running a challenge still has the app.
+ *
+ * The heartbeat cannot answer this. It stops for an uninstall, for a flat
+ * battery and for a weekend without signal, and those are not the same
+ * thing at all -- which is why the rule built on it waits a full day before
+ * saying anything, and why a day is long enough to be a strategy.
+ *
+ * Firebase can tell them apart, and this is the only reason to ask it. A
+ * phone that is off, or has data switched off, has the message accepted and
+ * queued for whenever it comes back. Only an installation Google no longer
+ * knows about answers not-registered. So somebody sitting in an office with
+ * their phone off is never mistaken for somebody who deleted the app -- the
+ * two produce different answers, not a slower version of the same one.
+ *
+ * Not on one answer, though. A token can rotate while the app is offline and
+ * a phone can be restored from a backup, so the first not-registered only
+ * starts a clock: it takes a second one, [REMOVAL_CONFIRM_MS] later, with no
+ * heartbeat in between. A running app clears the suspicion three times over
+ * in that window.
+ *
+ * The message is silent -- data only, no notification block -- because
+ * nobody should get an empty line in their shade every half hour for an
+ * internal check.
+ */
+export async function probeForRemovals(push: PushSender, now: Date): Promise<number> {
+  const quiet = new Date(now.getTime() - PROBE_AFTER_MS);
+  const candidates = await db
+    .selectFrom("pact")
+    .innerJoin("device", "device.id", "pact.device_id")
+    .select([
+      "device.id as device_id",
+      "device.fcm_token",
+      "device.removal_suspected_at",
+    ])
+    .where("pact.status", "=", "active")
+    .where("device.fcm_token", "is not", null)
+    .where("device.fcm_token_invalid", "=", false)
+    .where((eb) =>
+      eb.or([eb("device.last_heartbeat_at", "is", null), eb("device.last_heartbeat_at", "<", quiet)]),
+    )
+    .execute();
+
+  let found = 0;
+  for (const device of candidates) {
+    const result = await push(device.fcm_token!, {
+      title: "",
+      body: "",
+      silent: true,
+      data: { kind: "ping" },
+    });
+
+    if (!(result.ok === false && result.unregistered)) {
+      // Accepted, or failed for any other reason. Either way Firebase still
+      // knows this installation, so nothing here is evidence of anything.
+      if (device.removal_suspected_at) {
+        await db
+          .updateTable("device")
+          .set({ removal_suspected_at: null, updated_at: now })
+          .where("id", "=", device.device_id)
+          .execute();
+      }
+      continue;
+    }
+
+    if (!device.removal_suspected_at) {
+      await db
+        .updateTable("device")
+        .set({ removal_suspected_at: now, updated_at: now })
+        .where("id", "=", device.device_id)
+        .execute();
+      continue;
+    }
+    if (now.getTime() - device.removal_suspected_at.getTime() < REMOVAL_CONFIRM_MS) continue;
+
+    // Twice, two hours apart, and the phone has said nothing at all in
+    // between. That is an app that is gone.
+    await db
+      .updateTable("device")
+      .set({ fcm_token_invalid: true, updated_at: now })
+      .where("id", "=", device.device_id)
+      .execute();
+    if (await handleDeadDevice(device.device_id, now)) found += 1;
+  }
+  return found;
 }
 
 /**

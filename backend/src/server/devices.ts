@@ -14,6 +14,7 @@ const deviceColumns = [
   "fcm_token_invalid",
   "protection_enabled",
   "last_heartbeat_at",
+  "removal_suspected_at",
   "created_at",
   "updated_at",
 ] as const;
@@ -43,6 +44,10 @@ export async function registerDevice(userId: string, input: DeviceRegister) {
         app_version: input.app_version,
         fcm_token: input.fcm_token ?? eb.ref("device.fcm_token"),
         fcm_token_invalid: input.fcm_token ? false : eb.ref("device.fcm_token_invalid"),
+        // Registering at all means the app is running here. Whatever
+        // Firebase said about this installation, it was wrong or is out of
+        // date, and nobody should be accused over it.
+        removal_suspected_at: null,
         last_heartbeat_at: now,
         updated_at: now,
       })),
@@ -72,6 +77,8 @@ export async function recordHeartbeat(userId: string, deviceId: string, input: H
       fcm_token: input.fcm_token ?? eb.ref("device.fcm_token"),
       fcm_token_invalid: input.fcm_token ? false : eb.ref("device.fcm_token_invalid"),
       last_heartbeat_at: now,
+      // Same reasoning: a heartbeat is the app saying it is here.
+      removal_suspected_at: null,
       updated_at: now,
     }))
     .where("id", "=", deviceId)

@@ -76,6 +76,9 @@ export interface DeviceTable {
   fcm_token_invalid: Generated<boolean>;
   protection_enabled: Generated<boolean>;
   last_heartbeat_at: Timestamp | null;
+  /** When Firebase first said this installation is gone. Null means it has
+   *  not, or the phone has since proved otherwise. */
+  removal_suspected_at: Timestamp | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
