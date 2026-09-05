@@ -5,11 +5,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.text.format.DateFormat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -33,11 +36,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Date
 
 /**
@@ -109,6 +114,36 @@ class EnforcementService : Service() {
     private var hadUsageAccess = false
 
     /**
+     * Whether the screen is on.
+     *
+     * Nothing can be used while it is off, so nothing needs measuring: the
+     * loop stops entirely and the phone is left alone for the half of every
+     * day it spends in a pocket. Android reports the screen going off as an
+     * event that closes whatever app was open, at the moment it happened, so
+     * the time is not lost by not looking -- it is read back with the right
+     * timestamps on the first poll after the screen comes on.
+     */
+    @Volatile
+    private var screenOn = true
+
+    /** Wakes the loop the instant the screen comes back, rather than
+     *  leaving somebody a minute of unwatched scrolling. */
+    private val screenOnSignal = Channel<Unit>(Channel.CONFLATED)
+
+    private val screenWatcher = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_ON -> {
+                    screenOn = true
+                    screenOnSignal.trySend(Unit)
+                }
+
+                Intent.ACTION_SCREEN_OFF -> screenOn = false
+            }
+        }
+    }
+
+    /**
      * The app the block screen is currently up for, so it is launched once
      * per block rather than once per poll. Cleared the moment anything else
      * comes to the front — including the block screen itself, which makes
@@ -129,6 +164,20 @@ class EnforcementService : Service() {
         witnesses = WitnessStore(this)
         earn = EarnStore(this)
         sync = Sync(this)
+
+        // Registered in code and not in the manifest: Android has refused
+        // to deliver these two to a manifest receiver since Oreo, and a
+        // filter that silently never fires is worse than none.
+        screenOn = getSystemService<PowerManager>()?.isInteractive ?: true
+        ContextCompat.registerReceiver(
+            this,
+            screenWatcher,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
 
         createChannel()
         startInForeground(apps = 0)
@@ -156,6 +205,7 @@ class EnforcementService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(screenWatcher) }
         scope.cancel()
         super.onDestroy()
     }
@@ -166,9 +216,37 @@ class EnforcementService : Service() {
             // it dies, every limit silently stops being enforced and the app
             // looks fine while doing nothing, which is what happened the
             // first time this shipped.
+            if (!screenOn) {
+                runCatching { rest() }
+                continue
+            }
             val delayMillis = runCatching { tick() }.getOrElse { Enforcement.IDLE_MILLIS }
             delay(delayMillis)
         }
+    }
+
+    /**
+     * What the loop does while the screen is off, which is as close to
+     * nothing as it can be.
+     *
+     * No app can be in front of somebody who is not looking at the phone, so
+     * there is nothing to measure and nothing to block -- and this is half
+     * of every day. The one thing that still has to happen is the
+     * half-hourly errand: an event queued in a tunnel, and the heartbeat,
+     * without which a phone asleep for a day would be reported to its
+     * witnesses as a phone that stopped protecting anything.
+     *
+     * Waits for the screen rather than for a timer, so somebody who picks
+     * the phone up is watched from the first second rather than from the
+     * next tick.
+     */
+    private suspend fun rest() {
+        blocking = null
+        val current = pact
+        val now = System.currentTimeMillis()
+        status.record(now, enforcing = current != null && Permissions.hasUsageAccess(this))
+        if (current != null) flushIfDue(current, now)
+        withTimeoutOrNull(DARK_MILLIS) { screenOnSignal.receive() }
     }
 
     /** One pass. Returns how long to wait before the next one. */
@@ -559,6 +637,10 @@ class EnforcementService : Service() {
         private const val LEGACY_CHANNEL_ID = "protection"
         private const val NOTIFICATION_ID = 1
         private const val DAY_MILLIS = 24L * 60 * 60 * 1000
+
+        /** How long to sleep between errands while the screen is off. The
+         *  screen coming back interrupts this; nothing else needs to. */
+        private const val DARK_MILLIS = 15L * 60 * 1000
 
         /** How often the loop tries to empty the outbox. */
         private const val FLUSH_EVERY_MILLIS = 30L * 60 * 1000
