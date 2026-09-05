@@ -1,4 +1,5 @@
 import { unauthorized } from "@/lib/http";
+import { markCaller } from "@/lib/request-log";
 import { auth } from "./auth";
 import { assertRateLimit, RATE_LIMITS, type RateLimitPolicy } from "./rate-limit";
 
@@ -12,6 +13,7 @@ export async function requireCaller(
 ): Promise<Caller> {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) throw unauthorized();
+  markCaller(request, session.user.id);
   await assertRateLimit(policy, session.user.id);
   return { userId: session.user.id, name: session.user.name, email: session.user.email, sessionId: session.session.id };
 }
@@ -32,6 +34,7 @@ export async function optionalCaller(request: Request): Promise<Caller | null> {
   try {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session) return null;
+    markCaller(request, session.user.id);
     return { userId: session.user.id, name: session.user.name, email: session.user.email, sessionId: session.session.id };
   } catch {
     // A malformed or expired token on a public route is not an error, it is
