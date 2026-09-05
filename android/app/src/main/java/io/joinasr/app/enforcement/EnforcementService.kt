@@ -13,10 +13,12 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.text.format.DateFormat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import io.joinasr.app.DeepLink
 import io.joinasr.app.MainActivity
 import io.joinasr.app.R
 import io.joinasr.app.challenge.ChallengeProgress
@@ -139,18 +141,47 @@ class EnforcementService : Service() {
                 }
 
                 Intent.ACTION_SCREEN_OFF -> screenOn = false
+
+                // Somebody set the clock, or crossed a border, or the date
+                // rolled. Today's figures were counted from a midnight that
+                // is no longer where it was; the loop starts the day again
+                // from what the system reports, and if the challenge now
+                // reads as over, the server is asked before it is believed.
+                Intent.ACTION_TIME_CHANGED,
+                Intent.ACTION_TIMEZONE_CHANGED,
+                Intent.ACTION_DATE_CHANGED,
+                -> {
+                    clockChanged = true
+                    screenOnSignal.trySend(Unit)
+                }
             }
         }
     }
 
     /**
-     * The app the block screen is currently up for, so it is launched once
-     * per block rather than once per poll. Cleared the moment anything else
-     * comes to the front — including the block screen itself, which makes
-     * this app the foreground app and so is naturally "allowed".
+     * What has been done about the app being blocked, and whether it took.
+     * The activity is launched once per block rather than once per poll;
+     * [BlockWatch] is what notices when Android dropped that launch without
+     * a word and hands the job to [overlay] instead.
+     */
+    private val blockWatch = BlockWatch()
+    private lateinit var overlay: BlockOverlay
+
+    /**
+     * Set by the receiver when the clock, the zone or the date changes under
+     * the loop. Everything counted from midnight is counted from a midnight
+     * that has moved; the next pass throws it away and reads again.
      */
     @Volatile
-    private var blocking: String? = null
+    private var clockChanged = false
+
+    /**
+     * When the server was last asked whether the challenge may end, on the
+     * clock that cannot be set by hand. Asked at most every
+     * [COMPLETION_RETRY_MILLIS], because a calendar that disagrees with the
+     * server keeps disagreeing until somebody fixes it.
+     */
+    private var completionAskedAtElapsed = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -164,6 +195,7 @@ class EnforcementService : Service() {
         witnesses = WitnessStore(this)
         earn = EarnStore(this)
         sync = Sync(this)
+        overlay = BlockOverlay(this)
 
         // Registered in code and not in the manifest: Android has refused
         // to deliver these two to a manifest receiver since Oreo, and a
@@ -175,6 +207,9 @@ class EnforcementService : Service() {
             IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_TIME_CHANGED)
+                addAction(Intent.ACTION_TIMEZONE_CHANGED)
+                addAction(Intent.ACTION_DATE_CHANGED)
             },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
@@ -206,6 +241,9 @@ class EnforcementService : Service() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(screenWatcher) }
+        // A window this service put up outlives nothing. onDestroy is on
+        // the main thread, which is the thread the window belongs to.
+        if (::overlay.isInitialized) overlay.hideNow()
         scope.cancel()
         super.onDestroy()
     }
@@ -241,7 +279,8 @@ class EnforcementService : Service() {
      * next tick.
      */
     private suspend fun rest() {
-        blocking = null
+        blockWatch.clear()
+        overlay.hide()
         val current = pact
         val now = System.currentTimeMillis()
         status.record(now, enforcing = current != null && Permissions.hasUsageAccess(this))
@@ -253,6 +292,7 @@ class EnforcementService : Service() {
     private suspend fun tick(): Long {
         val current = pact
         val hasAccess = Permissions.hasUsageAccess(this)
+        val now = System.currentTimeMillis()
 
         // Usage access can be revoked in Settings at any moment, and without
         // it the system reports an empty event stream rather than an error --
@@ -263,15 +303,30 @@ class EnforcementService : Service() {
         if (hasAccess && !hadUsageAccess) reader.reset()
         hadUsageAccess = hasAccess
 
-        status.record(System.currentTimeMillis(), enforcing = current != null && hasAccess)
+        if (clockChanged) {
+            clockChanged = false
+            reader.reset()
+            carriedDay = null
+            blockWatch.clear()
+            overlay.hide()
+        }
+
+        status.record(now, enforcing = current != null && hasAccess)
+
+        // The half-hourly errand goes out whether or not usage access is on.
+        // It used to be skipped without it, so a permission revoked in the
+        // middle of a challenge produced silence rather than a heartbeat
+        // saying protection was off -- and silence takes the server a day to
+        // notice, where a heartbeat saying so takes it two hours.
+        if (current != null) flushIfDue(current, now)
 
         if (current == null || !hasAccess) {
-            blocking = null
+            blockWatch.clear()
+            overlay.hide()
             return Enforcement.IDLE_MILLIS
         }
 
         val measured = reader.poll()
-        val now = System.currentTimeMillis()
         // What this phone can see, plus what the day already held when the
         // challenge arrived here. Everything below decides against the whole
         // day; nothing below needs to know the difference.
@@ -293,24 +348,34 @@ class EnforcementService : Service() {
         // for why a challenge that could be failed by scrolling was failing
         // people for this app's own missed polls, and for time spent before
         // the challenge existed.
-        if (progress.isComplete) {
-            end(current)
-            return Enforcement.IDLE_MILLIS
-        }
+        // If it did not end, the calendar here and the server's disagree,
+        // or the server could not be asked and this phone's clock is not one
+        // to be trusted alone. Either way the challenge carries on being
+        // enforced, and the question is asked again later.
+        if (progress.isComplete && end(current)) return Enforcement.IDLE_MILLIS
 
         reportLimitsReached(current, snapshot, earned, now)
 
         sendSummaryIfDue(current, now, snapshot.minutesByPackage, snapshot.foregroundPackage)
-        flushIfDue(current, now)
 
-        when (val decision = Enforcement.decide(current, snapshot, earned)) {
-            Decision.Allow -> blocking = null
+        val blocked = Enforcement.decide(current, snapshot, earned) as? Decision.Block
+        when (blockWatch.next(blocked?.app?.packageName, now)) {
+            BlockWatch.Step.Nothing -> if (blocked == null) overlay.hide()
 
-            is Decision.Block -> {
-                if (blocking != decision.app.packageName) {
-                    blocking = decision.app.packageName
-                    showBlockScreen(decision)
-                }
+            BlockWatch.Step.LaunchActivity -> {
+                overlay.hide()
+                val launched = blocked != null && launchBlockActivity(blocked)
+                if (launched) blockWatch.shown(BlockWatch.Via.Activity, now) else blockWatch.failed(now)
+            }
+
+            // The activity was launched and the blocked app is still what is
+            // in front: Android dropped the launch without a word. Written
+            // down, so the dashboard can say so, and drawn as a window
+            // instead, which needs no exemption from anybody.
+            BlockWatch.Step.ShowOverlay -> {
+                status.recordBlockFailed(now)
+                val drawn = blocked != null && showOverlay(blocked)
+                if (drawn) blockWatch.shown(BlockWatch.Via.Overlay, now) else blockWatch.failed(now)
             }
         }
         return Enforcement.pollDelayMillis(current, snapshot, earned)
@@ -372,23 +437,58 @@ class EnforcementService : Service() {
      * outcome would leave the person looking at a dashboard for a challenge
      * that quietly no longer exists.
      */
-    private suspend fun end(pact: Pact) {
-        if (ending) return
+    private suspend fun end(pact: Pact): Boolean {
+        if (ending) return false
+        val sinceAsked = SystemClock.elapsedRealtime() - completionAskedAtElapsed
+        if (completionAskedAtElapsed != 0L && sinceAsked < COMPLETION_RETRY_MILLIS) return false
         ending = true
-        val now = System.currentTimeMillis()
-        val watching = runCatching { witnesses.current().size }.getOrDefault(0)
-        // Built in the one place every way of ending is built, so what this
-        // writes down and what the witnesses are told cannot drift apart.
-        val ending = Endings.completed(pact, watching, Uuid7.next(now), now)
-        outcomes.save(ending.outcome)
+        try {
+            completionAskedAtElapsed = SystemClock.elapsedRealtime()
+            val now = System.currentTimeMillis()
+            val watching = runCatching { witnesses.current().size }.getOrDefault(0)
+            // Built in the one place every way of ending is built, so what
+            // this writes down and what the witnesses are told cannot drift
+            // apart.
+            val completed = Endings.completed(pact, watching, Uuid7.next(now), now)
 
-        runCatching {
-            sync.report(pact, ending.event)
-            if (sync.isDrained()) outcomes.markReported()
+            // Asked, not announced. Completion is the one ending that is a
+            // date arriving rather than a thing the person did, and the date
+            // is the easiest thing on a phone to change: with nothing here, a
+            // month moved forward in Settings finished a challenge on day
+            // three and the witnesses were congratulated. The server keeps
+            // its own calendar and refuses a completion before it; when it
+            // cannot be asked, a phone that takes its time from the network
+            // is trusted, and one whose time was set by hand waits.
+            val confirmation = runCatching { sync.confirmCompletion(pact, completed.event) }
+                .getOrDefault(Sync.Confirmation.Unreachable)
+            when (confirmation) {
+                Sync.Confirmation.TooEarly -> {
+                    reader.reset()
+                    return false
+                }
+
+                Sync.Confirmation.Unreachable -> if (!DeviceClock.isAutomatic(this)) return false
+
+                Sync.Confirmation.Confirmed -> Unit
+            }
+
+            outcomes.save(completed.outcome)
+            if (confirmation == Sync.Confirmation.Confirmed) {
+                outcomes.markReported()
+            } else {
+                runCatching {
+                    sync.report(pact, completed.event)
+                    if (sync.isDrained()) outcomes.markReported()
+                }
+            }
+
+            blockWatch.clear()
+            overlay.hide()
+            store.clear()
+            return true
+        } finally {
+            ending = false
         }
-
-        blocking = null
-        store.clear()
     }
 
     /**
@@ -419,8 +519,10 @@ class EnforcementService : Service() {
         runCatching {
             sync.drain(pact)
             // Measured, not assumed. A heartbeat that always says true is
-            // worse than none: it is what a witness would be trusting.
-            sync.heartbeat(protectionEnabled = Permissions.canDrawOverlays(this))
+            // worse than none: it is what a witness would be trusting. Both
+            // grants, because either one missing is a challenge nothing
+            // enforces, and the server starts a two-hour clock on a false.
+            sync.heartbeat(protectionEnabled = Permissions.protectionOn(this))
             signOutIfEvicted()
         }
     }
@@ -517,17 +619,17 @@ class EnforcementService : Service() {
     }
 
     /**
-     * Puts the block screen in front of the person.
+     * Puts the block screen in front of the person, as an activity.
      *
      * This is a background activity launch, which Android forbids from
      * Android 10 unless the app holds SYSTEM_ALERT_WINDOW — the "display
-     * over other apps" permission the setup flow asks for. Without that
-     * grant the system drops the launch without a word, so the failure is
-     * recorded rather than swallowed: the dashboard reads it and says
-     * protection is not working, instead of the person finding out by
-     * scrolling uninterrupted past their limit.
+     * over other apps" permission the setup flow asks for. A refused launch
+     * does not throw: `startActivity` returns and nothing appears. So true
+     * here only means the request was made; whether it took is what
+     * [BlockWatch] reads off the next poll, when the blocked app is either
+     * gone from the foreground or still there.
      */
-    private suspend fun showBlockScreen(decision: Decision.Block) {
+    private fun launchBlockActivity(decision: Decision.Block): Boolean {
         val intent = BlockActivity.intent(
             context = this,
             app = decision.app,
@@ -535,12 +637,44 @@ class EnforcementService : Service() {
             limitMinutes = decision.limitMinutes,
             availableAgain = nextResetText(),
         )
-        val launched = runCatching { startActivity(intent) }.isSuccess
-        if (!launched) {
-            blocking = null
-            status.recordBlockFailed(System.currentTimeMillis())
-        }
+        return runCatching { startActivity(intent) }.isSuccess
     }
+
+    /**
+     * The same screen, drawn as a window over the app, for a phone that
+     * dropped the activity. Needs only the overlay grant, which the setup
+     * flow asked for and the heartbeat reports on.
+     */
+    private suspend fun showOverlay(decision: Decision.Block): Boolean = overlay.show(
+        BlockOverlay.Shown(
+            app = decision.app,
+            usedMinutes = decision.usedMinutes,
+            limitMinutes = decision.limitMinutes,
+            availableAgain = nextResetText(),
+            // Home, the way the activity's button does it. The window comes
+            // down on the next pass, once the launcher is what is in front;
+            // if the launch is refused too, it stays up over the app, which
+            // is the point of it.
+            onLeave = {
+                runCatching {
+                    startActivity(
+                        Intent(Intent.ACTION_MAIN)
+                            .addCategory(Intent.CATEGORY_HOME)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
+            onEarnTime = {
+                runCatching {
+                    startActivity(
+                        Intent(this, MainActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            .putExtra(DeepLink.EXTRA_EARN_FOR, decision.app.packageName),
+                    )
+                }
+            },
+        ),
+    )
 
     /**
      * When the limits come back, in the phone's own clock format. Read from
@@ -654,6 +788,9 @@ class EnforcementService : Service() {
 
         /** How often to ask what the day already held, until there is an answer. */
         private const val CARRY_RETRY_MILLIS = 60L * 1000
+
+        /** How often to ask the server again whether a challenge that reads as over is over. */
+        private const val COMPLETION_RETRY_MILLIS = 15L * 60 * 1000
 
         /**
          * Starts the loop, if there is anything for it to do.

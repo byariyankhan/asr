@@ -95,7 +95,7 @@ class Sync(context: Context) {
         val sent = Api.devices.heartbeat(
             token = token,
             deviceId = device,
-            protectionEnabled = Permissions.canDrawOverlays(app),
+            protectionEnabled = Permissions.protectionOn(app),
             appVersion = BuildConfig.VERSION_NAME,
             fcmToken = pushToken,
         )
@@ -304,15 +304,56 @@ class Sync(context: Context) {
         drain(pact)
     }
 
+    /** What the server said when asked whether a challenge may end as completed. */
+    enum class Confirmation {
+        /** The server agrees, and has recorded it. */
+        Confirmed,
+
+        /** The server's calendar says the challenge is still running. */
+        TooEarly,
+
+        /** No answer: no session, no signal, or a server having a bad minute. */
+        Unreachable,
+    }
+
+    /**
+     * Asks the server to record a completion, now, and says what it thought.
+     *
+     * Completion is the one ending the phone is not trusted about on its
+     * own. Every other ending is something the person did; this one is a
+     * date arriving, and the date is the easiest thing on a phone to change.
+     * So it is posted directly rather than queued, and the answer decides
+     * whether the challenge ends here at all -- a refusal of `pact_not_elapsed`
+     * is the server saying the calendar disagrees.
+     *
+     * Any other 409 is a challenge the server has already closed, by its
+     * own clock or another ending, and that stands: there is nothing left to
+     * enforce, whichever ending the server wrote.
+     */
+    suspend fun confirmCompletion(pact: Pact, event: PendingEvent): Confirmation {
+        val token = tokens.current() ?: return Confirmation.Unreachable
+        val pactId = remotePactId(pact) ?: return Confirmation.Unreachable
+        return when (val result = Api.pacts.postEvent(token, pactId, wire(event))) {
+            is ApiResult.Ok -> Confirmation.Confirmed
+            is ApiResult.Failure -> when {
+                result.error == NOT_ELAPSED -> Confirmation.TooEarly
+                result.code == 409 -> Confirmation.Confirmed
+                else -> Confirmation.Unreachable
+            }
+            is ApiResult.Offline -> Confirmation.Unreachable
+        }
+    }
+
     /**
      * Sends everything queued, oldest first, and stops at the first one that
      * does not go through — so a phone that comes back on a train does not
      * report a breach before the challenge it belongs to.
      *
-     * A refusal from the server drops the event rather than retrying it. A
-     * 409 on a closed pact and a 400 on a body this build sends wrongly are
-     * both permanent, and an outbox that keeps a doomed event forever stops
-     * being an outbox and becomes a stuck queue.
+     * What happens to an event the server answers with an error is
+     * [OutboxPolicy]'s decision: kept when the server may yet take it, dropped
+     * when it has refused the event itself. Both matter. An event kept forever
+     * is a stuck queue with everything behind it; an event dropped on a 502
+     * is a witness never told, and every deploy serves a minute of 502s.
      */
     suspend fun drain(pact: Pact?) {
         val queued = store.pending()
@@ -321,30 +362,25 @@ class Sync(context: Context) {
         val pactId = pact?.let { remotePactId(it) } ?: return
 
         for (event in queued.sortedBy { it.occurredAtMillis }) {
-            val result = Api.pacts.postEvent(
-                token = token,
-                pactId = pactId,
-                event = EventCreate(
-                    id = event.id,
-                    type = event.type,
-                    reason = event.reason,
-                    appPackage = event.appPackage,
-                    minutes = event.minutes,
-                    occurredAt = iso(event.occurredAtMillis),
-                ),
-            )
-            when (result) {
+            when (val result = Api.pacts.postEvent(token = token, pactId = pactId, event = wire(event))) {
                 is ApiResult.Ok -> store.drop(event.id)
                 is ApiResult.Failure -> {
-                    // 401 and 429 will work later; everything else the server
-                    // refuses, it will refuse again.
-                    if (result.code == 401 || result.code == 429) return
+                    if (OutboxPolicy.keepAfter(result.code)) return
                     store.drop(event.id)
                 }
                 is ApiResult.Offline -> return
             }
         }
     }
+
+    private fun wire(event: PendingEvent) = EventCreate(
+        id = event.id,
+        type = event.type,
+        reason = event.reason,
+        appPackage = event.appPackage,
+        minutes = event.minutes,
+        occurredAt = iso(event.occurredAtMillis),
+    )
 
     /**
      * Tells the server whether protection is actually working here. Called
@@ -492,5 +528,8 @@ class Sync(context: Context) {
          * between two people setting up separately on two handsets.
          */
         private const val ADOPTION_WINDOW_MS = 5L * 60 * 1000
+
+        /** The server's word for "not by my calendar", on a `completed` event. */
+        private const val NOT_ELAPSED = "pact_not_elapsed"
     }
 }
