@@ -111,8 +111,10 @@ fun BlockingDisclosureScreen(
             Spacer(Modifier.height(14.dp))
             DisclosureBlock(
                 heading = "WITNESS SHARING",
-                body = "If a pact is broken, the app name and the fact that it broke " +
-                    "may be sent to the witnesses you chose.",
+                body = "The witnesses you name can see the apps you chose to limit, " +
+                    "each one's minutes today, and the moment one reaches its limit. " +
+                    "If you give up, switch protection off or remove Asr, they are " +
+                    "told that too. Nothing about any other app is sent.",
             )
         }
 

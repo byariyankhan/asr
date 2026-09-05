@@ -127,6 +127,28 @@ fun UsageAccessScreen(
             )
         }
 
+        // What leaves the phone, said here rather than only in the privacy
+        // policy. Play's prominent-disclosure rule wants the sending named
+        // where the permission is asked for, and a person deciding whether
+        // to grant it deserves the same sentence.
+        Spacer(Modifier.height(12.dp))
+        AsrCard(background = AsrColors.Field) {
+            Text(
+                "What leaves your phone",
+                style = AsrType.Field,
+                color = AsrColors.TextPrimary,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Daily totals for the apps you choose to limit, and the moment one of " +
+                    "them reaches its limit, are sent to Asr's server so the witnesses you " +
+                    "name can see how your challenge is going. Nothing about any other app " +
+                    "ever leaves your phone.",
+                style = AsrType.Legal,
+                color = AsrColors.TextSecondary,
+            )
+        }
+
         Spacer(Modifier.height(20.dp))
         AsrPill(if (granted) "ENABLED" else "NOT ENABLED", highlighted = granted)
 
