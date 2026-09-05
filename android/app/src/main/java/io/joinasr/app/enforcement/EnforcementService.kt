@@ -24,6 +24,7 @@ import io.joinasr.app.R
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.data.LocalSignOut
 import io.joinasr.app.diagnostics.Crash
+import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.earn.EarnStore
 import io.joinasr.app.permissions.Permissions
@@ -480,6 +481,7 @@ class EnforcementService : Service() {
             }
 
             outcomes.save(completed.outcome)
+            Analytics.log(Analytics.challengeCompleted(pact.durationDays))
             if (confirmation == Sync.Confirmation.Confirmed) {
                 outcomes.markReported()
             } else {

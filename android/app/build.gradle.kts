@@ -124,6 +124,12 @@ dependencies {
     // Inert without google-services.json, like messaging: FirebaseApp never
     // initialises and diagnostics/Crash.kt checks before touching it.
     implementation(libs.firebase.crashlytics)
+    // Ten product events and nothing else (analytics/Analytics.kt): whether
+    // people sign up, start challenges, invite witnesses, and finish or
+    // break them. Never an app name, a minute, a name or an address; the
+    // advertising id is switched off in the manifest. Inert without
+    // google-services.json, like the two above.
+    implementation(libs.firebase.analytics)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

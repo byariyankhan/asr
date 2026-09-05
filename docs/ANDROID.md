@@ -266,6 +266,37 @@ it catches now goes to Crashlytics as a non-fatal with the place it happened
 say why a limit was not enforced. Inert without `google-services.json`, like
 push. The privacy policy names it and what a report carries.
 
+### Product analytics
+
+Firebase Analytics, through the same project, and only through
+`analytics/Analytics.kt`: ten product events, so it is possible to see how
+many people sign up, finish onboarding, start challenges, invite witnesses,
+earn time, and finish or break what they started. The whole catalogue and
+what each event may carry:
+
+| Event | Carries | Sent when |
+|---|---|---|
+| `sign_up`, `login` | `method` (`email`) | the auth call succeeds |
+| `onboarding_complete` | nothing | the profile goes from incomplete to complete (About You saved) |
+| `pact_created` | `duration_days` | the challenge is committed on the phone (Review, Start) |
+| `pact_started` | `duration_days` | the server accepts the new pact; the 409 adoption path does not count |
+| `witness_invite_sent` | nothing | the server issues the invitation (before the share sheet) |
+| `witness_invite_accepted` | nothing | the witness's phone accepts an invitation |
+| `extra_time_earned` | `activity_type` | an activity completes and the minutes are awarded |
+| `challenge_completed` | `duration_days` | the phone ends the challenge as completed (server-confirmed or trusted clock) |
+| `challenge_broken` | `reason`, `duration_days` | the person gives up (`user_gave_up`) |
+
+Never an app name, a minute, a name, an email address, a witness or
+anything typed: `AnalyticsTest` holds every event to the four parameters
+above and fails the build on a fifth. No user id is set, and the manifest
+removes the advertising-id permission and switches ad-id collection and ad
+personalisation off, so an event arrives with a random installation id,
+the app version, the phone model, country and language. Endings the server
+decides on its own (a day of silence, an uninstall) are not events here,
+because the phone that would send them is off or gone; the ledger is the
+count of record for those. Inert without `google-services.json`. The
+privacy policy names it and what it receives.
+
 ### Fallback: AccessibilityService
 
 Faster foreground detection and harder to bypass, but Google rejects apps
@@ -317,7 +348,8 @@ the other side of it.
 | `asr_protection` | when the loop last ran, and when a block screen failed to launch |
 
 Raw usage never leaves the phone. Only the outbox and the daily summary go to
-the server.
+the server, and the ten product events above go to Firebase Analytics with
+no usage in them.
 
 ## Outbox and idempotency
 

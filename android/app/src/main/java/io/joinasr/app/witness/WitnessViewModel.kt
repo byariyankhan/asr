@@ -3,6 +3,7 @@ package io.joinasr.app.witness
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.data.Api
 import io.joinasr.app.data.ApiResult
 import io.joinasr.app.data.InvitePeek
@@ -153,6 +154,7 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
             }
             when (val result = Api.witnesses.invite(token, relationship)) {
                 is ApiResult.Ok -> {
+                    Analytics.log(Analytics.witnessInviteSent())
                     store.add(
                         id = result.value.id,
                         relationship = result.value.relationship,
@@ -304,7 +306,10 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
                     _inviteAnswered.value = true
                     // Accepting adds somebody to the other list, so both are
                     // re-read rather than patched locally.
-                    if (accept) refresh()
+                    if (accept) {
+                        Analytics.log(Analytics.witnessInviteAccepted())
+                        refresh()
+                    }
                 }
                 is ApiResult.Failure -> _inviteError.value = result.message
                 is ApiResult.Offline -> _inviteError.value = result.message

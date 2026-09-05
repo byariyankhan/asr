@@ -19,6 +19,15 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Firebase Analytics asks for the advertising id by default. The app
+         counts product events, not people, so the permission is removed
+         from the merged manifest and collection is switched off below:
+         what Firebase gets is an event with a random installation id, not
+         an identifier shared with advertisers. -->
+    <uses-permission
+        android:name="com.google.android.gms.permission.AD_ID"
+        tools:node="remove" />
+
     <!-- Steps, and only steps. Asked for the first time somebody chooses a
          walking activity (Figma 22) and never at launch, because it is not
          needed to run a challenge. It is needed to earn extra time, which
@@ -90,6 +99,14 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Asr">
+        <!-- Analytics: product events only (analytics/Analytics.kt). No
+             advertising id, no ad personalisation signals. -->
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_default_allow_ad_personalization_signals"
+            android:value="false" />
         <!-- singleTask: a link opened from a browser, a notification tapped,
              or the block screen's "earn time" all arrive at the one running
              instance through onNewIntent, instead of stacking a second copy

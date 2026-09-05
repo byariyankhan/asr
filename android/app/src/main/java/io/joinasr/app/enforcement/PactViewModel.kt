@@ -3,6 +3,7 @@ package io.joinasr.app.enforcement
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.sync.Sync
 import io.joinasr.app.sync.Uuid7
@@ -135,6 +136,7 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
             // server ever hears about it, and a person on a train pressing
             // Start must end up with a running challenge, not an error.
             store.save(pact)
+            Analytics.log(Analytics.pactCreated(durationDays))
             // The server's copy is best-effort and keyed by the start
             // time, so a stale id from the last challenge can never be
             // mistaken for this one's.
@@ -179,6 +181,7 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
                 nowMillis = now,
             )
             outcomes.save(ending.outcome)
+            Analytics.log(Analytics.challengeBroken("user_gave_up", pact.durationDays))
             runCatching {
                 sync.report(pact, ending.event)
                 if (sync.isDrained()) outcomes.markReported()

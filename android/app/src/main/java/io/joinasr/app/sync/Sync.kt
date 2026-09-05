@@ -3,6 +3,7 @@ package io.joinasr.app.sync
 import android.content.Context
 import android.os.Build
 import io.joinasr.app.BuildConfig
+import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.data.Api
 import io.joinasr.app.data.ActivityCreate
 import io.joinasr.app.data.ActivityRule
@@ -288,6 +289,7 @@ class Sync(context: Context) {
             ),
         )
         val created = Api.pacts.create(token, body)
+        if (created is ApiResult.Ok) Analytics.log(Analytics.pactStarted(pact.durationDays))
         val id = when {
             created is ApiResult.Ok -> created.value.id
             created is ApiResult.Failure && created.code == 409 && store.pending().isEmpty() ->

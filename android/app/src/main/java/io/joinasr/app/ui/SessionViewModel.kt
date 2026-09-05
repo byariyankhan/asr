@@ -3,6 +3,7 @@ package io.joinasr.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.data.Api
 import io.joinasr.app.data.LocalSignOut
 import io.joinasr.app.sync.Sync
@@ -90,9 +91,9 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
         _error.value = null
     }
 
-    fun signUp(email: String, password: String) = submit { Api.auth.signUp(email, password) }
+    fun signUp(email: String, password: String) = submit(Analytics.signUp()) { Api.auth.signUp(email, password) }
 
-    fun signIn(email: String, password: String) = submit { Api.auth.signIn(email, password) }
+    fun signIn(email: String, password: String) = submit(Analytics.login()) { Api.auth.signIn(email, password) }
 
     fun signOut() {
         viewModelScope.launch {
@@ -158,7 +159,13 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
             _submitting.value = true
             _error.value = null
             when (val result = call(token)) {
-                is ApiResult.Ok -> _session.value = Session.SignedIn(result.value)
+                is ApiResult.Ok -> {
+                    // Onboarding is over the moment the profile becomes
+                    // complete, whichever screen did it and only that once.
+                    val wasComplete = (_session.value as? Session.SignedIn)?.me?.profileComplete
+                    if (wasComplete == false && result.value.profileComplete) Analytics.log(Analytics.onboardingComplete())
+                    _session.value = Session.SignedIn(result.value)
+                }
                 is ApiResult.Failure -> _error.value = result.message
                 is ApiResult.Offline -> _error.value = result.message
             }
@@ -166,7 +173,7 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun submit(call: suspend () -> ApiResult<String>) {
+    private fun submit(onSuccess: Analytics.Event, call: suspend () -> ApiResult<String>) {
         if (_submitting.value) return // A second tap on a slow network is not a second request.
         viewModelScope.launch {
             _submitting.value = true
@@ -174,6 +181,7 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
             when (val result = call()) {
                 is ApiResult.Ok -> {
                     tokens.save(result.value)
+                    Analytics.log(onSuccess)
                     resolve(result.value, clearTokenOnUnauthorised = false)
                 }
                 is ApiResult.Failure -> _error.value = result.message

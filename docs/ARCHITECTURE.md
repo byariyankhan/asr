@@ -87,6 +87,14 @@ If a future feature needs more (for example a weekly per-app chart on the
 witness dashboard), it is added as a new, explicit, opt-in aggregate, never
 by uploading raw events.
 
+The same boundary holds for the one thing that leaves the device for
+somewhere other than the server: the ten product events
+`android/.../analytics/Analytics.kt` sends to Firebase Analytics (sign-up,
+challenge started, invitation sent, challenge completed or broken, and so
+on). None carries an app, a minute, a name, an address or a witness; a test
+holds every event to that, and the advertising identifier is switched off.
+See `ANDROID.md`, "Product analytics".
+
 ## Server entities
 
 Definitions and DDL are in `DATABASE.md`.
