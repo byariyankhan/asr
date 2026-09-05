@@ -165,6 +165,97 @@ comfortable with and keep the other as a fallback that is off by default.
 This is how most shipping blockers (StayFree, YourHour, ActionDash) work and
 it passes Play review with a clear declaration.
 
+### Digital Wellbeing, and why it cannot be used
+
+The question comes up on every phone that already has app timers built in,
+so the answer is written down. Digital Wellbeing's timers, Focus mode and
+Bedtime mode have **no public API**: the observers that make them work
+(`UsageStatsManager.registerAppUsageLimitObserver` and friends) are
+`@SystemApi`, need the `OBSERVE_APP_USAGE` permission, and are granted only
+to apps signed with the platform key or preinstalled by the manufacturer. A
+Play-distributed app cannot set a timer, read one, or be told when one is
+hit. Family Link is the same machinery from the other side, and Samsung's
+Digital Wellbeing is a fork with the same closed door.
+
+What is public is what this app already uses: `UsageStatsManager` to read
+the event stream, `SYSTEM_ALERT_WINDOW` to be allowed in front, and a
+foreground service to be running when it matters. Digital Wellbeing's
+visible behaviour -- the greyed icon and the "app paused" dialog -- is
+achieved by pausing the app at the system level, which no third-party app
+can do either. The closest an ordinary app can come is what the section
+above describes, and it is what every blocker on the store does.
+
+### When the activity is dropped: the overlay
+
+A background activity launch that Android refuses does not throw; the call
+returns and nothing appears. The overlay grant exempts this app on stock
+Android, but MIUI keeps a separate switch for pop-ups from the background,
+and a handful of other skins do the same under other names -- which was the
+block screen "not appearing on some devices despite the service running".
+
+So the loop no longer believes a launch. `BlockWatch` remembers what it did
+and when; if the blocked app is still what is in front 2.5 seconds after the
+activity was asked for, the launch was dropped, the failure is recorded for
+the dashboard, and `BlockOverlay` draws the same screen as a
+`TYPE_APPLICATION_OVERLAY` window instead. That window needs only the
+overlay grant and no exemption from anybody: full-screen, touch-modal and
+focusable, so it takes every touch and the back key. It comes down on the
+next pass once the person has left the app. If neither route works, the
+loop tries again every ten seconds rather than never.
+
+The activity stays the first choice because it is the better block: it
+takes the blocked app out of the foreground, so its minutes stop counting
+and the back stack behaves. The overlay does not pause the app underneath,
+so a person sitting on it is still "using" the app as far as Android's
+counters go. That is the cost of a block that works everywhere, and it is
+bounded by how long anybody stares at a wall.
+
+### Keeping the loop alive
+
+Android's foreground service is a promise Android keeps and several
+manufacturers do not. Xiaomi, Oppo, Vivo, Huawei and Samsung all ship a
+second battery layer that stops the service when the screen goes off, and
+from then on nothing is blocked while the dashboard says LOCKED. Three
+things answer that:
+
+- **The keep-it-running screen** (`BackgroundActivityScreen`), reached from
+  the Protection step of setup and from the dashboard's "protection is not
+  running" warning. It shows whether Android's battery optimisation is off
+  for Asr and opens the list to change it; and where this phone's
+  manufacturer has a switch of its own, it names it, says what to set once
+  there, and opens it (`OemSettings`, with the component names the
+  community has kept for years). No new permission: the battery list and
+  the app's own details page need none, and the per-app request dialog,
+  which needs one Play grants by exception, is deliberately not used.
+- **The server's probe.** The watchdog already pings any phone it has not
+  heard from in 45 minutes -- which on one of these phones is exactly a
+  phone whose loop is dead. A high-priority push is one of the few things
+  Android lets start a foreground service from the background, so the ping
+  handler starts the loop again. A killed service is back within the hour
+  without anybody opening the app.
+- **The truth in the heartbeat.** `protection_enabled` is usage access
+  *and* the overlay grant, and it goes out whether or not usage access is
+  on. A permission revoked mid-challenge reaches the server as a heartbeat
+  saying so, and two hours later the witnesses are told; it used to be
+  skipped entirely, which was silence, which takes a day.
+
+What none of this closes: Force stop, and a manufacturer's setting the
+person declines to change. Both leave a phone that stops heartbeating, and
+the server's day of silence is still the backstop for those.
+
+### Completion is asked, not announced
+
+Finishing is the one ending that is a date arriving rather than a thing the
+person did, and the date is the easiest thing on a phone to change. When the
+loop's calendar says the challenge is over it asks the server first, which
+checks the same calendar rule against its own clock and answers
+`pact_not_elapsed` if they disagree. Then nothing ends: the day's count
+starts again and the question is asked every fifteen minutes. When the
+server cannot be reached, a phone that takes its time from the network is
+trusted to finish offline, and one whose time was set by hand waits. The
+loop also listens for the clock, the zone and the date changing under it and
+recounts the day from what the system reports.
+
 ### Fallback: AccessibilityService
 
 Faster foreground detection and harder to bypass, but Google rejects apps
@@ -187,13 +278,15 @@ are now wrong and somebody will build from them again.
 
 - Uninstalling Asr or revoking the usage permission stops enforcement. That
   is what heartbeats and witnesses are for.
-- Split screen and picture-in-picture count as foreground time for the
-  visible app.
-- Some OEMs (Xiaomi, Oppo, Vivo, Samsung with aggressive battery settings)
-  kill foreground services. Onboarding detects the manufacturer and shows
-  the specific "allow background activity" steps. The heartbeat carries a
-  `protection_enabled` flag that is false if the service was killed and not
-  restarted, so silence is noticed.
+- Split screen counts only the pane Android last resumed; the other pane
+  is not counted while it sits there, and picture-in-picture is not counted
+  at all. The accumulator has a single-open-app model, which is right for
+  every other case and wrong for these two.
+- Web versions of a blocked app are not blocked. instagram.com in Chrome is
+  Chrome.
+- Some manufacturers kill foreground services. The keep-it-running screen
+  above is the answer, and the server's probe restarts a killed loop within
+  the hour; a person who declines both is noticed by the heartbeat stopping.
 
 ## Local data (DataStore)
 
@@ -225,18 +318,24 @@ the day, so the loop noticing it forty times posts one event.
 
 The enforcement loop drains it, oldest first, and stops at the first one that
 does not go through: a phone coming back on a train must not report a breach
-before the challenge it belongs to. A refusal drops the event rather than
-retrying it forever -- a 409 on a closed pact and a 400 on a body this build
-sends wrongly are both permanent, and an outbox that keeps a doomed event is
-a stuck queue. 401 and 429 are the exceptions; those will work later.
+before the challenge it belongs to. What happens to an event the server
+refuses is `OutboxPolicy`'s decision, and the line is whose fault it is: a
+4xx is the server saying no to *this event*, and it will say no again -- a
+409 on a closed pact, a 400 on a body this build sends wrongly -- so those
+are dropped. Anything that says "not now" is kept: 401, 408, 425, 429, and
+every 5xx. The first version dropped on a 502, and every deploy serves a
+minute of those; a person who gave up in that minute saw "SENT" and nobody
+was told.
 
 ## Heartbeat
 
 The enforcement loop posts it every 30 minutes, alongside draining the
 outbox — including while the screen is off, when it is the only work the loop
-does. It carries `protection_enabled` read from the system rather than
-assumed: a heartbeat that always says true is worse than none, because it is
-what a witness would be trusting.
+does, and whether or not usage access is on. It carries `protection_enabled`
+read from the system rather than assumed -- usage access *and* the overlay
+grant, because either one missing is a challenge nothing enforces -- and the
+server starts its two-hour clock on a `false`. A heartbeat that always says
+true is worse than none, because it is what a witness would be trusting.
 
 Not a WorkManager job. The service is already running -- it has to be -- so a
 scheduler would add a second mechanism to keep alive for something the first
