@@ -93,11 +93,13 @@ object LegalTexts {
             LegalSection(
                 "6. Sharing",
                 "We use service providers to run the service: hosting, sign-in, push " +
-                    "notifications (Google Firebase), email (Resend) and profile-photo " +
-                    "storage (Cloudflare R2). There is no analytics or advertising " +
-                    "provider in the app. Witnesses receive only the accountability " +
-                    "information described above. We do not sell personal data to " +
-                    "advertisers.",
+                    "notifications and crash reports (Google Firebase), email (Resend) " +
+                    "and profile-photo storage (Cloudflare R2). A crash report carries " +
+                    "the app version, the phone model and Android version, and where in " +
+                    "the app the failure happened; never your usage, your witnesses or " +
+                    "anything you typed. There is no analytics or advertising provider " +
+                    "in the app. Witnesses receive only the accountability information " +
+                    "described above. We do not sell personal data to advertisers.",
             ),
             LegalSection(
                 "7. Retention and deletion",

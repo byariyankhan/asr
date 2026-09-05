@@ -23,6 +23,7 @@ import io.joinasr.app.MainActivity
 import io.joinasr.app.R
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.data.LocalSignOut
+import io.joinasr.app.diagnostics.Crash
 import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.earn.EarnStore
 import io.joinasr.app.permissions.Permissions
@@ -255,10 +256,16 @@ class EnforcementService : Service() {
             // looks fine while doing nothing, which is what happened the
             // first time this shipped.
             if (!screenOn) {
-                runCatching { rest() }
+                runCatching { rest() }.onFailure { Crash.report(this, it, "rest") }
                 continue
             }
-            val delayMillis = runCatching { tick() }.getOrElse { Enforcement.IDLE_MILLIS }
+            // Caught and reported, never rethrown. A failure here used to
+            // vanish; now it is the one thing a phone in the field can say
+            // about why a limit was not enforced.
+            val delayMillis = runCatching { tick() }.getOrElse {
+                Crash.report(this, it, "tick")
+                Enforcement.IDLE_MILLIS
+            }
             delay(delayMillis)
         }
     }
