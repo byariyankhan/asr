@@ -5,10 +5,16 @@ import io.joinasr.app.usage.DayUsage
 /** One day of the week, judged against the pact. */
 data class DayOutcome(
     val dayStartMillis: Long,
-    /** Foreground minutes across every app under a limit. */
+    /** Foreground minutes across the challenge's apps. */
     val totalMinutes: Int,
-    /** True when no single app went over its own limit that day. */
-    val withinLimits: Boolean,
+    /**
+     * True when no single app went over its own limit that day, false when
+     * one did, and null for a day before the challenge began: those days
+     * are drawn for comparison and are not a verdict. A challenge started
+     * this afternoon used to arrive on this screen with six breaches, one
+     * for each day before it existed.
+     */
+    val withinLimits: Boolean?,
 )
 
 /**
@@ -23,6 +29,11 @@ data class DayOutcome(
 object WeeklyProgress {
 
     /**
+     * @param challengeFrom the start of the local day the challenge began.
+     *   Days before it are history: their minutes are counted for the
+     *   chart, across the same apps, but they are neither within limits nor
+     *   breaches, because there were no limits to be within. The first day
+     *   counts whole, from midnight, the same way the limits do.
      * @param judgedFrom for an app added to the challenge after it started,
      *   the start of the local day it came in on. On the days before that
      *   the app was not under a limit, so it is neither judged nor counted
@@ -34,8 +45,16 @@ object WeeklyProgress {
         days: List<DayUsage>,
         limits: Map<String, Int>,
         judgedFrom: Map<String, Long> = emptyMap(),
+        challengeFrom: Long = Long.MIN_VALUE,
     ): List<DayOutcome> =
         days.map { day ->
+            if (day.dayStartMillis < challengeFrom) {
+                return@map DayOutcome(
+                    dayStartMillis = day.dayStartMillis,
+                    totalMinutes = day.totalMinutes(limits.keys),
+                    withinLimits = null,
+                )
+            }
             val underLimit = limits.filterKeys { (judgedFrom[it] ?: Long.MIN_VALUE) <= day.dayStartMillis }
             DayOutcome(
                 dayStartMillis = day.dayStartMillis,
@@ -46,9 +65,12 @@ object WeeklyProgress {
             )
         }
 
-    fun daysWithinLimits(outcomes: List<DayOutcome>): Int = outcomes.count { it.withinLimits }
+    fun daysWithinLimits(outcomes: List<DayOutcome>): Int = outcomes.count { it.withinLimits == true }
 
-    fun breaches(outcomes: List<DayOutcome>): Int = outcomes.count { !it.withinLimits }
+    fun breaches(outcomes: List<DayOutcome>): Int = outcomes.count { it.withinLimits == false }
+
+    /** The days that were under the challenge at all: the denominator. */
+    fun daysJudged(outcomes: List<DayOutcome>): Int = outcomes.count { it.withinLimits != null }
 
     /** The sum of every limit: what a day is allowed in total. */
     fun dailyAllowance(limits: Map<String, Int>): Int = limits.values.sum()
