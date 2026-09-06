@@ -11,13 +11,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -46,19 +53,25 @@ fun AsrTextField(
     // put it; see DateMask.
     visualTransformation: VisualTransformation? = null,
 ) {
+    // A password is hidden until the person asks to see it, and stays seen
+    // until they hide it again -- across a rotation too, which is where a
+    // toggle that forgets is most annoying. Per field: showing the new
+    // password does not show the current one beside it.
+    var revealed by rememberSaveable { mutableStateOf(false) }
+
     Column(modifier = modifier.fillMaxWidth()) {
         if (label.isNotEmpty()) {
             Text(label, style = AsrType.Label, color = AsrColors.TextSecondary)
             Spacer(Modifier.height(6.dp))
         }
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(58.dp)
                 .background(AsrColors.Field, RoundedCornerShape(14.dp))
                 .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(14.dp))
-                .padding(horizontal = 15.dp),
-            contentAlignment = Alignment.CenterStart,
+                .padding(start = 15.dp, end = if (isPassword) 6.dp else 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             BasicTextField(
                 value = value,
@@ -68,11 +81,12 @@ fun AsrTextField(
                 cursorBrush = SolidColor(AsrColors.Accent),
                 keyboardOptions = keyboardOptions,
                 visualTransformation = when {
-                    isPassword -> PasswordVisualTransformation()
+                    isPassword && !revealed -> PasswordVisualTransformation()
+                    isPassword -> VisualTransformation.None
                     visualTransformation != null -> visualTransformation
                     else -> VisualTransformation.None
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     // Both are emitted into one Box so the placeholder sits
                     // *behind* the text rather than above it — two siblings
@@ -90,6 +104,20 @@ fun AsrTextField(
                     }
                 },
             )
+            if (isPassword) {
+                // A word, not an eye: the app has no icon set, and "Show" is
+                // what the person is deciding. Padded out to a target a
+                // thumb can hit without landing in the text.
+                Text(
+                    if (revealed) "Hide" else "Show",
+                    style = AsrType.Label,
+                    color = AsrColors.Accent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Button) { revealed = !revealed }
+                        .padding(horizontal = 9.dp, vertical = 10.dp),
+                )
+            }
         }
     }
 }
