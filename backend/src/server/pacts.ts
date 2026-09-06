@@ -5,7 +5,7 @@ import { requireOwnedDevice } from "./devices";
 import { queueWitnessNotifications } from "./notifications";
 import { canViewPact } from "./witnesses";
 import { conflict, notFound } from "@/lib/http";
-import type { PactCreate } from "@/lib/schemas";
+import { MAX_SNAPSHOT_APPS, type PactAppAdd, type PactCreate, type Snapshot } from "@/lib/schemas";
 import { addDays, dayInZone } from "@/lib/time";
 import { isUuidLike, newId } from "@/lib/uuid";
 
@@ -94,6 +94,13 @@ export async function getCurrentPact(userId: string) {
     .where("status", "=", "active")
     .executeTakeFirst();
   if (!pact) return undefined;
+  return withToday(pact);
+}
+
+type PactRow = Awaited<ReturnType<typeof requireOwnedPact>>;
+
+/** A pact row as the phone wants it: with the handset's name and today's minutes. */
+async function withToday(pact: PactRow) {
   const device = await db
     .selectFrom("device")
     .select("model")
@@ -123,6 +130,60 @@ export async function getCurrentPact(userId: string) {
       apps: today.map((row) => ({ package: row.app_package, minutes_used: row.minutes_used })),
     },
   };
+}
+
+/**
+ * Brings one more app under a limit while the challenge is running.
+ *
+ * The snapshot is locked when a challenge starts, and this is the one edit
+ * it takes, in the one direction that keeps the lock meaning something: an
+ * app can be added, never removed, and no limit moves. Adding tightens the
+ * promise the witnesses are watching, so nobody is told; their summary
+ * simply shows one more app from today. The phone counts the new app
+ * against today's minutes at once -- an app already past the limit locks
+ * the moment it is added, which is the day's usage and not a breach, the
+ * same as starting a challenge in the afternoon.
+ *
+ * `added_on` is today in the pact's own zone, kept so a screen looking back
+ * over the week does not judge the days before the app was under a limit.
+ * The row is locked for the write: two adds in flight would otherwise each
+ * read the same list and the second would drop the first's app.
+ */
+export async function addAppToPact(userId: string, pactId: string, app: PactAppAdd) {
+  await requireOwnedPact(userId, pactId);
+  const updated = await db.transaction().execute(async (trx) => {
+    const pact = await trx
+      .selectFrom("pact")
+      .select(["status", "timezone", "snapshot"])
+      .where("id", "=", pactId)
+      .forUpdate()
+      .executeTakeFirstOrThrow();
+    if (pact.status !== "active") {
+      throw conflict("pact_closed", `This pact is already ${pact.status}.`);
+    }
+    const apps = pact.snapshot.apps;
+    if (apps.some((a) => a.package === app.package)) {
+      throw conflict("app_already_in_pact", `${app.package} is already part of this pact.`);
+    }
+    if (apps.length >= MAX_SNAPSHOT_APPS) {
+      throw conflict("too_many_apps", `A pact holds at most ${MAX_SNAPSHOT_APPS} apps.`);
+    }
+
+    const now = new Date();
+    const snapshot: Snapshot = {
+      ...pact.snapshot,
+      apps: [...apps, { ...app, added_on: dayInZone(now, pact.timezone) }],
+    };
+    return trx
+      .updateTable("pact")
+      .set({ snapshot: JSON.stringify(snapshot), updated_at: now })
+      .where("id", "=", pactId)
+      .returning(pactColumns)
+      .executeTakeFirstOrThrow();
+  });
+  // The same answer as GET /pacts/current, so the phone can take the whole
+  // thing as its new copy rather than patch its own.
+  return withToday(updated);
 }
 
 /**

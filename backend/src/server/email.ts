@@ -1,4 +1,6 @@
 import { Resend } from "resend";
+import type { Gender } from "./db/schema";
+import { pronounsFor } from "./witness-copy";
 
 export type EmailResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -28,14 +30,27 @@ export async function sendEmail(to: string, subject: string, text: string): Prom
 
 // --- templates: plain text, short, no tracking ---
 
-export function inviteEmail(inviterName: string, relationship: string | null, url: string) {
+/**
+ * The invitation, when it goes by email. The pronoun is the inviter's own:
+ * the profile holds the gender, and this is about somebody the reader
+ * knows personally -- "their phone" about a woman's own son read as a
+ * hedge. The second line names the promise rather than the person, so it
+ * needs no verb to agree with anybody.
+ */
+export function inviteEmail(
+  inviterName: string,
+  relationship: string | null,
+  url: string,
+  gender?: Gender | null,
+) {
+  const p = pronounsFor(gender);
   const who = relationship ? `${inviterName} (your ${relationship})` : inviterName;
   return {
     subject: `${inviterName} wants you as a witness`,
     text: [
-      `${who} is making a pact to use their phone less, and asked you to be a witness.`,
+      `${who} is making a pact to use ${p.their} phone less, and asked you to be a witness.`,
       ``,
-      `If they keep it, you'll hear. If they break it, you'll hear that too.`,
+      `If the promise is kept, you'll hear. If it is broken, you'll hear that too.`,
       ``,
       `Accept here: ${url}`,
       ``,
