@@ -8,6 +8,8 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -174,8 +176,42 @@ class BlockOverlay(context: Context) {
             }
         }
 
-    /** The window's root: back does what the button does, and nothing else leaks. */
+    /**
+     * The window's root: back does what the button does, and nothing else
+     * leaks.
+     *
+     * Two ways back can arrive, both handled. Android 13 and later, with
+     * predictive back on -- which is the default once the app targets 36 --
+     * do not send KEYCODE_BACK to a window at all: the gesture goes to the
+     * window's OnBackInvokedDispatcher, and a window that registered nothing
+     * there has no say in what happens. So a callback is registered the
+     * moment the root is attached and removed when it is detached. Older
+     * Androids, and phones that still deliver the key, take the key path.
+     */
     private class OverlayRoot(context: Context, private val onBack: () -> Unit) : FrameLayout(context) {
+        private var dispatcher: OnBackInvokedDispatcher? = null
+        private val backInvoked: OnBackInvokedCallback? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) OnBackInvokedCallback { onBack() } else null
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val callback = backInvoked ?: return
+                dispatcher = findOnBackInvokedDispatcher()?.also {
+                    it.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
+                }
+            }
+        }
+
+        override fun onDetachedFromWindow() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val callback = backInvoked
+                if (callback != null) dispatcher?.unregisterOnBackInvokedCallback(callback)
+                dispatcher = null
+            }
+            super.onDetachedFromWindow()
+        }
+
         override fun dispatchKeyEvent(event: KeyEvent): Boolean {
             if (event.keyCode == KeyEvent.KEYCODE_BACK) {
                 if (event.action == KeyEvent.ACTION_UP) onBack()
