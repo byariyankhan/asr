@@ -183,7 +183,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
           ) : null}
           <p style={S.acceptBody}>
             Asr opens on this invitation once it is installed. Nothing is shared until you accept,
-            and declining tells them nothing beyond that you said no.
+            and declining tells {them.them} nothing beyond that you said no.
           </p>
         </div>
       </div>

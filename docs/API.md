@@ -621,8 +621,12 @@ changes one function and no data.
 }
 ```
 
-`current` is `null` with no active pact. `streak_days` is the day number of
-the active pact; `longest_streak_days` the most days any pact survived.
+`current` is `null` with no active pact. `day` is the 1-based calendar day
+of the challenge in the pact's timezone -- the same day the phone shows,
+so somebody who started at 23:30 is on day 2 the next morning, not
+twenty-four hours later. `streak_days` is how many days in a row, ending
+yesterday, every limit held: today never counts, and a day with no summary
+breaks it. `longest_streak_days` is the most whole days any pact survived.
 `apps_within_limits_today` comes from today's daily summary if the phone
 sent one, otherwise from today's `limit_hit` events.
 
