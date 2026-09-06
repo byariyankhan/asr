@@ -57,6 +57,37 @@ class WeeklyProgressTest {
     }
 
     @Test
+    fun `an app added on day three is not judged, or counted, on days one and two`() {
+        // TikTok joined the challenge on day 2 (index), with 80 minutes on
+        // each of the days before. Those days were not under its limit:
+        // judging them by it would show two breaches on days the person had
+        // made no promise about it. From the day it came in, it counts whole.
+        val tiktok = "com.zhiliaoapp.musically"
+        val outcomes = WeeklyProgress.outcomes(
+            listOf(
+                day(0, instagram to 5, tiktok to 80),
+                day(1, instagram to 5, tiktok to 80),
+                day(2, instagram to 5, tiktok to 80),
+                day(3, instagram to 5, tiktok to 10),
+            ),
+            limits + (tiktok to 30),
+            judgedFrom = mapOf(tiktok to 2 * 86_400_000L),
+        )
+        assertEquals(listOf(true, true, false, true), outcomes.map { it.withinLimits })
+        assertEquals(listOf(5, 5, 85, 15), outcomes.map { it.totalMinutes })
+    }
+
+    @Test
+    fun `apps the challenge started with are judged on every day`() {
+        val outcomes = WeeklyProgress.outcomes(
+            listOf(day(0, instagram to 40), day(1, instagram to 1)),
+            limits,
+            judgedFrom = emptyMap(),
+        )
+        assertEquals(listOf(false, true), outcomes.map { it.withinLimits })
+    }
+
+    @Test
     fun `the week counts good days and bad days`() {
         val week = listOf(
             day(0, instagram to 5),

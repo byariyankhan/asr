@@ -22,12 +22,25 @@ data class DayOutcome(
  */
 object WeeklyProgress {
 
-    fun outcomes(days: List<DayUsage>, limits: Map<String, Int>): List<DayOutcome> =
+    /**
+     * @param judgedFrom for an app added to the challenge after it started,
+     *   the start of the local day it came in on. On the days before that
+     *   the app was not under a limit, so it is neither judged nor counted
+     *   in the total; the day it was added counts whole, because the limit
+     *   applies to the whole of that day from the moment it is set. An app
+     *   with no entry was there from the start.
+     */
+    fun outcomes(
+        days: List<DayUsage>,
+        limits: Map<String, Int>,
+        judgedFrom: Map<String, Long> = emptyMap(),
+    ): List<DayOutcome> =
         days.map { day ->
+            val underLimit = limits.filterKeys { (judgedFrom[it] ?: Long.MIN_VALUE) <= day.dayStartMillis }
             DayOutcome(
                 dayStartMillis = day.dayStartMillis,
-                totalMinutes = day.totalMinutes(limits.keys),
-                withinLimits = limits.all { (packageName, limit) ->
+                totalMinutes = day.totalMinutes(underLimit.keys),
+                withinLimits = underLimit.all { (packageName, limit) ->
                     (day.minutesByPackage[packageName] ?: 0) <= limit
                 },
             )

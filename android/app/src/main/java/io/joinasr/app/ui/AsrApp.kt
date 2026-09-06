@@ -57,6 +57,7 @@ import io.joinasr.app.ui.screens.GiveUpScreen
 import io.joinasr.app.ui.screens.ChooseActivityScreen
 import io.joinasr.app.ui.screens.CircleScreen
 import io.joinasr.app.ui.screens.CircleTab
+import io.joinasr.app.ui.screens.AddAppScreen
 import io.joinasr.app.ui.screens.ChooseAppsScreen
 import io.joinasr.app.ui.screens.CheckEmailScreen
 import io.joinasr.app.ui.screens.DailyLimitsScreen
@@ -171,6 +172,9 @@ fun AsrApp(
     val pactState by pactViewModel.state.collectAsStateWithLifecycle()
     val restoringPact by pactViewModel.restoring.collectAsStateWithLifecycle()
     val endedUnseen by pactViewModel.endedUnseen.collectAsStateWithLifecycle()
+    val addAppBusy by pactViewModel.addingApp.collectAsStateWithLifecycle()
+    val addAppError by pactViewModel.addAppError.collectAsStateWithLifecycle()
+    val appAdded by pactViewModel.appAdded.collectAsStateWithLifecycle()
     val witnesses by witnessViewModel.witnesses.collectAsStateWithLifecycle()
     val pendingShare by witnessViewModel.pendingShare.collectAsStateWithLifecycle()
     val inviting by witnessViewModel.inviting.collectAsStateWithLifecycle()
@@ -233,6 +237,8 @@ fun AsrApp(
     // Figma 21-24. The package the block screen sent, held for as long as
     // the person is inside the earn flow.
     var earningFor by remember { mutableStateOf<String?>(null) }
+    /** The picker that brings one more app under a limit, over the dashboard. */
+    var addingApp by remember { mutableStateOf(false) }
     // True while Figma 22 is showing, between choosing a walk and the grant.
     var askingForSteps by remember { mutableStateOf(false) }
     // Set when the grant comes back yes, so the walk starts without the
@@ -374,6 +380,15 @@ fun AsrApp(
         }
     }
 
+    // The app is in the challenge: back to the dashboard, where its row
+    // now is, with one line saying so. The loop is already measuring it.
+    LaunchedEffect(appAdded) {
+        val label = appAdded ?: return@LaunchedEffect
+        addingApp = false
+        pactViewModel.acknowledgeAppAdded()
+        Toast.makeText(context, "$label is in your challenge.", Toast.LENGTH_SHORT).show()
+    }
+
     LaunchedEffect(walkOnceGranted, earningFor, pactState) {
         if (!walkOnceGranted) return@LaunchedEffect
         walkOnceGranted = false
@@ -490,13 +505,17 @@ fun AsrApp(
         enabled = tab != AsrTab.Home || profileRoute != null || addingWitness ||
             deletingAccount || showingProtectionLost || openPerson != null ||
             showingNotifications || reactingTo != null || earningFor != null ||
-            startingChallenge,
+            addingApp || startingChallenge,
     ) {
         when {
             // Back out of setup step one. The later steps have their own
             // chevrons and walk backwards through the flow.
             startingChallenge && setupStep == SetupStep.Duration -> startingChallenge = false
             askingForSteps -> askingForSteps = false
+            addingApp -> {
+                addingApp = false
+                pactViewModel.clearAddAppError()
+            }
             earningFor != null -> earningFor = null
             reactingTo != null -> reactingTo = null
             showingNotifications -> showingNotifications = false
@@ -830,6 +849,7 @@ fun AsrApp(
                     // Home
                     reactingTo = null
                     earningFor = null
+                    addingApp = false
                     askingForSteps = false
                     walkOnceGranted = false
                     showingNotifications = false
@@ -982,6 +1002,19 @@ fun AsrApp(
                                         onBack = { fixingProtection = false },
                                         onDone = { fixingProtection = false },
                                     )
+                                } else if (addingApp && activePact != null) {
+                                    // Not in the Figma file: one more app,
+                                    // into the challenge that is running.
+                                    AddAppScreen(
+                                        excluded = activePact.apps.map { it.packageName }.toSet(),
+                                        busy = addAppBusy,
+                                        errorMessage = addAppError,
+                                        onBack = {
+                                            addingApp = false
+                                            pactViewModel.clearAddAppError()
+                                        },
+                                        onAdd = { entry, minutes -> pactViewModel.addApp(entry, minutes) },
+                                    )
                                 } else {
                                     DashboardScreen(
                                         pact = activePact,
@@ -998,6 +1031,7 @@ fun AsrApp(
                                         unreadNotifications = unread,
                                         earnedMinutes = earnedToday.minutesByPackage,
                                         onEarnTime = { earningFor = it.packageName },
+                                        onAddApp = { addingApp = true },
                                     )
                                 }
                             }

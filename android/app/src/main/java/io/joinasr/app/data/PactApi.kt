@@ -16,6 +16,25 @@ data class SnapshotApp(
     @SerialName("package") val packageName: String,
     val label: String,
     @SerialName("daily_limit_min") val dailyLimitMinutes: Int,
+    /**
+     * The local day (YYYY-MM-DD, in the pact's zone) an app added to a
+     * running challenge came in on. Null for the apps the challenge started
+     * with. Stamped by the server, never sent from here: ApiJson leaves a
+     * null out of the body, and the server drops one if it arrives.
+     */
+    @SerialName("added_on") val addedOn: String? = null,
+)
+
+/**
+ * One more app brought under a limit while the challenge runs. The same
+ * three fields an app in the snapshot has; the day it came in is the
+ * server's to write.
+ */
+@Serializable
+data class PactAppAdd(
+    @SerialName("package") val packageName: String,
+    val label: String,
+    @SerialName("daily_limit_min") val dailyLimitMinutes: Int,
 )
 
 @Serializable
@@ -170,6 +189,14 @@ class PactApi(
      */
     suspend fun claim(token: String, pactId: String, deviceId: String): ApiResult<RemotePact> =
         post("/v1/pacts/$pactId/claim", token, ApiJson.encodeToString(PactClaim(deviceId)))
+
+    /**
+     * Adds one app to a running challenge. The answer is the whole pact as
+     * [current] would return it, so the phone can take it as its new copy
+     * rather than patch its own. 409 app_already_in_pact, pact_closed.
+     */
+    suspend fun addApp(token: String, pactId: String, body: PactAppAdd): ApiResult<RemotePact> =
+        post("/v1/pacts/$pactId/apps", token, ApiJson.encodeToString(body))
 
     /** The active pact, or a 404 failure when there is none. */
     suspend fun current(token: String): ApiResult<RemotePact> = withContext(Dispatchers.IO) {
