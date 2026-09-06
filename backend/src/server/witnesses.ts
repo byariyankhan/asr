@@ -129,8 +129,12 @@ export async function createInvite(userId: string, input: WitnessInvite) {
       // that is nullable because accepted rows carry none.
       const url = inviteUrl(code);
       if (input.email) {
-        const inviter = await db.selectFrom("user").select("name").where("id", "=", userId).executeTakeFirstOrThrow();
-        const mail = inviteEmail(inviter.name, input.relationship, url);
+        const inviter = await db
+          .selectFrom("user")
+          .select(["name", "gender"])
+          .where("id", "=", userId)
+          .executeTakeFirstOrThrow();
+        const mail = inviteEmail(inviter.name, input.relationship, url, inviter.gender);
         // Best effort: a failed email must not fail the invite; the code is
         // still shareable from the app.
         sendEmail(input.email, mail.subject, mail.text).catch((e) => console.error("[invite email]", e));
