@@ -37,7 +37,13 @@ export const auth = betterAuth({
     },
   },
   emailVerification: {
-    sendOnSignUp: true,
+    // Not at sign-up. Every new account used to be mailed a confirmation
+    // link the moment it was created, and most were never opened -- a paid
+    // email per sign-up for a step that is not required to use the app.
+    // The address is stored, and confirmed when the person asks for the
+    // link from Email & password (POST /v1/me/email/verify), which is the
+    // one place a confirmation is sent from and is rate-limited per account.
+    sendOnSignUp: false,
     autoSignInAfterVerification: true,
     async sendVerificationEmail({ user, token }) {
       const mail = verifyEmail(token);

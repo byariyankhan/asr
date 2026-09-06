@@ -183,6 +183,13 @@ export const RATE_LIMITS = {
   invitePeek: { name: "invite-peek", limit: 60, windowSeconds: 60 },
   /** full account export, per user */
   export: { name: "export", limit: 5, windowSeconds: 86_400 },
+  /** confirmation links asked for from the app, per user. Each one is a
+   *  paid email for a step that is not required, so a few a day... */
+  emailVerify: { name: "email-verify", limit: 3, windowSeconds: 86_400 },
+  /** ...and a floor under double taps: one every five minutes. */
+  emailVerifyBurst: { name: "email-verify-burst", limit: 1, windowSeconds: 300 },
+  /** address changes, per user. A password check sits behind each one. */
+  emailChange: { name: "email-change", limit: 5, windowSeconds: 86_400 },
   /** public profile photo reads, per IP. Generous: a witness list is a
    *  handful of images and browsers cache them for a week, so anything
    *  near this ceiling is a scraper. */

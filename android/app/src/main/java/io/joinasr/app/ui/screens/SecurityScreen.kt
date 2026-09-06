@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -45,14 +46,16 @@ private const val MIN_PASSWORD = 8
 /**
  * Figma 30 — Account / Email & Password (node 160:42).
  *
- * Changing the email address is drawn and not offered. Better Auth's
- * change-email endpoint is switched off in this deployment, so a row that
- * opened a form would end in a 404 the person would read as a bug in the
- * app. It says what it is instead.
+ * Both changes expand in place. The design has a row with a chevron and no
+ * frame behind it; a whole screen to collect two fields would be a screen
+ * the design never drew. Changing the address asks for the new one and the
+ * password, and that is all: the server takes it in one step and leaves it
+ * unconfirmed, which is what the row under the address is for.
  *
- * Changing the password is offered, and expands in place. The design has a
- * row with a chevron and no frame behind it; a whole screen to collect two
- * fields would be a screen the design never drew.
+ * Confirming is on request, not at sign-up. Sign-up used to send a link
+ * that mostly went unopened, and every one was a paid email; now the
+ * address is stored and the person asks for the link here when they want
+ * it -- one tap, one email, a few a day at most.
  */
 @Composable
 fun SecurityScreen(
@@ -60,6 +63,8 @@ fun SecurityScreen(
     emailVerified: Boolean,
     onBack: () -> Unit,
     onChangePassword: (current: String, next: String) -> Unit,
+    onSendVerification: () -> Unit,
+    onChangeEmail: (newEmail: String, password: String) -> Unit,
     onSignOutOtherSessions: () -> Unit,
     busy: Boolean,
     errorMessage: String?,
@@ -69,8 +74,13 @@ fun SecurityScreen(
     var open by remember { mutableStateOf(false) }
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
+    var emailOpen by remember { mutableStateOf(false) }
+    var newEmail by remember { mutableStateOf("") }
+    var emailPassword by remember { mutableStateOf("") }
 
     val ready = current.isNotBlank() && next.length >= MIN_PASSWORD && !busy
+    val emailReady = newEmail.trim().let { it.contains("@") && !it.equals(email, ignoreCase = true) } &&
+        emailPassword.isNotBlank() && !busy
 
     Column(
         modifier = modifier
@@ -95,31 +105,71 @@ fun SecurityScreen(
 
         Spacer(Modifier.height(22.dp))
         CurrentEmail(email = email, verified = emailVerified)
+        if (!emailVerified) {
+            Spacer(Modifier.height(10.dp))
+            VerifyRow(busy = busy, onClick = onSendVerification)
+        }
 
         Spacer(Modifier.height(26.dp))
         Text("Account security", style = AsrType.display(20), color = AsrColors.TextPrimary)
 
         Spacer(Modifier.height(12.dp))
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
-                .background(AsrColors.SurfaceSunken, RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(AsrColors.SurfaceSunken)
                 .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(16.dp))
-                .padding(horizontal = 15.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Change email",
-                    style = AsrType.Field.copy(fontSize = 15.sp),
-                    color = AsrColors.TextTertiary,
+                .then(
+                    if (emailOpen) Modifier else Modifier.clickable(role = Role.Button) { emailOpen = true },
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Not available yet. Contact support to change it.",
-                    style = AsrType.Label.copy(fontSize = 12.sp),
-                    color = AsrColors.TextTertiary,
+                .padding(15.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Change email",
+                        style = AsrType.Field.copy(fontSize = 15.sp),
+                        color = AsrColors.TextPrimary,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Enter the new address and your password.",
+                        style = AsrType.Label.copy(fontSize = 12.sp),
+                        color = AsrColors.TextSecondary,
+                    )
+                }
+                if (!emailOpen) Text("›", style = AsrType.display(22), color = AsrColors.TextSecondary)
+            }
+
+            if (emailOpen) {
+                Spacer(Modifier.height(16.dp))
+                AsrTextField(
+                    label = "New email",
+                    value = newEmail,
+                    onValueChange = { newEmail = it },
+                    placeholder = "name@example.com",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                )
+                Spacer(Modifier.height(12.dp))
+                AsrTextField(
+                    label = "Current password",
+                    value = emailPassword,
+                    onValueChange = { emailPassword = it },
+                    placeholder = "Your password",
+                    isPassword = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                )
+                Spacer(Modifier.height(14.dp))
+                AsrPrimaryButton(
+                    text = if (busy) "Saving…" else "Update email",
+                    onClick = {
+                        onChangeEmail(newEmail.trim(), emailPassword)
+                        // The password is not kept; the address is, so a wrong
+                        // password does not mean typing the address again.
+                        emailPassword = ""
+                    },
+                    enabled = emailReady,
                 )
             }
         }
@@ -244,6 +294,40 @@ fun SecurityScreen(
     }
 }
 
+/**
+ * The confirmation link, on request. One tap sends one email to the address
+ * above; the server allows a few a day, and says so when that is reached.
+ */
+@Composable
+private fun VerifyRow(busy: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(AsrColors.AccentMuted)
+            .border(1.dp, AsrColors.FieldBorder, shape)
+            .clickable(enabled = !busy, role = Role.Button, onClick = onClick)
+            .padding(15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Verify this email",
+                style = AsrType.Field.copy(fontSize = 15.sp),
+                color = AsrColors.TextPrimary,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "We'll send a link to this address. Open it to confirm.",
+                style = AsrType.Label.copy(fontSize = 12.sp),
+                color = AsrColors.TextSecondary,
+            )
+        }
+        Text("›", style = AsrType.display(22), color = AsrColors.Accent)
+    }
+}
+
 @Composable
 private fun CurrentEmail(email: String, verified: Boolean) {
     val shape = RoundedCornerShape(18.dp)
@@ -288,6 +372,8 @@ private fun SecurityPreview() {
             emailVerified = true,
             onBack = {},
             onChangePassword = { _, _ -> },
+            onSendVerification = {},
+            onChangeEmail = { _, _ -> },
             onSignOutOtherSessions = {},
             busy = false,
             errorMessage = null,

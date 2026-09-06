@@ -52,6 +52,19 @@ export function resetPasswordEmail(token: string) {
   };
 }
 
+export function emailChangedNotice(newEmail: string) {
+  return {
+    subject: "Your Asr email address was changed",
+    text: [
+      `The email address on your Asr account was just changed to ${newEmail}.`,
+      ``,
+      `If that was you, there is nothing to do. If it was not, sign in and change your password now, or write to hi@ariyankhan.com.`,
+      ``,
+      `Asr · Protect your time. Keep your word.`,
+    ].join("\n"),
+  };
+}
+
 export function verifyEmail(token: string) {
   const url = `${SITE()}/verify/${token}`;
   return {

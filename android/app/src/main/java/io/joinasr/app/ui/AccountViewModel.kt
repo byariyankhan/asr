@@ -11,8 +11,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * The account operations that are not the profile: the password, other
- * sessions, and deletion.
+ * The account operations that are not the profile: the email address, the
+ * password, other sessions, and deletion.
  *
  * Separate from [SessionViewModel] because none of these produce a `Me`.
  * They produce a sentence — "Password updated", "That password is wrong" —
@@ -55,9 +55,34 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val _resetEmailSentTo = MutableStateFlow<String?>(null)
     val resetEmailSentTo: StateFlow<String?> = _resetEmailSentTo.asStateFlow()
 
+    /**
+     * Set once the server has taken a new address. The address lives in the
+     * session's copy of the profile, which [AsrApp] re-reads on this and
+     * then clears it with [consumeEmailChanged].
+     */
+    private val _emailChanged = MutableStateFlow(false)
+    val emailChanged: StateFlow<Boolean> = _emailChanged.asStateFlow()
+
     fun clear() {
         _error.value = null
         _notice.value = null
+    }
+
+    fun sendVerification() = withToken { token ->
+        Api.account.sendVerification(token).onOk {
+            _notice.value = "Link sent. Check your inbox; it works for an hour."
+        }
+    }
+
+    fun changeEmail(newEmail: String, password: String) = withToken { token ->
+        Api.account.changeEmail(token, newEmail, password).onOk {
+            _notice.value = "Email updated. Confirm it whenever you like, from this screen."
+            _emailChanged.value = true
+        }
+    }
+
+    fun consumeEmailChanged() {
+        _emailChanged.value = false
     }
 
     fun changePassword(current: String, next: String) = withToken { token ->
