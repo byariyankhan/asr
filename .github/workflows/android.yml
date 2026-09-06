@@ -193,30 +193,27 @@ jobs:
           done
 
       # The fingerprint that has to be in /.well-known/assetlinks.json for a
-      # joinasr.io/w/<code> link to open this app rather than a browser.
-      #
-      # Printed rather than looked up, because it is not knowable from the
-      # source: it is a property of the key that signed this APK, and the
-      # runner generates its own debug keystore. The release fingerprint is a
-      # different one again — Play signs those — and both belong in
-      # ANDROID_CERT_SHA256, comma-separated. A fingerprint is a public hash
-      # of a public certificate; there is nothing here to keep quiet.
-      - name: App Links fingerprint of this APK
+      # joinasr.io/w/<code> link to open a debug build of this app rather
+      # than a browser. It is a property of the key that signed the debug
+      # APK, and that key is app/debug.keystore, committed and named in
+      # build.gradle.kts, so the value never changes; it is printed here so
+      # that it sits next to the upload key's, above, and the two go into
+      # ANDROID_CERT_SHA256 together (comma-separated, with Play's app signing
+      # certificate once there is one). Read with keytool, like the upload
+      # key's, rather than parsed out of apksigner's report: the parse took
+      # the wrong field and printed "CE:rt:iF:iC:At:ES:HA:-2:56:Di:gE:st". A
+      # fingerprint is a public hash of a public certificate; there is
+      # nothing here to keep quiet.
+      - name: App Links fingerprint of the debug key
         if: success()
         run: |
-          apk=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
-          signer=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
-          if [ -z "$apk" ] || [ -z "$signer" ]; then
-            echo "no APK or no apksigner; skipping"
-            exit 0
-          fi
-          sha=$("$signer" verify --print-certs "$apk" \
-            | grep -i "SHA-256 digest" | head -1 | awk -F': ' '{print $2}' \
-            | tr -d ' \r' | tr 'a-f' 'A-F' | sed 's/../&:/g;s/:$//')
-          echo "debug signing certificate: $sha"
+          echo "debug signing certificate (app/debug.keystore; what a debug APK is signed with):"
+          keytool -list -v -keystore app/debug.keystore -storepass android -alias androiddebugkey \
+            | grep "SHA256:" | head -1
           echo
-          echo "Put this in the ANDROID_CERT_SHA256 repository secret (comma-separated"
-          echo "with the Play release fingerprint once there is one), then run Bootstrap."
+          echo "Put this in the ANDROID_CERT_SHA256 repository secret (comma-separated with"
+          echo "the upload key's, above, and the Play release fingerprint once there is one),"
+          echo "then run Bootstrap."
 
       - uses: actions/upload-artifact@v4
         if: success()
