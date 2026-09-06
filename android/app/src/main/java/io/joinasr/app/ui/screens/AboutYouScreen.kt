@@ -304,7 +304,7 @@ private fun AboutYouPreview() {
     AsrTheme {
         AboutYouScreen(
             onBack = {},
-            onSubmit = { _, _, _, _ -> },
+            onSubmit = { _, _, _, _, _ -> },
             onPhotoPicked = {},
             initialFirstName = "Ariyan",
             initialLastName = "Khan",

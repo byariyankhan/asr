@@ -379,7 +379,7 @@ private fun PersonalDetailsPreview() {
                 gender = "male",
             ),
             onBack = {},
-            onSave = { _, _, _ -> },
+            onSave = { _, _, _, _ -> },
             onPhotoPicked = {},
             onDeleteAccount = {},
             deleteAvailable = false,
