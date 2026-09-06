@@ -239,6 +239,14 @@ fun AsrApp(
     var earningFor by remember { mutableStateOf<String?>(null) }
     /** The picker that brings one more app under a limit, over the dashboard. */
     var addingApp by remember { mutableStateOf(false) }
+    /**
+     * True when the person has stepped back from Figma 23 while the walk or
+     * the focus session goes on. The activity keeps running; the screen is
+     * simply not in front. Back and the chevron set it; a new activity, or
+     * the running one ending, clears it; the Earn button reopens it.
+     */
+    var activityMinimised by remember { mutableStateOf(false) }
+    LaunchedEffect(activeActivity?.id) { activityMinimised = false }
     // True while Figma 22 is showing, between choosing a walk and the grant.
     var askingForSteps by remember { mutableStateOf(false) }
     // Set when the grant comes back yes, so the walk starts without the
@@ -515,39 +523,6 @@ fun AsrApp(
         destination = Destination.CheckEmail(sentTo)
     }
 
-    BackHandler(enabled = destination != Destination.Welcome) {
-        destination = Destination.Welcome
-    }
-
-    // Back from any other tab returns to Home rather than leaving the app,
-    // which is what a bottom bar implies and what every app with one does.
-    BackHandler(
-        enabled = tab != AsrTab.Home || profileRoute != null || addingWitness ||
-            deletingAccount || showingProtectionLost || openPerson != null ||
-            showingNotifications || reactingTo != null || earningFor != null ||
-            addingApp || startingChallenge,
-    ) {
-        when {
-            // Back out of setup step one. The later steps have their own
-            // chevrons and walk backwards through the flow.
-            startingChallenge && setupStep == SetupStep.Duration -> startingChallenge = false
-            askingForSteps -> askingForSteps = false
-            addingApp -> {
-                addingApp = false
-                pactViewModel.clearAddAppError()
-            }
-            earningFor != null -> earningFor = null
-            reactingTo != null -> reactingTo = null
-            showingNotifications -> showingNotifications = false
-            showingProtectionLost -> showingProtectionLost = false
-            deletingAccount -> deletingAccount = false
-            profileRoute != null -> profileRoute = null
-            openPerson != null -> openPerson = null
-            addingWitness -> addingWitness = false
-            else -> tab = AsrTab.Home
-        }
-    }
-
     // An invitation from before this launch: one left unanswered across a
     // process death, or — on the first launch after installing from Play —
     // the one whose link sent them to the listing. Either way the app opens
@@ -569,6 +544,10 @@ fun AsrApp(
     LaunchedEffect(signedIn) {
         if (!signedIn) return@LaunchedEffect
         inviteDeferred = false
+        // The auth screens are done with. Left as it was, the sign-in screen
+        // stayed the "destination" for the whole session and its back
+        // handler ate the first back press on the dashboard.
+        destination = Destination.Welcome
         // A challenge belongs to the person, not to the install. If this
         // phone has none and the account does, this is where it comes back.
         pactViewModel.restoreFromServer()
@@ -585,6 +564,115 @@ fun AsrApp(
     // still called "ariyanfiles", and the notification the inviter read said
     // so. The invitation waits; it is still pending after.
     val needsProfile = (session as? Session.SignedIn)?.me?.profileComplete == false
+
+    // ---- System back ----
+    //
+    // One place decides what back does, and it mirrors what is on screen:
+    // top of the stack first, in the order the screens are drawn below, and
+    // doing what that screen's own chevron does. Null means nothing of ours
+    // is open: the press falls through to the system, which closes the app
+    // -- the right answer on a root screen, and the only honest one on a
+    // gate drawn without an exit.
+    //
+    // Two handlers because they are two worlds. Signed out, back walks the
+    // auth screens the way their chevrons do; signed in, it walks whatever
+    // is stacked on the tabs. Each is enabled only in its own world, so a
+    // `destination` left over from before sign-in can no longer swallow a
+    // press on the dashboard -- which is what used to happen: the first
+    // back did nothing, the second closed the app. And every setup step
+    // after the first, the give-up question and the running-activity
+    // screen used to ignore the button altogether.
+    val invitationOpen = code != null && (signedIn || !inviteDeferred) && !needsProfile
+    val earnAppNow = (pactState as? PactState.Active)?.pact?.let { pact -> earningFor?.let(pact::appFor) }
+    val backAction: (() -> Unit)? = when {
+        invitationOpen -> ({
+            inviteCode = null
+            inviteDeferred = false
+            PendingInvite.clear(context)
+            witnessViewModel.clearInvite()
+        })
+        session !is Session.SignedIn -> null
+        needsProfile -> ({
+            destination = Destination.Welcome
+            viewModel.signOut()
+        })
+        pactState is PactState.Loading || restoringPact -> null
+        pactState is PactState.None && ended != null -> ({ pactViewModel.acknowledgeEnded() })
+        startingChallenge && pactState is PactState.None -> when (setupStep) {
+            SetupStep.Duration -> ({ startingChallenge = false })
+            SetupStep.UsageAccess -> ({ setupStep = SetupStep.Duration })
+            SetupStep.ChooseApps -> ({ setupStep = SetupStep.UsageAccess })
+            SetupStep.DailyLimits -> ({ setupStep = SetupStep.ChooseApps })
+            SetupStep.Protection -> ({ setupStep = SetupStep.DailyLimits })
+            SetupStep.BlockingDisclosure, SetupStep.Background, SetupStep.Review ->
+                ({ setupStep = SetupStep.Protection })
+        }
+        pactState is PactState.Active && (justStarted || knownWitnesses?.isEmpty() == true) ->
+            // The witness gate holds until an invitation has gone out and is
+            // drawn without an exit: back closes the app there, and the gate
+            // is back on the next launch. Figma 12 is only a moment.
+            if (witnesses.isEmpty() || !witnessesOffered) null else ({
+                justStarted = false
+                witnessesOffered = false
+            })
+        pactState is PactState.Active && !protection.requiredGranted -> null
+        // Home, in the order the tab draws them.
+        tab == AsrTab.Home && justEarned != null -> ({
+            earnViewModel.acknowledgeEarned()
+            earningFor = null
+        })
+        tab == AsrTab.Home && activeActivity != null && !activityMinimised -> ({
+            activityMinimised = true
+            earningFor = null
+        })
+        tab == AsrTab.Home && askingForSteps -> ({ askingForSteps = false })
+        tab == AsrTab.Home && earnAppNow != null -> ({
+            earningFor = null
+            earnViewModel.clearError()
+        })
+        tab == AsrTab.Home && reactingTo != null -> ({ reactingTo = null })
+        tab == AsrTab.Home && showingNotifications -> ({ showingNotifications = false })
+        tab == AsrTab.Home && showingProtectionLost -> ({ showingProtectionLost = false })
+        tab == AsrTab.Home && fixingProtection -> ({ fixingProtection = false })
+        tab == AsrTab.Home && addingApp -> ({
+            addingApp = false
+            pactViewModel.clearAddAppError()
+        })
+        // Progress
+        tab == AsrTab.Progress && givingUp -> ({ givingUp = false })
+        // Witnesses
+        tab == AsrTab.Witnesses && openPerson != null -> ({ openPerson = null })
+        tab == AsrTab.Witnesses && addingWitness -> ({ addingWitness = false })
+        // Profile
+        tab == AsrTab.Profile && deletingAccount -> ({ deletingAccount = false })
+        tab == AsrTab.Profile && profileRoute != null -> ({ profileRoute = null })
+        // Any other tab's root goes back to Home, which is what a bottom bar
+        // implies and what every app with one does.
+        tab != AsrTab.Home -> ({ tab = AsrTab.Home })
+        else -> null
+    }
+    BackHandler(enabled = backAction != null) { backAction?.invoke() }
+
+    // Signed out: the auth screens, walked the way their own chevrons walk
+    // them. Somebody who got to sign-up from an invitation's Accept goes
+    // back to the invitation, not to Welcome with the invitation hidden
+    // behind it until the next launch.
+    BackHandler(
+        enabled = session is Session.SignedOut && !invitationOpen && destination != Destination.Welcome,
+    ) {
+        if (inviteDeferred && code != null) {
+            inviteDeferred = false
+            destination = Destination.Welcome
+        } else {
+            destination = when (destination) {
+                Destination.ForgotPassword -> Destination.LogIn
+                is Destination.CheckEmail -> Destination.ForgotPassword
+                is Destination.ResetPassword -> Destination.LogIn
+                else -> Destination.Welcome
+            }
+        }
+    }
+
 
     if (code != null && (signedIn || !inviteDeferred) && !needsProfile) {
         // Figma 18, over everything. Opening the link is the person saying
@@ -869,7 +957,9 @@ fun AsrApp(
                     // Home
                     reactingTo = null
                     earningFor = null
+                    earnViewModel.clearError()
                     addingApp = false
+                    pactViewModel.clearAddAppError()
                     askingForSteps = false
                     walkOnceGranted = false
                     showingNotifications = false
@@ -925,11 +1015,14 @@ fun AsrApp(
                                             earningFor = null
                                         },
                                     )
-                                } else if (running != null) {
+                                } else if (running != null && !activityMinimised) {
                                     // Figma 23.
                                     ActivityProgressScreen(
                                         activity = running,
-                                        onBack = { earningFor = null },
+                                        onBack = {
+                                            activityMinimised = true
+                                            earningFor = null
+                                        },
                                         onEnd = {
                                             earnViewModel.cancel()
                                             earningFor = null
@@ -1051,7 +1144,16 @@ fun AsrApp(
                                         },
                                         unreadNotifications = unread,
                                         earnedMinutes = earnedToday.minutesByPackage,
-                                        onEarnTime = { earningFor = it.packageName },
+                                        onEarnTime = { app ->
+                                            // One activity at a time: while one
+                                            // runs, Earn shows it again rather
+                                            // than offering a second.
+                                            if (activeActivity != null) {
+                                                activityMinimised = false
+                                            } else {
+                                                earningFor = app.packageName
+                                            }
+                                        },
                                         onAddApp = { addingApp = true },
                                     )
                                 }
