@@ -172,6 +172,9 @@ export const RATE_LIMITS = {
   api: { name: "api", limit: 300, windowSeconds: 60 },
   /** event ingestion, per device */
   events: { name: "events", limit: 120, windowSeconds: 3600 },
+  /** apps added to a running challenge, per user. A day of changing one's
+   *  mind is a handful; anything near this is a script. */
+  pactApps: { name: "pact-apps", limit: 30, windowSeconds: 86_400 },
   /**
    * Invitations actually created, per user. Charged after the invite
    * exists, never on an attempt the server refused -- see

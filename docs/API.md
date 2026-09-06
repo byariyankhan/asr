@@ -242,6 +242,28 @@ only measure its own screen, so it opens on zero. The phone adds these
 minutes to what it can see, less its own share of them — a reinstall on the
 same handset would otherwise count its own morning twice.
 
+### `POST /pacts/{id}/apps`
+
+One more app under a limit, on a challenge that is running.
+
+```json
+{ "package": "com.zhiliaoapp.musically", "label": "TikTok", "daily_limit_min": 20 }
+```
+
+`200` with the pact exactly as `GET /pacts/current` returns it, so the phone
+can take the whole thing as its new copy. The app is appended to
+`snapshot.apps` with `added_on`, today in the pact's timezone; nothing else
+in the snapshot changes. This is the one edit a locked snapshot accepts, and
+only in this direction: an app can be added, never removed, and no limit
+moves. Adding tightens the promise, so witnesses are not notified; their
+summary shows one more app from today. The phone counts the new app against
+the whole of today at once, so an app already past its limit locks the
+moment it is added -- that is the day's usage, not a breach, the same as
+starting a challenge in the afternoon.
+
+`409 pact_closed` once the challenge is over, `409 app_already_in_pact`,
+`409 too_many_apps` past 100. Rate limited per user (`pact-apps`).
+
 ### `GET /pacts?cursor=&limit=`  **witness**
 
 History, newest first, cursor pagination on `(created_at, id)`.

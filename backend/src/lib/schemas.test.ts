@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pactCreate, eventCreate, snapshot } from "./schemas";
+import { pactAppAdd, pactCreate, eventCreate, snapshot } from "./schemas";
 
 const goodSnapshot = {
   apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }],
@@ -84,5 +84,48 @@ describe("eventCreate", () => {
 
   it("requires an offset on occurred_at", () => {
     expect(() => eventCreate.parse({ ...base, type: "completed", occurred_at: "2026-09-03T14:02:11" })).toThrow();
+  });
+});
+
+/**
+ * The body that brings one more app under a limit while a challenge runs.
+ * Same shape as an app in the snapshot, minus the one field the server
+ * owns: `added_on` is stamped from the pact's own calendar, never taken
+ * from the phone, so a client cannot backdate an app into days it was not
+ * under a limit on.
+ */
+describe("pactAppAdd", () => {
+  const tiktok = { package: "com.zhiliaoapp.musically", label: "TikTok", daily_limit_min: 20 };
+
+  it("accepts an app as the snapshot would", () => {
+    expect(pactAppAdd.parse(tiktok)).toEqual(tiktok);
+  });
+
+  it("drops an added_on the client sends rather than believing it", () => {
+    expect(pactAppAdd.parse({ ...tiktok, added_on: "2020-01-01" })).toEqual(tiktok);
+  });
+
+  it("holds the same limits as the snapshot: 0 to 1440 whole minutes, a real package name", () => {
+    expect(pactAppAdd.parse({ ...tiktok, daily_limit_min: 0 }).daily_limit_min).toBe(0);
+    expect(() => pactAppAdd.parse({ ...tiktok, daily_limit_min: 1441 })).toThrow();
+    expect(() => pactAppAdd.parse({ ...tiktok, daily_limit_min: 7.5 })).toThrow();
+    expect(() => pactAppAdd.parse({ ...tiktok, package: "tiktok" })).toThrow();
+    expect(() => pactAppAdd.parse({ ...tiktok, label: "" })).toThrow();
+  });
+});
+
+describe("snapshot apps added later", () => {
+  const started = { package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 };
+  const added = { package: "com.zhiliaoapp.musically", label: "TikTok", daily_limit_min: 20, added_on: "2026-09-06" };
+
+  it("carry the day they came in on, and the originals carry nothing", () => {
+    const parsed = snapshot.parse({ apps: [started, added], reset_time: "00:00" });
+    expect(parsed.apps.map((a) => a.added_on)).toEqual([undefined, "2026-09-06"]);
+  });
+
+  it("rejects a day that is not a day", () => {
+    expect(() =>
+      snapshot.parse({ apps: [{ ...added, added_on: "6 Sep 2026" }], reset_time: "00:00" }),
+    ).toThrow();
   });
 });

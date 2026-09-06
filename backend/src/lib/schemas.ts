@@ -43,18 +43,28 @@ const activityRule = z.object({
   daily_cap_min: z.number().int().min(1).max(240),
 });
 
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
+
+/** The most apps one challenge can hold, at the start or by adding. */
+export const MAX_SNAPSHOT_APPS = 100;
+
+export const snapshotApp = z.object({
+  package: packageName,
+  label: z.string().min(1).max(128),
+  // 0 = fully blocked
+  daily_limit_min: z.number().int().min(0).max(1440),
+  // The day, in the pact's zone, an app added to a running challenge came
+  // in on -- absent for the apps the challenge started with. Set by the
+  // server in addAppToPact; a screen looking back over the week reads it so
+  // the days before the app was under a limit are not judged by that limit.
+  added_on: day.optional(),
+});
+
 export const snapshot = z.object({
   apps: z
-    .array(
-      z.object({
-        package: packageName,
-        label: z.string().min(1).max(128),
-        // 0 = fully blocked
-        daily_limit_min: z.number().int().min(0).max(1440),
-      }),
-    )
+    .array(snapshotApp)
     .min(1)
-    .max(100)
+    .max(MAX_SNAPSHOT_APPS)
     .refine(
       (apps) => new Set(apps.map((a) => a.package)).size === apps.length,
       "duplicate package",
@@ -77,6 +87,14 @@ export const pactCreate = z.object({
   snapshot,
 });
 export type PactCreate = z.infer<typeof pactCreate>;
+
+/**
+ * One app brought under a limit while a challenge is running: the one edit
+ * a locked snapshot takes, and only in this direction. `added_on` is not
+ * the client's to send; the server stamps it with the pact's own today.
+ */
+export const pactAppAdd = snapshotApp.omit({ added_on: true });
+export type PactAppAdd = z.infer<typeof pactAppAdd>;
 
 // Event types a device may report. Server-only types (protection_lost,
 // uninstalled, activity_failed, started) are refused here on purpose.
@@ -222,7 +240,7 @@ export type ActivityComplete = z.infer<typeof activityComplete>;
 
 // --- daily summary ---
 export const summaryCreate = z.object({
-  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD"),
+  day,
   apps: z
     .array(
       z.object({

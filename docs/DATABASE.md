@@ -104,14 +104,19 @@ create index pact_active_ends_idx on pact (ends_at) where status = 'active';
 create unique index pact_one_active_idx on pact (user_id) where status = 'active';
 ```
 
-`snapshot` is the locked configuration. It is written once and never
-updated; witnesses and the reinstall flow read from it.
+`snapshot` is the locked configuration; witnesses and the reinstall flow
+read from it. It takes one edit after the start, and only in the direction
+that keeps the lock meaning something: `POST /pacts/{id}/apps` appends an
+app, stamped with `added_on` (the day it came in, in the pact's timezone).
+No app is ever removed and no limit ever moves. Apps the challenge started
+with have no `added_on`.
 
 ```json
 {
   "apps": [
     { "package": "com.instagram.android", "label": "Instagram", "daily_limit_min": 30 },
-    { "package": "com.zhiliaoapp.musically", "label": "TikTok", "daily_limit_min": 0 }
+    { "package": "com.zhiliaoapp.musically", "label": "TikTok", "daily_limit_min": 0 },
+    { "package": "com.twitter.android", "label": "X", "daily_limit_min": 25, "added_on": "2026-09-10" }
   ],
   "reset_time": "00:00",
   "activities": {

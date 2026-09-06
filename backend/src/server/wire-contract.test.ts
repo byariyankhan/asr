@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { meUpdate, pactCreate } from "@/lib/schemas";
+import { meUpdate, pactAppAdd, pactCreate } from "@/lib/schemas";
 
 /**
  * The Android app's request bodies, exactly as it puts them on the wire,
@@ -33,6 +33,17 @@ describe("what the Android app sends", () => {
     // renegotiated mid-challenge.
     expect(parsed.snapshot.activities.walk_steps?.target).toBe(6000);
     expect(parsed.snapshot.activities.focus_session?.target_min).toBe(25);
+  });
+
+  it("an app it adds to a running challenge is an app this server accepts", () => {
+    // Also verbatim in WireShapeTest.kt. No added_on: that is the server's
+    // to stamp, from the pact's own calendar.
+    const PACT_APP_ADD_WIRE = '{"package":"com.zhiliaoapp.musically","label":"TikTok","daily_limit_min":20}';
+    expect(pactAppAdd.parse(JSON.parse(PACT_APP_ADD_WIRE))).toEqual({
+      package: "com.zhiliaoapp.musically",
+      label: "TikTok",
+      daily_limit_min: 20,
+    });
   });
 
   it("an optional it has nothing for is absent, not null", () => {
