@@ -80,7 +80,7 @@ import java.util.Locale
 fun PersonalDetailsScreen(
     me: Me,
     onBack: () -> Unit,
-    onSave: (name: String, country: String, gender: String) -> Unit,
+    onSave: (firstName: String, lastName: String, country: String, gender: String) -> Unit,
     onPhotoPicked: (ByteArray) -> Unit,
     onDeleteAccount: () -> Unit,
     deleteAvailable: Boolean,
@@ -90,7 +90,8 @@ fun PersonalDetailsScreen(
 ) {
     val context = LocalContext.current
 
-    var name by remember(me.name) { mutableStateOf(me.name) }
+    var firstName by remember(me.firstName) { mutableStateOf(me.firstName.orEmpty()) }
+    var lastName by remember(me.lastName) { mutableStateOf(me.lastName.orEmpty()) }
     var country by remember(me.country) {
         mutableStateOf(Countries.all.firstOrNull { it.value == me.country })
     }
@@ -135,11 +136,12 @@ fun PersonalDetailsScreen(
         pending = null
     }
 
-    val changed = name.trim() != me.name ||
+    val changed = firstName.trim() != me.firstName.orEmpty() ||
+        lastName.trim() != me.lastName.orEmpty() ||
         country?.value != me.country ||
         gender?.value != me.gender ||
         picked != null
-    val ready = changed && name.isNotBlank() && country != null && gender != null && !submitting
+    val ready = changed && firstName.isNotBlank() && country != null && gender != null && !submitting
 
     Column(
         modifier = modifier
@@ -223,10 +225,19 @@ fun PersonalDetailsScreen(
 
         Spacer(Modifier.height(24.dp))
         AsrTextField(
-            label = "Full name",
-            value = name,
-            onValueChange = { name = it.take(80) },
-            placeholder = "Your name",
+            label = "First name",
+            value = firstName,
+            onValueChange = { firstName = it.take(40) },
+            placeholder = "Your first name",
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        )
+
+        Spacer(Modifier.height(16.dp))
+        AsrTextField(
+            label = "Last name",
+            value = lastName,
+            onValueChange = { lastName = it.take(40) },
+            placeholder = "Your last name",
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         )
 
@@ -270,7 +281,7 @@ fun PersonalDetailsScreen(
                 // sending it before the rest means a refusal is reported
                 // while the fields still hold what was typed.
                 picked?.let(onPhotoPicked)
-                onSave(name.trim(), chosenCountry.value, chosenGender.value)
+                onSave(firstName.trim(), lastName.trim(), chosenCountry.value, chosenGender.value)
             },
             enabled = ready,
         )
@@ -360,13 +371,15 @@ private fun PersonalDetailsPreview() {
             me = Me(
                 id = "1",
                 name = "Ariyan Khan",
+                firstName = "Ariyan",
+                lastName = "Khan",
                 email = "ariyan@example.com",
                 dateOfBirth = "2000-02-14",
                 country = "BD",
                 gender = "male",
             ),
             onBack = {},
-            onSave = { _, _, _ -> },
+            onSave = { _, _, _, _ -> },
             onPhotoPicked = {},
             onDeleteAccount = {},
             deleteAvailable = false,

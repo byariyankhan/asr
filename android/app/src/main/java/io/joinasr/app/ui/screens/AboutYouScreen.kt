@@ -69,16 +69,18 @@ import io.joinasr.app.ui.theme.AsrType
 @Composable
 fun AboutYouScreen(
     onBack: () -> Unit,
-    onSubmit: (name: String, dobIso: String, country: String, gender: String) -> Unit,
+    onSubmit: (firstName: String, lastName: String, dobIso: String, country: String, gender: String) -> Unit,
     onPhotoPicked: (ByteArray) -> Unit,
     modifier: Modifier = Modifier,
-    initialName: String = "",
+    initialFirstName: String = "",
+    initialLastName: String = "",
     submitting: Boolean = false,
     errorMessage: String? = null,
 ) {
     val context = LocalContext.current
 
-    var name by remember { mutableStateOf(initialName) }
+    var firstName by remember { mutableStateOf(initialFirstName) }
+    var lastName by remember { mutableStateOf(initialLastName) }
     var dob by remember { mutableStateOf("") }
     var country by remember { mutableStateOf<Choice?>(null) }
     var gender by remember { mutableStateOf<Choice?>(null) }
@@ -107,7 +109,9 @@ fun AboutYouScreen(
     }
 
     val dobResult = DateOfBirth.validate(dob)
-    val ready = name.isNotBlank() &&
+    // A last name is not required: plenty of people have one name, and a
+    // form that insists on two makes them invent one.
+    val ready = firstName.isNotBlank() &&
         dobResult is DateOfBirth.Result.Valid &&
         country != null &&
         gender != null
@@ -194,10 +198,19 @@ fun AboutYouScreen(
 
         Spacer(Modifier.height(24.dp))
         AsrTextField(
-            label = "Full name",
-            value = name,
-            onValueChange = { name = it.take(80) },
-            placeholder = "Your name",
+            label = "First name",
+            value = firstName,
+            onValueChange = { firstName = it.take(40) },
+            placeholder = "Your first name",
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        )
+
+        Spacer(Modifier.height(16.dp))
+        AsrTextField(
+            label = "Last name",
+            value = lastName,
+            onValueChange = { lastName = it.take(40) },
+            placeholder = "Your last name",
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         )
 
@@ -260,7 +273,7 @@ fun AboutYouScreen(
                 // own, and a refusal should arrive while the fields still
                 // hold what was typed.
                 preview?.let(onPhotoPicked)
-                onSubmit(name.trim(), iso, chosenCountry.value, chosenGender.value)
+                onSubmit(firstName.trim(), lastName.trim(), iso, chosenCountry.value, chosenGender.value)
             },
             enabled = ready && !submitting,
         )
@@ -291,9 +304,10 @@ private fun AboutYouPreview() {
     AsrTheme {
         AboutYouScreen(
             onBack = {},
-            onSubmit = { _, _, _, _ -> },
+            onSubmit = { _, _, _, _, _ -> },
             onPhotoPicked = {},
-            initialName = "ariyanfiles",
+            initialFirstName = "Ariyan",
+            initialLastName = "Khan",
         )
     }
 }

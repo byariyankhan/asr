@@ -46,6 +46,26 @@ describe.skipIf(!DATABASE_URL)("profile (/me)", async () => {
     expect(me.gender).toBe("male");
   });
 
+  it("keeps the name in two parts and composes the one everything shows", async () => {
+    let me = await updateMe(userId, { first_name: "Ariyan", last_name: "Khan" });
+    expect(me).toMatchObject({ first_name: "Ariyan", last_name: "Khan", name: "Ariyan Khan" });
+
+    // One name is a whole name. Nothing is invented for the other box.
+    me = await updateMe(userId, { first_name: "Sabbir", last_name: null });
+    expect(me).toMatchObject({ first_name: "Sabbir", last_name: null, name: "Sabbir" });
+
+    // One half at a time recomposes from the half on file.
+    me = await updateMe(userId, { last_name: "Ahmed" });
+    expect(me).toMatchObject({ first_name: "Sabbir", last_name: "Ahmed", name: "Sabbir Ahmed" });
+    me = await updateMe(userId, { first_name: "Rafi" });
+    expect(me.name).toBe("Rafi Ahmed");
+
+    // The split lands in the columns, and the row Better Auth reads keeps
+    // the composed name.
+    const row = await db.selectFrom("user").select(["name", "first_name", "last_name"]).where("id", "=", userId).executeTakeFirstOrThrow();
+    expect(row).toEqual({ name: "Rafi Ahmed", first_name: "Rafi", last_name: "Ahmed" });
+  });
+
   it("clears a field with null", async () => {
     const me = await updateMe(userId, { gender: null });
     expect(me.gender).toBeNull();

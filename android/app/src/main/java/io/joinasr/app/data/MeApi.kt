@@ -15,7 +15,10 @@ import java.io.IOException
 @Serializable
 data class Me(
     val id: String,
+    /** The display name, composed by the server from the two parts below. */
     val name: String,
+    @SerialName("first_name") val firstName: String? = null,
+    @SerialName("last_name") val lastName: String? = null,
     val email: String,
     /** A path like /v1/media/avatars/... , or null. Never an absolute URL:
      *  the server stores a key and the client owns the base URL. */
@@ -42,7 +45,9 @@ data class Me(
  *  by the server, so every property is optional here too. */
 @Serializable
 data class ProfileUpdate(
-    val name: String? = null,
+    @SerialName("first_name") val firstName: String? = null,
+    /** Empty clears it: one name is a whole name, and the server stores null. */
+    @SerialName("last_name") val lastName: String? = null,
     @SerialName("date_of_birth") val dateOfBirth: String? = null,
     val country: String? = null,
     val gender: String? = null,

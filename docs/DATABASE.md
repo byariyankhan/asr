@@ -37,6 +37,13 @@ alter table "user"
   add column country text check (country ~ '^[A-Z]{2}$'),
   add column gender text check (gender in ('male', 'female', 'other', 'prefer_not_to_say')),
   add column deleted_at timestamptz;
+
+-- 0011: the name in two parts. Better Auth's `name` stays as the display
+-- name every screen, notification and email uses, composed from these on
+-- every update ("First Last", or just the first for people with one name).
+alter table "user"
+  add column first_name text,
+  add column last_name text;
 ```
 
 `date_of_birth`, `country` and `gender` are optional, collected on the

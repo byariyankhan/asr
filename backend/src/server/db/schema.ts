@@ -14,7 +14,10 @@ export interface UserTable {
   image: string | null;
   createdAt: GeneratedTimestamp;
   updatedAt: GeneratedTimestamp;
-  // ours (0001 migration)
+  // ours (0001 migration, and 0011 for the two name parts). `name` is the
+  // display name, composed from first_name and last_name on every update.
+  first_name: string | null;
+  last_name: string | null;
   timezone: Generated<string>;
   notify_email: Generated<boolean>;
   notify_push: Generated<boolean>;

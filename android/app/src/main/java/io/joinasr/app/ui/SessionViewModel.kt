@@ -138,11 +138,17 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
      * The About You screen, as one PATCH. The photo is uploaded separately
      * and immediately on picking, so a slow upload never holds up the form.
      */
-    fun saveProfile(name: String, dobIso: String, country: String, gender: String) {
+    fun saveProfile(firstName: String, lastName: String, dobIso: String, country: String, gender: String) {
         withToken { token ->
             Api.me.update(
                 token,
-                ProfileUpdate(name = name, dateOfBirth = dobIso, country = country, gender = gender),
+                ProfileUpdate(
+                    firstName = firstName,
+                    lastName = lastName,
+                    dateOfBirth = dobIso,
+                    country = country,
+                    gender = gender,
+                ),
             )
         }
     }

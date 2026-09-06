@@ -33,6 +33,14 @@ describe("meUpdate", () => {
     });
   });
 
+  it("takes a name in two parts, trimmed, and lets only the second one go", () => {
+    expect(meUpdate.parse({ first_name: "  Ariyan ", last_name: " Khan " })).toEqual({ first_name: "Ariyan", last_name: "Khan" });
+    expect(meUpdate.parse({ last_name: null })).toEqual({ last_name: null });
+    expect(() => meUpdate.parse({ first_name: "" })).toThrow();
+    expect(() => meUpdate.parse({ first_name: null })).toThrow();
+    expect(() => meUpdate.parse({ first_name: "x".repeat(41) })).toThrow();
+  });
+
   it("restricts gender to the known values", () => {
     expect(meUpdate.parse({ gender: "prefer_not_to_say" }).gender).toBe("prefer_not_to_say");
     expect(() => meUpdate.parse({ gender: "yes" })).toThrow();

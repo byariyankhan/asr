@@ -132,7 +132,11 @@ const dateOfBirth = z
 
 export const meUpdate = z
   .object({
-    name: z.string().trim().min(1).max(80).optional(),
+    // The display name is composed on the server from these two. A first
+    // name cannot be cleared; a last name can, because plenty of people have
+    // one name and a form must not make one up for them.
+    first_name: z.string().trim().min(1).max(40).optional(),
+    last_name: z.string().trim().max(40).nullable().optional(),
     timezone: timeZone.optional(),
     notify_email: z.boolean().optional(),
     notify_push: z.boolean().optional(),

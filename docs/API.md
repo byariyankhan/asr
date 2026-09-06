@@ -495,7 +495,8 @@ notification.
 
 ```json
 {
-  "id": "…", "name": "Ariyan", "email": "…", "email_verified": true,
+  "id": "…", "name": "Ariyan Khan", "first_name": "Ariyan", "last_name": "Khan",
+  "email": "…", "email_verified": true,
   "timezone": "Asia/Dhaka", "notify_email": true, "notify_push": true,
   "date_of_birth": "2000-02-29", "country": "BD", "gender": "male",
   "created_at": "…", "device_count": 1,
@@ -505,11 +506,15 @@ notification.
 
 ### `PATCH /me`
 
-Any subset of `name`, `timezone`, `notify_email`, `notify_push`,
-`date_of_birth` (YYYY-MM-DD, 13+), `country` (ISO 3166-1 alpha-2), `gender`
-(`male` | `female` | `other` | `prefer_not_to_say`). The three profile
-fields accept `null` to clear them. `200` with the same shape as `GET /me`.
-The "About You" screen after sign-up is one `PATCH`.
+Any subset of `first_name` (1–40 characters), `last_name` (up to 40, or
+`null`: one name is a whole name), `timezone`, `notify_email`,
+`notify_push`, `date_of_birth` (YYYY-MM-DD, 13+), `country` (ISO 3166-1
+alpha-2), `gender` (`male` | `female` | `other` | `prefer_not_to_say`). The
+three profile fields accept `null` to clear them. `name` is not accepted:
+the display name is composed by the server from the two parts ("First
+Last", or just the first) whenever either part arrives, so it can never
+disagree with them. `200` with the same shape as `GET /me`. The "About You"
+screen after sign-up is one `PATCH`.
 
 ### `POST /me/avatar`
 

@@ -1,12 +1,14 @@
 import { imagePath } from "./avatar";
 import { db } from "./db/client";
 import { subscriptionStateFor } from "./subscriptions";
-import { notFound } from "@/lib/http";
+import { HttpError, notFound } from "@/lib/http";
 import type { MeUpdate } from "@/lib/schemas";
 
 const meColumns = [
   "id",
   "name",
+  "first_name",
+  "last_name",
   "email",
   "image",
   "emailVerified",
@@ -40,6 +42,8 @@ export async function getMe(userId: string) {
   return {
     id: user.id,
     name: user.name,
+    first_name: user.first_name,
+    last_name: user.last_name,
     email: user.email,
     image: imagePath(user.image),
     email_verified: user.emailVerified,
@@ -55,10 +59,40 @@ export async function getMe(userId: string) {
   };
 }
 
+/** The one name everything shows: both parts, or the one there is. */
+export function displayName(first: string | null | undefined, last: string | null | undefined): string {
+  return [first, last]
+    .map((part) => part?.trim() ?? "")
+    .filter((part) => part.length > 0)
+    .join(" ");
+}
+
 export async function updateMe(userId: string, input: MeUpdate) {
+  const { first_name, last_name, ...rest } = input;
+  const patch: Record<string, unknown> = { ...rest, updatedAt: new Date() };
+
+  // Either half of the name arriving recomposes the display name from both
+  // halves, the one sent and the one on file, so `name` can never disagree
+  // with the parts it is made of.
+  if (first_name !== undefined || last_name !== undefined) {
+    const current = await db
+      .selectFrom("user")
+      .select(["first_name", "last_name"])
+      .where("id", "=", userId)
+      .where("deleted_at", "is", null)
+      .executeTakeFirst();
+    if (!current) throw notFound("User");
+    const first = first_name ?? current.first_name;
+    const last = last_name === undefined ? current.last_name : last_name;
+    if (!first) throw new HttpError(400, "first_name_required", "A first name is needed.");
+    patch.first_name = first;
+    patch.last_name = last && last.length > 0 ? last : null;
+    patch.name = displayName(first, last);
+  }
+
   const result = await db
     .updateTable("user")
-    .set({ ...input, updatedAt: new Date() })
+    .set(patch)
     .where("id", "=", userId)
     .where("deleted_at", "is", null)
     .executeTakeFirst();

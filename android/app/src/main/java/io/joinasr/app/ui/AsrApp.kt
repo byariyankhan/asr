@@ -592,7 +592,8 @@ fun AsrApp(
                     },
                     onSubmit = viewModel::saveProfile,
                     onPhotoPicked = viewModel::uploadPhoto,
-                    initialName = current.me.name,
+                    initialFirstName = current.me.firstName.orEmpty(),
+                    initialLastName = current.me.lastName.orEmpty(),
                     submitting = submitting,
                     errorMessage = error,
                 )
@@ -1154,14 +1155,15 @@ fun AsrApp(
                                 } else PersonalDetailsScreen(
                                     me = current.me,
                                     onBack = { profileRoute = null },
-                                    onSave = { name, country, gender ->
+                                    onSave = { firstName, lastName, country, gender ->
                                         // The date of birth goes back
                                         // unchanged: it is the field the
                                         // thirteen-or-older rule rests on and
                                         // the screen does not let anybody
                                         // edit it.
                                         viewModel.saveProfile(
-                                            name,
+                                            firstName,
+                                            lastName,
                                             current.me.dateOfBirth.orEmpty(),
                                             country,
                                             gender,
