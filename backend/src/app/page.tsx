@@ -35,6 +35,7 @@ export default function LandingPage() {
       footer={[
         { href: "/privacy", label: "Privacy" },
         { href: "/terms", label: "Terms" },
+        { href: "/delete-account", label: "Delete account" },
         { href: "mailto:hi@ariyankhan.com", label: "Contact" },
       ]}
     >

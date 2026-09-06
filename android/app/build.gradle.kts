@@ -44,8 +44,12 @@ android {
         applicationId = "io.joinasr.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // Play refuses an upload whose versionCode is not higher than the
+        // last one's. CI passes its run number, which only ever grows; a
+        // build on a laptop stays at 1, which Play would refuse, which is
+        // the point: releases come from CI.
+        versionCode = System.getenv("ASR_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("ASR_VERSION_NAME") ?: "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -60,12 +64,27 @@ android {
     // signed with it, and it grants nothing to anybody who takes it. The
     // release key is a different key that is not in this repository and never
     // will be.
+    // The upload key, when the build has one. CI decodes it from a secret
+    // into a file and points these four variables at it; a laptop without
+    // it builds an *unsigned* release, which is enough to prove R8 and lint
+    // and not enough to upload. Play App Signing holds the key that signs
+    // what phones install; this one only proves an upload came from us, and
+    // Play can issue a new one if it is ever lost. docs/PLAY.md.
+    val uploadKeystore = System.getenv("ASR_UPLOAD_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
     signingConfigs {
         getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
+        }
+        if (uploadKeystore != null) {
+            create("release") {
+                storeFile = uploadKeystore
+                storePassword = System.getenv("ASR_UPLOAD_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ASR_UPLOAD_KEY_ALIAS")
+                keyPassword = System.getenv("ASR_UPLOAD_KEY_PASSWORD")
+            }
         }
     }
 
@@ -82,6 +101,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Null without the upload key: an unsigned bundle, still built.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

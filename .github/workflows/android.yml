@@ -115,6 +115,59 @@ jobs:
           fi
           echo '```' | summary
 
+      # The release build, on every run. R8 shrinks and obfuscates only
+      # here, and lint's fatal checks run only here, so a keep rule that is
+      # missing or a resource that is broken shows up here rather than as a
+      # crash on a phone that installed from Play. Signed with the upload key
+      # when the four secrets are set, which is every run in this repository;
+      # unsigned otherwise, which still proves the build. Play takes the
+      # bundle. The APK is the same shrunk code signed the same way, for
+      # putting a release build on a phone before Play is there to do it.
+      # versionCode is the run number, which only ever grows (docs/PLAY.md).
+      - name: Release bundle and APK
+        env:
+          ASR_VERSION_CODE: ${{ github.run_number }}
+          UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+          ASR_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ASR_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ASR_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          if [ -n "$UPLOAD_KEYSTORE_B64" ]; then
+            printf %s "$UPLOAD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            export ASR_UPLOAD_KEYSTORE="$RUNNER_TEMP/upload.jks"
+            echo "release: signed with the upload key, versionCode $ASR_VERSION_CODE"
+          else
+            echo "release: no upload key in this run, so unsigned; versionCode $ASR_VERSION_CODE"
+          fi
+          ./gradlew --no-daemon bundleRelease assembleRelease 2>&1 | tee -a /tmp/gradle.log
+          ls -la app/build/outputs/bundle/release/ app/build/outputs/apk/release/
+          if [ -n "${ASR_UPLOAD_KEYSTORE:-}" ]; then
+            echo
+            echo "upload key certificate (the key Play checks uploads against; also what a"
+            echo "sideloaded release APK is signed with, so it belongs in ANDROID_CERT_SHA256"
+            echo "next to Play's app signing certificate):"
+            keytool -list -v -keystore "$ASR_UPLOAD_KEYSTORE" -storepass "$ASR_UPLOAD_KEYSTORE_PASSWORD" -alias "$ASR_UPLOAD_KEY_ALIAS" \
+              | grep "SHA256:" | head -1
+            rm -f "$ASR_UPLOAD_KEYSTORE"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: asr-release-aab
+          path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: asr-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
       # Push is the only channel this product has: the server queues a
       # notification per witness and the watchdog delivers it through FCM.
       # If google-services.json is missing or does not match the package
