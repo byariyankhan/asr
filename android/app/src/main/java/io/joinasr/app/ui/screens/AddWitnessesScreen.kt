@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -48,8 +49,10 @@ import io.joinasr.app.witness.Witness
  *
  * The design's own answer to inviting somebody is Android's share sheet, and
  * it is the right one: a relationship is chosen, the server issues an invite
- * link for it, and Share hands the invitation to whatever the person already
- * uses to talk to their mother.
+ * link for it, and Invite hands the invitation to whatever the person already
+ * uses to talk to their mother. The frame labels that button "Share"; it says
+ * "Invite" here because that is the thing being done, and "Share" read as
+ * sharing the app.
  *
  * The link comes back from the server rather than being composed here. It
  * allocates the code and stores it against the account, so what gets shared
@@ -110,7 +113,7 @@ fun AddWitnessesScreen(
     // empty field rather than from the last relationship chosen.
     var chosen by remember { mutableStateOf<Relationship?>(null) }
 
-    // The sheet opens when the invite comes back, not when Share is pressed:
+    // The sheet opens when the invite comes back, not when Invite is pressed:
     // there is nothing to share until the server has issued the link.
     LaunchedEffect(pendingShare) {
         val invite = pendingShare ?: return@LaunchedEffect
@@ -124,7 +127,7 @@ fun AddWitnessesScreen(
             putExtra(Intent.EXTRA_TEXT, text)
         }
         runCatching { context.startActivity(Intent.createChooser(share, "Invite a witness")) }
-        // Emptied here rather than when Share was pressed. The server can
+        // Emptied here rather than when Invite was pressed. The server can
         // refuse -- and does, while it has not heard about the challenge
         // yet -- and clearing on the press threw away the choice along with
         // the attempt, leaving an error above an empty field and somebody
@@ -174,7 +177,7 @@ fun AddWitnessesScreen(
             selected = chosen,
             onSelect = { chosen = it },
             busy = inviting,
-            onShare = { chosen?.value?.let(onInvite) },
+            onInvite = { chosen?.value?.let(onInvite) },
         )
 
         errorMessage?.let {
@@ -188,12 +191,12 @@ fun AddWitnessesScreen(
             // worth confirming; how many are outstanding is not, because
             // waiting is not a state anybody can act on.
             if (enough) {
-                "Invitation shared. Invite as many people as you like — they " +
+                "Invitation sent. Invite as many people as you like — they " +
                     "appear in your circle once they accept."
             } else {
                 "A challenge nobody is watching is a challenge in name only, so " +
                     "at least one invitation goes out before this one starts. Pick " +
-                    "who they are to you, and Share hands it to whatever you " +
+                    "who they are to you, and Invite hands it to whatever you " +
                     "already use to talk to them."
             },
             style = AsrType.Legal.copy(fontSize = 12.sp),
@@ -231,7 +234,7 @@ private fun RuleCard() {
 }
 
 /**
- * One relationship and a Share button, used as often as somebody likes.
+ * One relationship and an Invite button, used as often as somebody likes.
  *
  * It keeps no memory of what has been shared. Whether an invitation is
  * outstanding belongs to the person holding the other phone, and the only
@@ -242,58 +245,70 @@ private fun InvitePicker(
     options: List<Relationship>,
     selected: Relationship?,
     onSelect: (Relationship) -> Unit,
-    onShare: () -> Unit,
+    onInvite: () -> Unit,
     busy: Boolean,
 ) {
     val shape = RoundedCornerShape(18.dp)
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(AsrColors.SurfaceRaised, shape)
             .border(1.dp, AsrColors.FieldBorder, shape)
             .padding(15.dp),
-        verticalAlignment = Alignment.Bottom,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "Who is this person to you?",
-                style = AsrType.Field.copy(fontSize = 15.sp),
-                color = AsrColors.TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(10.dp))
-            AsrSelectField(
-                label = "",
-                selected = selected,
-                placeholder = "Select relationship",
-                options = options,
-                optionLabel = Relationship::label,
-                onSelect = onSelect,
-            )
+        Text(
+            "Who is this person to you?",
+            style = AsrType.Field.copy(fontSize = 15.sp),
+            color = AsrColors.TextPrimary,
+        )
+        Spacer(Modifier.height(10.dp))
+        // The field and the button on one line, the same height, bottoms
+        // level: the field draws a (blank) label line above its box, so the
+        // button is aligned to the bottom of the row, where the box ends.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                AsrSelectField(
+                    label = "",
+                    selected = selected,
+                    placeholder = "Select relationship",
+                    options = options,
+                    optionLabel = Relationship::label,
+                    onSelect = onSelect,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            InviteButton(enabled = selected != null && !busy, busy = busy, onClick = onInvite)
         }
-        Spacer(Modifier.width(12.dp))
-        ShareButton(enabled = selected != null && !busy, busy = busy, onClick = onShare)
     }
 }
 
+/**
+ * The card's one action, drawn like one: as tall as the field beside it,
+ * filled in the accent when there is a relationship to invite, quiet when
+ * there is not. A fixed minimum width, so "Inviting…" does not make the
+ * row jump while the server issues the link.
+ */
 @Composable
-private fun ShareButton(enabled: Boolean, busy: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(21.dp)
+private fun InviteButton(enabled: Boolean, busy: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(29.dp)
     Box(
         modifier = Modifier
-            .height(42.dp)
+            .height(58.dp)
+            .widthIn(min = 116.dp)
             .clip(shape)
-            .background(if (enabled) AsrColors.AccentMuted else AsrColors.Field)
-            .border(1.dp, AsrColors.FieldBorder, shape)
+            .background(if (enabled) AsrColors.Accent else AsrColors.SurfaceBorder)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 22.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            if (busy) "…" else "Share",
-            style = AsrType.Field.copy(fontSize = 13.sp),
-            color = if (enabled) AsrColors.Accent else AsrColors.TextTertiary,
+            if (busy) "Inviting…" else "Invite",
+            style = AsrType.Button,
+            color = if (enabled) AsrColors.OnAccent else AsrColors.TextSecondary,
+            maxLines = 1,
         )
     }
 }
