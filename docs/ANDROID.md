@@ -4,7 +4,7 @@
 
 Read this first, because everything after it is a plan.
 
-In the repository right now: a Gradle project (`minSdk 26`, `targetSdk 35`),
+In the repository right now: a Gradle project (`minSdk 26`, `targetSdk 36`),
 the design system taken from Figma (`docs/DESIGN.md`), and a working loop
 from sign-up to enforcement — Welcome, Sign Up, Log In, About You, Challenge
 Duration, Usage Access, Choose Apps, Set Daily Limits, Protection, the
@@ -460,3 +460,32 @@ and does not exist yet.
 The app cannot be built in every environment this project is worked in — see
 `docs/DEVELOPMENT.md`. `.github/workflows/android.yml` is the build of
 record and uploads an installable debug APK on every run.
+
+### API level
+
+`compileSdk 36`, `targetSdk 36`, `minSdk 26`, on AGP 8.9.3 (the first line
+that supports compileSdk 36 is 8.9.1). Play requires new apps to target
+Android 16 (API 36) from 31 August 2026, and this app reaches Play after
+that. The target level changes how Android 16 phones treat the app and
+nothing about which phones can install it; that is `minSdk`, which stays at
+Android 8.
+
+What Android 16 changes for apps targeting it, and where it is handled:
+
+- **Edge-to-edge cannot be opted out of.** Both activities call
+  `enableEdgeToEdge()` and pad by the system bars; the block overlay does the
+  same with `windowInsetsPadding`.
+- **Predictive back is on by default.** The app's screens use Compose's
+  `BackHandler` and `BlockActivity` the `onBackPressedDispatcher`, both of
+  which go through the system dispatcher. The block overlay is a plain
+  window, and a window that registers nothing with its
+  `OnBackInvokedDispatcher` is simply not asked; `BlockOverlay.OverlayRoot`
+  registers a callback on attach so back still does what the button does.
+  The key-event path stays for Android 12 and older.
+- **Orientation and resizability restrictions are ignored on screens of
+  600dp and wider.** No screen here locks its orientation, so nothing
+  changes.
+
+Bumping the level next year: change the two numbers, read
+`developer.android.com/about/versions/<n>/behavior-changes-<n>`, and add to
+this list.

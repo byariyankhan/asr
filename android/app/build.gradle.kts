@@ -28,7 +28,14 @@ if (firebaseConfigured) {
 
 android {
     namespace = "io.joinasr.app"
-    compileSdk = 35
+    // 36 because Play requires it of a new app since 31 August 2026, and
+    // this app reaches Play after that. What Android 16 changes for apps
+    // that target it is already the case here: both activities draw
+    // edge-to-edge, back goes through the dispatcher everywhere (the block
+    // overlay included, see enforcement/BlockOverlay.kt), and no screen
+    // locks its orientation. minSdk is untouched: the target level changes
+    // how new Androids treat the app, never which phones can install it.
+    compileSdk = 36
 
     defaultConfig {
         // Fixed for the life of the app: Play will not let a published
@@ -36,7 +43,7 @@ android {
         // checks purchases against exactly this string (PLAY_PACKAGE_NAME).
         applicationId = "io.joinasr.app"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

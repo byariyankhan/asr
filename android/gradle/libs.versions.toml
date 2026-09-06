@@ -3,7 +3,7 @@
 # prints the newest published AGP alongside the build, and these move only
 # when a run has shown what is actually there.
 [versions]
-agp = "8.7.3"
+agp = "8.9.3"
 kotlin = "2.1.0"
 coreKtx = "1.15.0"
 lifecycle = "2.8.7"
