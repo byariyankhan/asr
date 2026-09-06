@@ -188,8 +188,17 @@ jobs:
             exit 1
           fi
           echo "from: $values"
+          # The plugin writes <string name="google_app_id" translatable="false">
+          # so the match allows attributes between the name and the value; an
+          # earlier version matched name="…"> directly and printed nothing at
+          # all, which read as "fine" while proving nothing.
           for key in google_app_id project_id gcm_defaultSenderId; do
-            echo "$key: $(grep -o "\"$key\">[^<]*" "$values" | cut -d'>' -f2)"
+            value=$(grep -o "name=\"$key\"[^>]*>[^<]*" "$values" | head -1 | sed 's/.*>//')
+            if [ -z "$value" ]; then
+              echo "::error::$key is missing from $values. Push will reach nobody."
+              exit 1
+            fi
+            echo "$key: $value"
           done
 
       # The fingerprint that has to be in /.well-known/assetlinks.json for a
