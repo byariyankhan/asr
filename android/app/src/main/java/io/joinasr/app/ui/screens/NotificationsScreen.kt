@@ -37,6 +37,15 @@ import io.joinasr.app.ui.theme.AsrType
 import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import io.joinasr.app.permissions.Permissions
+import io.joinasr.app.push.AsrMessagingService
+import io.joinasr.app.ui.components.AsrPrimaryButton
 
 /**
  * Figma 19 — Notifications / Inbox (node 136:2).
@@ -57,8 +66,18 @@ fun NotificationsScreen(
     onBack: () -> Unit,
     onOpen: (InboxItem) -> Unit,
     onMarkAllRead: () -> Unit,
+    /** Asks Android to let this app notify, or opens its settings page. */
+    onTurnOnNotifications: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    // Re-read on every return to the screen: the person may have just come
+    // back from Settings, and the card has to be gone the moment it is true.
+    var canNotify by remember { mutableStateOf(Permissions.alertsEnabled(context, AsrMessagingService.CHANNEL_ID)) }
+    LifecycleResumeEffect(Unit) {
+        canNotify = Permissions.alertsEnabled(context, AsrMessagingService.CHANNEL_ID)
+        onPauseOrDispose {}
+    }
     val now = Instant.now()
     val today = items.filter { withinHours(it.createdAt, 24, now) }
     val earlier = items - today.toSet()
@@ -97,6 +116,14 @@ fun NotificationsScreen(
         }
 
         Spacer(Modifier.height(18.dp))
+        if (!canNotify) {
+            // Everything on this screen also goes out as a push, and this is
+            // the one screen somebody opens when they have noticed none
+            // arriving. So it is said here, with the switch, rather than
+            // left for them to work out in Settings.
+            NotificationsOffCard(onTurnOn = onTurnOnNotifications)
+            Spacer(Modifier.height(12.dp))
+        }
         Summary(unread = unread, count = items.size, loaded = loaded)
 
         if (today.isNotEmpty()) {
@@ -120,6 +147,29 @@ fun NotificationsScreen(
         }
 
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun NotificationsOffCard(onTurnOn: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AsrColors.Surface, shape)
+            .border(1.dp, AsrColors.Accent, shape)
+            .padding(15.dp),
+    ) {
+        Text("Notifications are off for Asr", style = AsrType.CardTitle, color = AsrColors.TextPrimary)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Updates still arrive here, but your phone will not show them. " +
+                "Turn notifications on to hear the moment a witness answers or a promise breaks.",
+            style = AsrType.Legal.copy(fontSize = 12.sp),
+            color = AsrColors.TextSecondary,
+        )
+        Spacer(Modifier.height(12.dp))
+        AsrPrimaryButton(text = "Turn on notifications", onClick = onTurnOn)
     }
 }
 
@@ -314,6 +364,7 @@ private fun NotificationsPreview() {
             onBack = {},
             onOpen = {},
             onMarkAllRead = {},
+            onTurnOnNotifications = {},
         )
     }
 }

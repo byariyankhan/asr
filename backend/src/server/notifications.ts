@@ -1,4 +1,5 @@
 import type { Kysely, Transaction } from "kysely";
+import { after } from "next/server";
 import type { Database } from "./db/schema";
 import { relationshipCopy, type WitnessEvent } from "./witness-copy";
 import type { EventReason } from "@/lib/schemas";
@@ -173,7 +174,32 @@ export async function queueNotification(
     })
     .onConflict((oc) => oc.doNothing())
     .executeTakeFirst();
-  return result.numInsertedOrUpdatedRows === 1n;
+  const inserted = result.numInsertedOrUpdatedRows === 1n;
+  if (inserted) deliverAfterResponse();
+  return inserted;
+}
+
+/**
+ * Pushes the rows this request queued as soon as it has answered.
+ *
+ * Scheduled, not awaited: the row is still inside the caller's transaction
+ * here, and the response should not wait on Firebase. Next runs the callback
+ * once the response is sent, by which time the transaction has committed and
+ * the sweep's own query can see the row. Outside a request -- the watchdog
+ * queueing rows during its run, a test -- `after` has nothing to attach to
+ * and throws; then the sweep that is already running delivers, as it always
+ * did. The import is deferred to keep this module free of a cycle with the
+ * watchdog, which imports it.
+ */
+function deliverAfterResponse(): void {
+  try {
+    after(async () => {
+      const { deliverQueuedNow } = await import("./watchdog");
+      await deliverQueuedNow();
+    });
+  } catch {
+    // Not in a request. The sweep has it.
+  }
 }
 
 /**

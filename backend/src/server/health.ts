@@ -10,6 +10,7 @@ import {
   shapeOf,
   type R2Config,
 } from "./r2";
+import { fcmConfigured } from "./fcm";
 import { key, redis } from "./redis";
 
 export const WATCHDOG_LAST_RUN_KEY = key("watchdog", "last_run");
@@ -180,5 +181,11 @@ export async function healthReport() {
     db: dbOk,
     redis: redisOk,
     watchdog_stale: !Number.isFinite(lastRunMs) || Date.now() - lastRunMs > WATCHDOG_STALE_MS,
+    // Whether this server can push at all: the three Firebase Admin values
+    // are in its environment. False means every notification is written to
+    // the inbox and none reaches a phone, which from a phone looks exactly
+    // like "notifications only show inside the app". A boolean, nothing
+    // about the project; safe on a route that takes no session.
+    push_configured: fcmConfigured(),
   };
 }
