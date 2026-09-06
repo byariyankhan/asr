@@ -485,6 +485,12 @@ Each side edits only its own fields; asking for the other side's is `403`.
 
 - The witness edits `notify_start`, `notify_success`, `notify_failure`,
   `notify_digest`, `roast_mode`.
+
+`user.gender` (and `gender` on the invite lookup) is the person's own answer
+from the profile -- `male`, `female`, `other`, `prefer_not_to_say` or null --
+so the app can say "his progress" rather than "their progress" about
+somebody's brother. Every notification the server composes follows the same
+rule, in the voice of the relationship (`witness-copy.ts`).
 - The user edits `views_progress`, `relationship`.
 
 `200` with the row.

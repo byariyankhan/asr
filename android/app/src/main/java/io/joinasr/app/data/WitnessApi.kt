@@ -35,6 +35,13 @@ data class RemoteUser(
     val name: String,
     /** A path like /v1/media/avatars/..., or null. Never an absolute URL. */
     val image: String? = null,
+    /**
+     * "male", "female", "other", "prefer_not_to_say" or null: the pronoun
+     * to use when this screen talks about the person. Travels with the name
+     * the way the photo does, so no screen has to say "their" about
+     * somebody's brother.
+     */
+    val gender: String? = null,
 )
 
 /** A witness of mine, as the server holds them. */
@@ -99,6 +106,8 @@ data class WitnessLists(
 data class InvitePeek(
     @SerialName("inviter_name") val inviterName: String,
     @SerialName("inviter_image") val inviterImage: String? = null,
+    /** The inviter's, from the profile, so this screen can say "his challenge". */
+    val gender: String? = null,
     val relationship: String,
     /** How long the challenge runs, when one is running. */
     val days: Int? = null,

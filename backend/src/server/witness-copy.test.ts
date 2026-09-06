@@ -2,15 +2,28 @@ import { describe, expect, it } from "vitest";
 import {
   RELATIONSHIPS_WITH_COPY,
   inviteLead,
+  leftAsrCopy,
   relationshipPhrase,
+  witnessAcceptedCopy,
   witnessLabel,
   relationshipCopy,
   type CopyVars,
   type WitnessEvent,
 } from "./witness-copy";
+import { eventForKind, type WitnessKind } from "./notifications";
 
 const vars: CopyVars = { userName: "Ariyan", appName: "TikTok", extraMinutes: 10 };
-const EVENTS: WitnessEvent[] = ["time_earned", "challenge_abandoned", "challenge_given_up"];
+const EVENTS: WitnessEvent[] = [
+  "pact_started",
+  "pact_completed",
+  "limit_broken",
+  "challenge_abandoned",
+  "challenge_given_up",
+  "pact_moved",
+  "protection_off",
+  "protection_lost",
+  "time_earned",
+];
 const EXPECTED = [
   "mother",
   "father",
@@ -28,7 +41,7 @@ describe("relationshipCopy", () => {
     expect(RELATIONSHIPS_WITH_COPY).toEqual([...EXPECTED]);
   });
 
-  it.each(EXPECTED)("%s has both events, filled in and free of placeholders", (relationship) => {
+  it.each(EXPECTED)("%s has every event, filled in and free of placeholders", (relationship) => {
     for (const event of EVENTS) {
       const copy = relationshipCopy(event, relationship, vars);
       expect(copy.title.length).toBeGreaterThan(0);
@@ -333,5 +346,86 @@ describe("inviteLead", () => {
     expect(inviteLead({ relationship: "friend", gender: "male", days: null })).toBe(
       "asked you, as his friend, to be his witness.",
     );
+  });
+});
+
+/**
+ * Every kind a witness can be told about has a voice, so nothing falls back
+ * to a sentence that does not know who it is talking about. The plain copy
+ * this replaced said "{name} kept their word" to a mother about her son.
+ */
+describe("every witness kind speaks in the relationship's voice", () => {
+  const KINDS: WitnessKind[] = [
+    "pact_started", "pact_completed", "pact_broken", "protection_lost",
+    "uninstalled", "pact_moved", "protection_off", "time_earned",
+  ];
+
+  it("maps each kind to an event the table has", () => {
+    for (const kind of KINDS) {
+      const event = eventForKind(kind, null);
+      expect(EVENTS).toContain(event);
+    }
+  });
+
+  it("tells a broken pact apart by how it broke", () => {
+    expect(eventForKind("pact_broken", "limit_exceeded")).toBe("limit_broken");
+    expect(eventForKind("pact_broken", null)).toBe("limit_broken");
+    expect(eventForKind("pact_broken", "user_gave_up")).toBe("challenge_given_up");
+    expect(eventForKind("pact_broken", "app_removed")).toBe("challenge_abandoned");
+    expect(eventForKind("pact_broken", "protection_disabled")).toBe("challenge_abandoned");
+    expect(eventForKind("uninstalled", null)).toBe("challenge_abandoned");
+  });
+
+  it("says he about a man and she about a woman, in every voice, for every kind", () => {
+    for (const relationship of RELATIONSHIPS_WITH_COPY) {
+      for (const event of EVENTS) {
+        // "them" is left out of the forbidden list on purpose: "is using
+        // them now" is about the minutes, not the person.
+        const his = relationshipCopy(event, relationship, { ...vars, gender: "male" });
+        expect(`${his.title} ${his.body}`).not.toMatch(/\b(she|her|hers|herself|they|their|themselves)\b/);
+        const hers = relationshipCopy(event, relationship, { ...vars, gender: "female" });
+        expect(`${hers.title} ${hers.body}`).not.toMatch(/\b(he|him|his|himself|they|their|themselves)\b/);
+      }
+    }
+  });
+
+  it("a kept pact is told as good news to everyone, a silent phone as a question", () => {
+    for (const relationship of RELATIONSHIPS_WITH_COPY) {
+      const kept = relationshipCopy("pact_completed", relationship, vars);
+      expect(`${kept.title} ${kept.body}`).toMatch(/kept|finished|completed|did it|pulled it off|saw it through/i);
+      const quiet = relationshipCopy("protection_lost", relationship, vars);
+      expect(quiet.body).toMatch(/a day|whole day/i);
+      expect(quiet.body).toContain("Ariyan");
+    }
+  });
+});
+
+/**
+ * The two things the person being witnessed is told about a witness. Both
+ * name the witness the way that person is spoken of, and both use the
+ * witness's own pronoun -- the message in the founder's screenshot said
+ * "They'll know" about his brother.
+ */
+describe("what the owner is told about a witness", () => {
+  it("names the relationship and uses the witness's pronoun", () => {
+    expect(witnessAcceptedCopy("Ariyan Khan", "brother", "male")).toEqual({
+      title: "Ariyan Khan is your witness",
+      body: "Your brother accepted. He’ll know if your pact breaks.",
+    });
+    expect(witnessAcceptedCopy("Amina", "mother", "female").body).toBe(
+      "Mom accepted. She’ll know if your pact breaks.",
+    );
+    expect(witnessAcceptedCopy("Sam", "friend", null).body).toBe(
+      "Your friend accepted. They’ll know if your pact breaks.",
+    );
+    expect(witnessAcceptedCopy("Sam", null, "prefer_not_to_say").body).toBe(
+      "Your witness accepted. They’ll know if your pact breaks.",
+    );
+  });
+
+  it("an account that leaves is spoken of in its own pronoun", () => {
+    expect(leftAsrCopy("Ariyan", "male").body).toBe("Ariyan deleted his account, so you are no longer connected.");
+    expect(leftAsrCopy("Amina", "female").body).toBe("Amina deleted her account, so you are no longer connected.");
+    expect(leftAsrCopy("Sam", null).body).toBe("Sam deleted their account, so you are no longer connected.");
   });
 });

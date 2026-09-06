@@ -3,6 +3,7 @@ import { imagePath } from "./avatar";
 import type { Database } from "./db/schema";
 import { db, isUniqueViolation } from "./db/client";
 import { inviteEmail, sendEmail } from "./email";
+import { witnessAcceptedCopy } from "./witness-copy";
 import { queueNotification } from "./notifications";
 import { conflict, forbidden, notFound } from "@/lib/http";
 import { generateInviteCode, isInviteCode } from "@/lib/invite-code";
@@ -296,13 +297,16 @@ export async function acceptInvite(witnessUserId: string, code: string) {
           .execute();
       }
 
-      const witness = await trx.selectFrom("user").select("name").where("id", "=", witnessUserId).executeTakeFirstOrThrow();
+      const witness = await trx
+        .selectFrom("user")
+        .select(["name", "gender"])
+        .where("id", "=", witnessUserId)
+        .executeTakeFirstOrThrow();
       await queueNotification(trx, {
         recipientId: invitation.user_id,
         aboutUserId: witnessUserId,
         kind: "witness_accepted",
-        title: `${witness.name} is your witness`,
-        body: `${witness.name} accepted. They'll know if your pact breaks.`,
+        ...witnessAcceptedCopy(witness.name, invitation.relationship, witness.gender),
         deepLink: `/witnesses/${witnessRow.id}`,
       });
       return witnessRow;
@@ -374,6 +378,7 @@ export async function listWitnesses(userId: string) {
       "w.id as witness_id",
       "w.name as witness_name",
       "w.image as witness_image",
+      "w.gender as witness_gender",
     ])
     .innerJoin("pact as p", "p.id", "witness.pact_id")
     .where("witness.user_id", "=", userId)
@@ -398,6 +403,7 @@ export async function listWitnesses(userId: string) {
       "u.id as person_id",
       "u.name as person_name",
       "u.image as person_image",
+      "u.gender as person_gender",
     ])
     .innerJoin("pact as p", "p.id", "witness.pact_id")
     .where("witness.witness_user_id", "=", userId)
@@ -441,8 +447,11 @@ export async function listWitnesses(userId: string) {
       invite_code: m.status === "invited" ? m.invite_code : null,
       invite_url: m.status === "invited" && m.invite_code ? inviteUrl(m.invite_code) : null,
       invite_email: m.invite_email,
+      // The pronoun the phone needs to talk about this person -- "his
+      // progress", not "their progress" about a brother -- travels with the
+      // name, the same as the photo does.
       user: m.witness_id
-        ? { id: m.witness_id, name: m.witness_name, image: imagePath(m.witness_image) }
+        ? { id: m.witness_id, name: m.witness_name, image: imagePath(m.witness_image), gender: m.witness_gender }
         : null,
       notify_start: m.notify_start,
       notify_success: m.notify_success,
@@ -458,7 +467,7 @@ export async function listWitnesses(userId: string) {
     i_witness: supporting.map((s) => ({
       id: s.id,
       relationship: s.relationship,
-      user: { id: s.person_id, name: s.person_name, image: imagePath(s.person_image) },
+      user: { id: s.person_id, name: s.person_name, image: imagePath(s.person_image), gender: s.person_gender },
       notify_start: s.notify_start,
       notify_success: s.notify_success,
       notify_failure: s.notify_failure,

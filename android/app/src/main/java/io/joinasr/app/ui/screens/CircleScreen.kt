@@ -28,6 +28,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.joinasr.app.data.SupportedPerson
+import io.joinasr.app.witness.Pronouns
 import io.joinasr.app.ui.components.AsrProfilePhoto
 import io.joinasr.app.data.WitnessProgress
 import io.joinasr.app.ui.theme.AsrColors
@@ -286,7 +287,7 @@ private fun SupportCard(
         } else if (progress == null) {
             Spacer(Modifier.height(12.dp))
             Text(
-                "Loading their progress…",
+                "Loading ${Pronouns.of(person.user.gender).their} progress…",
                 style = AsrType.Legal.copy(fontSize = 12.sp),
                 color = AsrColors.TextTertiary,
             )

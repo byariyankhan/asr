@@ -157,7 +157,8 @@ describe.skipIf(!DATABASE_URL)("signing in on a new phone", async () => {
       .where("kind", "=", "protection_off")
       .execute();
     expect(told).toHaveLength(1);
-    expect(told[0]?.body).toContain("nothing is stopping the apps");
+    // In the witness's own relationship voice now; every voice says how long.
+    expect(told[0]?.body).toMatch(/two hours/);
 
     // The challenge is not broken by it. Nobody used anything they agreed
     // not to; the apps were simply not being watched.

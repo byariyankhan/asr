@@ -34,6 +34,7 @@ import io.joinasr.app.daysLabel
 import io.joinasr.app.data.ProgressApp
 import io.joinasr.app.data.RemotePactEvent
 import io.joinasr.app.data.SupportedPerson
+import io.joinasr.app.witness.Pronouns
 import io.joinasr.app.data.WitnessProgress
 import io.joinasr.app.ui.components.AsrBackChevron
 import io.joinasr.app.ui.components.rememberNow
@@ -131,7 +132,7 @@ fun PersonDetailScreen(
             }
         }
         Spacer(Modifier.height(12.dp))
-        TodayCard(apps = current?.apps.orEmpty(), loaded = progress != null)
+        TodayCard(apps = current?.apps.orEmpty(), loaded = progress != null, p = Pronouns.of(person.user.gender))
 
         Spacer(Modifier.height(22.dp))
         Text("Recent activity", style = AsrType.display(20), color = AsrColors.TextPrimary)
@@ -226,7 +227,7 @@ private fun StreakHero(progress: WitnessProgress?, active: Boolean) {
 }
 
 @Composable
-private fun TodayCard(apps: List<ProgressApp>, loaded: Boolean) {
+private fun TodayCard(apps: List<ProgressApp>, loaded: Boolean, p: Pronouns) {
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier = Modifier
@@ -237,7 +238,7 @@ private fun TodayCard(apps: List<ProgressApp>, loaded: Boolean) {
     ) {
         if (apps.isEmpty()) {
             Text(
-                if (loaded) "No challenge running." else "Reading their limits…",
+                if (loaded) "No challenge running." else "Reading ${p.their} limits…",
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,
             )
@@ -274,7 +275,7 @@ private fun TodayCard(apps: List<ProgressApp>, loaded: Boolean) {
         if (apps.any { it.minutesUsed == null }) {
             Spacer(Modifier.height(12.dp))
             Text(
-                "Figures appear once their phone reports today.",
+                "Figures appear once ${p.their} phone reports today.",
                 style = AsrType.Legal.copy(fontSize = 11.sp),
                 color = AsrColors.TextTertiary,
             )

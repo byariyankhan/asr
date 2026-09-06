@@ -39,11 +39,24 @@ import type { Gender, Relationship } from "./db/schema";
  * they open the way that relationship is actually spoken to: Hey Mom, Hey
  * Dad, Hey bro, Hey sis, Hey love.
  *
- * Everything else a witness hears keeps the older, plainer copy in
- * notifications.ts: those events were not part of this spec, and inventing
- * nine voices for them would be guessing at a tone nobody asked for.
+ * The other six -- a pact started, kept, broken past a limit, moved to
+ * another phone, left unenforced for two hours, silent for a day -- were
+ * written later, in the same nine voices, when the plain copy they had been
+ * getting ("{name} kept their word", to a mother about her son) was the
+ * one sentence in the product that did not know who it was talking about.
+ * Every witness message now comes from this table; nothing is composed
+ * anywhere else.
  */
-export type WitnessEvent = "time_earned" | "challenge_abandoned" | "challenge_given_up";
+export type WitnessEvent =
+  | "pact_started"
+  | "pact_completed"
+  | "limit_broken"
+  | "challenge_abandoned"
+  | "challenge_given_up"
+  | "pact_moved"
+  | "protection_off"
+  | "protection_lost"
+  | "time_earned";
 
 export type CopyVars = {
   /** The person being witnessed. */
@@ -131,9 +144,10 @@ const PATTERN = new RegExp(`\\{(${KEYS.join("|")})\\}`, "g");
  * a typo in a template should look like a typo, not like a bug in whoever's
  * account it landed in.
  */
+const capital = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+
 function fill(template: string, vars: CopyVars): string {
   const p = pronounsFor(vars.gender);
-  const capital = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
   return template.replace(PATTERN, (_, key: string) => {
     switch (key) {
       case "userName": return vars.userName;
@@ -149,6 +163,36 @@ function fill(template: string, vars: CopyVars): string {
 
 const TABLE: Record<string, Record<WitnessEvent, Template>> = {
   mother: {
+    pact_started: {
+      title: "{userName} made a promise 🤍",
+      body:
+        "Hey Mom, {userName} just started a screen-time challenge and asked you to witness it. You’ll hear how it goes, and {they} {is} counting on you to notice.",
+    },
+    pact_completed: {
+      title: "{userName} kept {their} word 🤍",
+      body:
+        "Hey Mom, {userName} finished the whole challenge without breaking it once. This is a good moment to tell {them} you noticed.",
+    },
+    limit_broken: {
+      title: "The pact didn’t hold.",
+      body:
+        "Hey Mom, {userName} went past a limit {they} had set, so the challenge is now broken. Not the end of the world. A kind word may help more than a hard one.",
+    },
+    pact_moved: {
+      title: "{userName} changed phones",
+      body:
+        "Hey Mom, {userName} moved the challenge to a different phone. Same days, same limits, nothing lost. Just so you know where it lives now.",
+    },
+    protection_off: {
+      title: "Nothing is stopping the apps right now",
+      body:
+        "Hey Mom, blocking has been switched off on {userName}’s phone for two hours. The challenge is still running, but nothing is holding the limits. A gentle nudge might help.",
+    },
+    protection_lost: {
+      title: "We haven’t heard from {userName}’s phone",
+      body:
+        "Hey Mom, {userName}’s phone has been silent for a whole day. The challenge is still running, but nothing has confirmed it is being kept. Might be worth checking in.",
+    },
     time_earned: {
       title: "{They} earned a little more time 👀",
       body:
@@ -170,6 +214,36 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     },
   },
   father: {
+    pact_started: {
+      title: "{userName} started a challenge.",
+      body:
+        "Hey Dad, {userName} just started a screen-time challenge and named you as a witness. You’ll be told how it ends, and whether {they} kept to it along the way.",
+    },
+    pact_completed: {
+      title: "{userName} saw it through.",
+      body:
+        "Hey Dad, {userName} completed the challenge, every day of it, within the limits {they} set. Worth saying something.",
+    },
+    limit_broken: {
+      title: "{userName} broke the pact.",
+      body:
+        "Hey Dad, {userName} went over one of the limits {they} committed to, so the challenge is over. Something to talk through before the next one.",
+    },
+    pact_moved: {
+      title: "{userName} switched phones.",
+      body:
+        "Hey Dad, {userName} is keeping the challenge on a different phone from now on. The days and the limits carried over unchanged.",
+    },
+    protection_off: {
+      title: "{userName}’s limits aren’t being enforced.",
+      body:
+        "Hey Dad, {userName}’s phone hasn’t been blocking anything for two hours. The challenge is still on paper; in practice, nothing is stopping the apps right now.",
+    },
+    protection_lost: {
+      title: "{userName}’s phone went quiet.",
+      body:
+        "Hey Dad, nothing has come from {userName}’s phone in a day. The challenge hasn’t ended, but it isn’t being confirmed either. Worth a call.",
+    },
     time_earned: {
       title: "{They} earned {their} way back in.",
       body:
@@ -191,6 +265,36 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     },
   },
   brother: {
+    pact_started: {
+      title: "{userName} is doing a challenge. Allegedly. 👀",
+      body:
+        "Hey bro, {userName} just started a screen-time challenge and picked you to watch it. You’ll hear about every slip. Use this power wisely. Or don’t.",
+    },
+    pact_completed: {
+      title: "{userName} actually did it. 😳",
+      body:
+        "Hey bro, {userName} finished the whole challenge without breaking it once. No loopholes, no deleted apps. You may now be slightly impressed.",
+    },
+    limit_broken: {
+      title: "{userName} broke it. 💀",
+      body:
+        "Hey bro, {userName} blew past a limit {they} set for {themself}, and the challenge is officially broken. You have the full moral high ground. Temporarily.",
+    },
+    pact_moved: {
+      title: "{userName} moved the challenge to another phone 👀",
+      body:
+        "Hey bro, {userName} moved the challenge to a different phone. Same limits, same days. You’re being told because a phone left in a drawer is the oldest trick there is.",
+    },
+    protection_off: {
+      title: "{userName} switched the blocking off 👀",
+      body:
+        "Hey bro, {userName}’s phone has been enforcing nothing for two hours while the challenge is still ‘running’. Draw your own conclusions. Then say so out loud.",
+    },
+    protection_lost: {
+      title: "{userName} went dark 👀",
+      body:
+        "Hey bro, {userName}’s phone hasn’t reported anything for a day. Dead battery, or a very quiet exit. Find out which.",
+    },
     time_earned: {
       title: "{userName} worked for the scroll. 💀",
       body:
@@ -212,6 +316,36 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     },
   },
   sister: {
+    pact_started: {
+      title: "{userName} made a pact 👀",
+      body:
+        "Hey sis, {userName} just started a screen-time challenge with you as the witness. If {they} {does} anything dramatic, you’ll be the first to know.",
+    },
+    pact_completed: {
+      title: "{userName} pulled it off ✨",
+      body:
+        "Hey sis, {userName} finished the challenge and kept every limit the whole way through. Yes, really. Some acknowledgement is due.",
+    },
+    limit_broken: {
+      title: "The pact is broken 💀",
+      body:
+        "Hey sis, {userName} went past a limit and the challenge is over. {They} knew you’d hear about it. And now you have.",
+    },
+    pact_moved: {
+      title: "New phone, same pact 👀",
+      body:
+        "Hey sis, {userName} moved the challenge onto another phone. The limits followed. You’re being told so nothing moves quietly.",
+    },
+    protection_off: {
+      title: "Blocking’s been off for two hours 👀",
+      body:
+        "Hey sis, {userName}’s phone stopped blocking anything two hours ago. The challenge is technically still on. Technically.",
+    },
+    protection_lost: {
+      title: "{userName}’s phone has gone quiet 👀",
+      body:
+        "Hey sis, nothing from {userName}’s phone in a whole day. The challenge is still on, in theory. Ask what happened.",
+    },
     time_earned: {
       title: "{userName} is back at it 👀",
       body:
@@ -232,6 +366,36 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     },
   },
   husband: {
+    pact_started: {
+      title: "A promise, with you watching ❤️",
+      body:
+        "Hey love, {userName} just started a screen-time challenge and asked you to be the witness. You’ll hear how it goes, and {they} will know you’re watching.",
+    },
+    pact_completed: {
+      title: "{userName} kept the promise ❤️",
+      body:
+        "Hey love, {userName} finished the challenge and stayed inside the limits the entire time, with you watching. Say something nice tonight.",
+    },
+    limit_broken: {
+      title: "The pact didn’t make it this time.",
+      body:
+        "Hey love, {userName} went over a limit {they} had set, and the challenge is broken. Be gentle. Then maybe a little less gentle.",
+    },
+    pact_moved: {
+      title: "The challenge moved phones",
+      body:
+        "Hey love, {userName} is running the challenge from a different phone now. Same days, same limits, carried over.",
+    },
+    protection_off: {
+      title: "The limits aren’t being held right now",
+      body:
+        "Hey love, blocking has been off on {userName}’s phone for two hours. The challenge is still running, but nothing is enforcing it. Maybe ask.",
+    },
+    protection_lost: {
+      title: "{userName}’s phone has been silent for a day",
+      body:
+        "Hey love, nothing has come from {userName}’s phone in a day. Probably nothing sinister, but the challenge can’t be confirmed until it reports again.",
+    },
     time_earned: {
       title: "Extra time, fairly earned ❤️",
       body:
@@ -253,6 +417,36 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     },
   },
   wife: {
+    pact_started: {
+      title: "A promise you get to witness ❤️",
+      body:
+        "Hey love, {userName} just started a screen-time challenge and wants you as the witness. You’ll be told how it goes, every step.",
+    },
+    pact_completed: {
+      title: "Promise kept ❤️",
+      body:
+        "Hey love, {userName} completed the whole challenge without breaking the pact once. That took something. Tonight might deserve a small celebration.",
+    },
+    limit_broken: {
+      title: "The challenge is broken.",
+      body:
+        "Hey love, {userName} went past one of {their} own limits and the pact ended there. Not a disaster. The next attempt is the one that counts.",
+    },
+    pact_moved: {
+      title: "Same pact, different phone",
+      body:
+        "Hey love, {userName} moved the challenge to another phone. Nothing about the days or the limits changed.",
+    },
+    protection_off: {
+      title: "Nothing is enforcing the pact right now",
+      body:
+        "Hey love, {userName}’s phone hasn’t blocked anything for two hours while the challenge is still running. It may be an accident. Worth a question.",
+    },
+    protection_lost: {
+      title: "No word from {userName}’s phone",
+      body:
+        "Hey love, {userName}’s phone hasn’t checked in for a day. The challenge is still running; it just can’t be confirmed right now.",
+    },
     time_earned: {
       title: "A little extra time, earned ❤️",
       body:
@@ -273,6 +467,36 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     },
   },
   friend: {
+    pact_started: {
+      title: "{userName} is doing a challenge. You’re the witness. 👀",
+      body:
+        "{userName} just started a screen-time challenge and picked you to keep {them} honest. You’ll hear the moment a limit gives way.",
+    },
+    pact_completed: {
+      title: "{userName} finished the challenge. Undefeated. 🏆",
+      body:
+        "{userName} completed the whole challenge without breaking it once. Accountability worked. Tell {them} you saw it.",
+    },
+    limit_broken: {
+      title: "{userName} broke the pact. 💀",
+      body:
+        "{userName} went over a limit {they} set, and the challenge is officially broken. The witness has been notified. That’s you.",
+    },
+    pact_moved: {
+      title: "{userName} changed phones 👀",
+      body:
+        "{userName} moved the challenge to a different phone. Same limits, same days. Noted, in case the old one is conveniently in a drawer.",
+    },
+    protection_off: {
+      title: "{userName}’s blocking has been off for two hours 👀",
+      body:
+        "{userName}’s phone stopped enforcing the limits two hours ago, and the challenge is still running. Could be a permission. Could be a loophole. Ask.",
+    },
+    protection_lost: {
+      title: "{userName} went quiet 👀",
+      body:
+        "{userName}’s phone hasn’t reported in for a day. The challenge is still technically running. Check that {they} {is} alive, and then check the phone.",
+    },
     time_earned: {
       title: "Back for another round. 👀",
       body:
@@ -293,6 +517,36 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     },
   },
   mentor: {
+    pact_started: {
+      title: "{userName} has started a challenge.",
+      body:
+        "{userName} has started a screen-time challenge and asked you to witness it. You’ll be told how it goes. A word from you along the way may matter more than you’d expect.",
+    },
+    pact_completed: {
+      title: "{userName} completed the challenge.",
+      body:
+        "{userName} completed the challenge and stayed within the limits throughout. Consistency like that is worth naming. A word from you would land well.",
+    },
+    limit_broken: {
+      title: "The pact was broken.",
+      body:
+        "{userName} went over one of the limits {they} committed to, so the challenge has ended as broken. Encouragement now may decide whether there is a next attempt.",
+    },
+    pact_moved: {
+      title: "{userName} moved to another phone.",
+      body:
+        "{userName} is continuing the challenge on a different phone. The duration and the limits are unchanged; this is only so the record is complete.",
+    },
+    protection_off: {
+      title: "{userName}’s challenge is not being enforced.",
+      body:
+        "{userName}’s phone has not been blocking anything for two hours while the challenge continues. This is usually a permission that was switched off; a reminder to check may be all that is needed.",
+    },
+    protection_lost: {
+      title: "{userName}’s phone has been silent for a day.",
+      body:
+        "{userName}’s phone has not reported for a day. The challenge continues, but enforcement cannot be confirmed. A check-in from you may help.",
+    },
     time_earned: {
       title: "Still on track.",
       body:
@@ -314,6 +568,36 @@ const TABLE: Record<string, Record<WitnessEvent, Template>> = {
     },
   },
   colleague: {
+    pact_started: {
+      title: "Challenge started.",
+      body:
+        "{userName} started a screen-time challenge and named you as a witness. You’ll be notified when it ends.",
+    },
+    pact_completed: {
+      title: "Challenge completed.",
+      body:
+        "{userName} completed the challenge within the limits {they} set. It has been recorded as kept.",
+    },
+    limit_broken: {
+      title: "Pact broken.",
+      body:
+        "{userName} exceeded a limit set for the challenge. It has been recorded as broken.",
+    },
+    pact_moved: {
+      title: "Challenge moved phones.",
+      body:
+        "{userName} moved the challenge to another phone. The days and limits are unchanged.",
+    },
+    protection_off: {
+      title: "Challenge not being enforced.",
+      body:
+        "{userName}’s phone has not enforced the limits for two hours. The challenge is still running.",
+    },
+    protection_lost: {
+      title: "No report from {userName}’s phone.",
+      body:
+        "{userName}’s phone has not reported in a day. The challenge is still running.",
+    },
     time_earned: {
       title: "Extra time earned.",
       body:
@@ -391,6 +675,33 @@ const WITNESS_LABEL: Record<string, string> = {
 
 export function witnessLabel(relationship?: string | null): string {
   return (relationship && WITNESS_LABEL[relationship]) || "Your witness";
+}
+
+/**
+ * To the person being witnessed: who just said yes, named the way that
+ * person is spoken of and with that person's own pronoun. "Ariyan Khan
+ * accepted. They'll know if your pact breaks" went to a man about his own
+ * brother, when the profile knew better on both counts.
+ */
+export function witnessAcceptedCopy(
+  witnessName: string,
+  relationship: string | null | undefined,
+  gender?: Gender | null,
+): Copy {
+  const p = pronounsFor(gender);
+  return {
+    title: `${witnessName} is your witness`,
+    body: `${witnessLabel(relationship)} accepted. ${capital(p.they)}’ll know if your pact breaks.`,
+  };
+}
+
+/** To everybody connected to an account that is being deleted. */
+export function leftAsrCopy(name: string, gender?: Gender | null): Copy {
+  const p = pronounsFor(gender);
+  return {
+    title: `${name} left Asr`,
+    body: `${name} deleted ${p.their} account, so you are no longer connected.`,
+  };
 }
 
 /**

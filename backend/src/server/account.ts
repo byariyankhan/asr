@@ -3,6 +3,7 @@ import { sql } from "kysely";
 import { db } from "./db/client";
 import { getMe } from "./me";
 import { queueNotification } from "./notifications";
+import { leftAsrCopy } from "./witness-copy";
 import { conflict, HttpError, notFound } from "@/lib/http";
 
 export const DELETION_GRACE_DAYS = 7;
@@ -67,7 +68,7 @@ export async function exportAccount(userId: string) {
 // away along with every other one. The row is hard-deleted by the watchdog
 // after the grace window; signing in before then cancels it.
 export async function requestAccountDeletion(userId: string, password: string, signIn: (email: string, password: string) => Promise<void>) {
-  const user = await db.selectFrom("user").select(["id", "email", "name"]).where("id", "=", userId).executeTakeFirst();
+  const user = await db.selectFrom("user").select(["id", "email", "name", "gender"]).where("id", "=", userId).executeTakeFirst();
   if (!user) throw notFound("User");
 
   try {
@@ -103,8 +104,7 @@ export async function requestAccountDeletion(userId: string, password: string, s
         recipientId: other,
         aboutUserId: userId,
         kind: "witness_removed",
-        title: `${user.name} left Asr`,
-        body: `${user.name} deleted their account, so you are no longer connected.`,
+        ...leftAsrCopy(user.name, user.gender),
         deepLink: "/witnesses",
       });
     }

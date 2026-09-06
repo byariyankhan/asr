@@ -233,7 +233,9 @@ and the sweep is what makes that reliable rather than what makes it happen.
 4. Witness accepts: `POST /v1/witnesses/invites/{code}/accept`. The witness
    needs an account but does not need to run any pact themselves.
 5. Witnesses choose what they want to hear about: start, success, failure,
-   progress, and roast mode (harsher copy on failure). Preferences live on
+   progress. The tone of every message follows the relationship (a brother
+   is roasted, a mother is reassured; `witness-copy.ts`) and the pronoun
+   follows the profile. Preferences live on
    the `witness` row, not on the user, because the same person may want
    everything about their brother and only the ending about a colleague.
 
