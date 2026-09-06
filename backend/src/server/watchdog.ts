@@ -51,6 +51,14 @@ export const NOTIFICATION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 export const SUMMARY_RETENTION_MS = 400 * 24 * 60 * 60 * 1000;
 export const WATCHDOG_LOCK_KEY = key("watchdog", "lock");
 /**
+ * Held while queued notifications are being pushed, by whichever of the two
+ * senders got there first: the request that queued them (deliverQueuedNow,
+ * right after its response) or the watchdog's sweep. Without it the two
+ * could read the same queued rows and push each of them twice.
+ */
+export const DELIVERY_LOCK_KEY = key("notifications", "delivering");
+const DELIVERY_LOCK_MS = 60 * 1000;
+/**
  * How long the Redis lock lives without being renewed: a run that dies with
  * its process frees the lock within this. Renewed every LOCK_RENEW_MS while
  * a run is going, so a slow run never loses it to the next tick.
@@ -481,6 +489,42 @@ export async function completeElapsedPacts(now: Date): Promise<number> {
 // only the confirming answer marks the device dead and, if that was the
 // phone running an active pact, records an uninstall and breaks the pact.
 export async function deliverNotifications(push: PushSender, now: Date, outages: readonly Outage[] = []): Promise<{ sent: number; failed: number; uninstalled: number }> {
+  const client = redis();
+  const token = `${process.pid}:${newId()}`;
+  if (client) {
+    // Skipped rather than waited for: the holder is pushing the same rows
+    // this call would have, and anything queued after its read goes out on
+    // the next sweep, a quarter of an hour at most.
+    const got = await client.set(DELIVERY_LOCK_KEY, token, "PX", DELIVERY_LOCK_MS, "NX").catch(() => null);
+    if (got !== "OK") return { sent: 0, failed: 0, uninstalled: 0 };
+  }
+  try {
+    return await deliverUnlocked(push, now, outages);
+  } finally {
+    if (client) await client.eval(RELEASE_IF_OWNED, 1, DELIVERY_LOCK_KEY, token).catch(() => {});
+  }
+}
+
+/**
+ * Pushes whatever is queued, now, from the request that queued it.
+ *
+ * Delivery used to happen only on the watchdog's quarter-hourly sweep, so a
+ * witness heard about a broken pact up to fifteen minutes after the inbox
+ * already showed it -- which from a phone looks like notifications that
+ * never leave the app. The sweep still runs and still owns retries; this is
+ * the same pass, started early. Nothing here may throw into the request
+ * that is already answered.
+ */
+export async function deliverQueuedNow(): Promise<void> {
+  try {
+    const now = new Date();
+    await deliverNotifications(sendPush, now, await recentOutages(now));
+  } catch (error) {
+    console.error("[notifications] immediate delivery failed", error);
+  }
+}
+
+async function deliverUnlocked(push: PushSender, now: Date, outages: readonly Outage[]): Promise<{ sent: number; failed: number; uninstalled: number }> {
   const queued = await db
     .selectFrom("notification")
     .innerJoin("user as u", "u.id", "notification.recipient_id")

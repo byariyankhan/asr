@@ -47,6 +47,17 @@ exist yet. Online only, unlike the rest of a challenge: the server's copy is
 what the witnesses read, and the two should never disagree about which apps
 are in it.
 
+**Notifications reach the phone, not only the inbox.** The `alerts` channel
+is created in `AsrApplication.onCreate`, before the first push can arrive: a
+push that lands while the app is in the background is posted by Firebase
+itself on the channel the manifest names, and if that channel did not exist
+yet Firebase invented a default one with default importance, silently, for
+good. The Notifications screen checks on every resume whether the app may
+notify at all and whether that channel has been switched off, and when it
+cannot shows a card with the switch: the system dialog where Android still
+offers one, the app's own notification settings otherwise. Every password
+field has a Show/Hide toggle, per field, kept across rotation.
+
 **Signing in lands on the dashboard.** Setup is entered from a button on
 it, not by having no pact. Half of this product's users never run a
 challenge at all — somebody invited to witness a friend signs up to answer

@@ -132,6 +132,21 @@ object Permissions {
         return manager.areNotificationsEnabled()
     }
 
+    /**
+     * Whether witness updates can actually be shown: the app may post
+     * notifications and the channel they arrive on has not been switched
+     * off by itself. Android lets a person silence one channel and leave
+     * the app "allowed", and the difference is invisible from inside the
+     * app unless somebody looks.
+     */
+    fun alertsEnabled(context: Context, channelId: String): Boolean {
+        if (!hasNotifications(context)) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+        val manager = context.getSystemService<NotificationManager>() ?: return false
+        val channel = manager.getNotificationChannel(channelId) ?: return true
+        return channel.importance != NotificationManager.IMPORTANCE_NONE
+    }
+
     /** True where a runtime dialog exists; below 13 the only route is Settings. */
     val notificationsAreRequestable: Boolean
         get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU

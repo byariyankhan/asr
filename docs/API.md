@@ -74,8 +74,11 @@ leaves nothing to do but press the button again.
 
 ### `GET /health`
 
-`{ ok, db, redis, watchdog_stale }`. No auth; `200` when db and redis both
-answer, `503` otherwise. Polled by uptime monitors, so it is cheap.
+`{ ok, db, redis, watchdog_stale, push_configured }`. No auth; `200` when db
+and redis both answer, `503` otherwise. Polled by uptime monitors, so it is
+cheap. `push_configured` says whether the three Firebase Admin values are in
+the server's environment: `false` means every notification is written to the
+inbox and none reaches a phone.
 
 ### `GET /health/storage`
 
@@ -746,8 +749,8 @@ it is retried.
 
 ### `GET /health`
 
-`{ "ok": true, "db": true, "redis": true, "watchdog_stale": false }`. Used by
-the container healthcheck and uptime monitoring. No auth, no details.
+`{ "ok": true, "db": true, "redis": true, "watchdog_stale": false, "push_configured": true }`.
+Used by the container healthcheck and uptime monitoring. No auth, no details.
 
 ### `POST /internal/watchdog`
 

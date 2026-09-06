@@ -210,6 +210,19 @@ dashboard until it can actually enforce anything.
 3. Earned minutes are applied on the phone immediately and recorded on the
    server for the witness view.
 
+### Notification delivery
+
+A notification is one row (`notification`, channel `push`) written inside
+the transaction that records the event. It is pushed twice over, by design:
+once by the request that queued it, the moment its response has gone out
+(`after()` in Next, `deliverQueuedNow`), and again by the watchdog's sweep
+for anything that first pass could not send -- a token that had just
+rotated, a Firebase hiccup, a row queued while another delivery held the
+lock. The two never push the same row twice: delivery runs under one Redis
+lock (`asr:notifications:delivering`) and the second sender skips. So a
+witness hears about a broken pact within seconds of the phone reporting it,
+and the sweep is what makes that reliable rather than what makes it happen.
+
 ### Witness invite
 
 1. User creates an invite: `POST /v1/witnesses/invites` returns a code.

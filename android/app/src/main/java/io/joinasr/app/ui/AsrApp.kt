@@ -259,6 +259,26 @@ fun AsrApp(
     val askForNotifications = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { }
+    // From the card on the Notifications screen. A refusal there -- or a
+    // dialog Android no longer shows after two of them -- goes straight on
+    // to the app's own notification settings, because the person pressed a
+    // button that said "turn on" and a silent nothing is not an answer.
+    val askForNotificationsOrSettings = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) {
+            runCatching { context.startActivity(Permissions.appNotificationSettingsIntent(context)) }
+        }
+    }
+    // Typed, because its two branches would otherwise infer to () -> Any:
+    // one ends in a launch, the other in a runCatching.
+    val turnOnNotifications: () -> Unit = {
+        if (Permissions.notificationsAreRequestable && !Permissions.hasNotifications(context)) {
+            askForNotificationsOrSettings.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            runCatching { context.startActivity(Permissions.appNotificationSettingsIntent(context)) }
+        }
+    }
     // Figma 25, opened from a notification about somebody else.
     var reactingTo by remember { mutableStateOf<InboxItem?>(null) }
     // Figma 18. The code from a witness link, held until it is answered.
@@ -990,6 +1010,7 @@ fun AsrApp(
                                             if (canReact) reactingTo = item
                                         },
                                         onMarkAllRead = inboxViewModel::markAllRead,
+                                        onTurnOnNotifications = turnOnNotifications,
                                     )
                                 } else if (showingProtectionLost) {
                                     // Figma 27.
