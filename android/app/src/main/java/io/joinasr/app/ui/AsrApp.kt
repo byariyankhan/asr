@@ -270,7 +270,9 @@ fun AsrApp(
             runCatching { context.startActivity(Permissions.appNotificationSettingsIntent(context)) }
         }
     }
-    val turnOnNotifications = {
+    // Typed, because its two branches would otherwise infer to () -> Any:
+    // one ends in a launch, the other in a runCatching.
+    val turnOnNotifications: () -> Unit = {
         if (Permissions.notificationsAreRequestable && !Permissions.hasNotifications(context)) {
             askForNotificationsOrSettings.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
