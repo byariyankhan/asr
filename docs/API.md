@@ -6,7 +6,8 @@ ISO 8601 with offset. Ids are UUIDs.
 ## Authentication
 
 Better Auth with the bearer plugin. The Android app calls the Better Auth
-routes under `/api/auth/*` (sign up, sign in, verify email, reset password,
+routes under `/api/auth/*` (sign up, sign in, verify email, reset password;
+no confirmation email is sent at sign-up, see `POST /me/email/verify`;
 sign out) and receives a session token in the `set-auth-token` response
 header. Every `/v1/*` call sends it:
 
@@ -641,6 +642,33 @@ again inside those 7 days cancels the deletion. `200` with
 Subscriptions are sold through Google Play Billing, which is mandatory for
 digital goods inside an Android app. The server never trusts what the client
 says a purchase is worth: it takes the token's identity and asks Play.
+
+### `POST /me/email`
+
+`{ "new_email": "…", "password": "…" }`. Changes the address the account
+signs in and recovers with, in one step, behind the password (`403
+invalid_password`). The new address must not belong to another account
+(`409 email_taken`) and must differ from the current one (`400 same_email`).
+Stored lowercased and **unconfirmed**; nothing is mailed to the new address
+until the person asks for its link (below). If the old address had been
+confirmed, it is sent one notice that the change happened, so a change made
+by somebody else who knows the password is not silent. Sessions stay signed
+in. Answers the profile, as `GET /me`. Limit: 5 per user per day.
+
+Better Auth's own `change-email` is off, and `send-verification-email` is
+not offered either (both answer `404` under `/api/auth`): the first would
+cost two emails per change, and the second takes any address and mails it
+behind only the loose per-IP limit, which is a way to spend the email budget
+on strangers' inboxes.
+
+### `POST /me/email/verify`
+
+No body. Sends the confirmation link for the current address; opening it
+(`GET /verify/<token>`, above) is the confirmation. `409 already_verified`
+once it is. **Sign-up does not send this link**: an address is stored and
+confirmed only when the person asks from Email & password, because each
+link is a paid email for a step that is not required to use the app. Limit:
+3 per user per day, and one every 5 minutes. Answers `{ "sent_to": "…" }`.
 
 ### `POST /subscription/verify`
 

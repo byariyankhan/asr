@@ -1,7 +1,9 @@
 import { APIError } from "better-auth/api";
+import { sql } from "kysely";
 import { db } from "./db/client";
+import { getMe } from "./me";
 import { queueNotification } from "./notifications";
-import { HttpError, notFound } from "@/lib/http";
+import { conflict, HttpError, notFound } from "@/lib/http";
 
 export const DELETION_GRACE_DAYS = 7;
 
@@ -120,8 +122,74 @@ export async function cancelPendingDeletion(userId: string): Promise<void> {
 }
 
 // Better Auth's sign-in as a password check: succeeds or throws APIError.
-export function signInCheck(authApi: { signInEmail: (args: { body: { email: string; password: string } }) => Promise<unknown> }) {
+// The session the sign-in creates is deleted again at once -- it was never
+// handed to anybody, and a check should not leave a live token in the table
+// for a month.
+export function signInCheck(authApi: { signInEmail: (args: { body: { email: string; password: string } }) => Promise<{ token: string | null }> }) {
   return async (email: string, password: string) => {
-    await authApi.signInEmail({ body: { email, password } });
+    const { token } = await authApi.signInEmail({ body: { email, password } });
+    if (token) await db.deleteFrom("session").where("token", "=", token).execute();
   };
+}
+
+/**
+ * Changes the address the account signs in and recovers with.
+ *
+ * In one step, and to unconfirmed. Better Auth's own change-email flow is
+ * off: for a confirmed address it costs two emails (a confirmation to the
+ * old one, then a link to the new one) and none of that is what protects
+ * the account here -- the password is. So the password is checked the way
+ * deletion checks it, the new address has to be free, and the old address
+ * is told once if it had been confirmed, so that a change made from a
+ * stolen unlocked phone by somebody who also knows the password is at
+ * least not silent. Confirming the new address is the person's to ask for,
+ * from Email & password, when they want to.
+ *
+ * Sessions are left alone: the person changing their address is signed in
+ * on the phone in their hand, and the password check is what a stranger
+ * would have failed.
+ */
+export async function changeEmail(
+  userId: string,
+  newEmail: string,
+  password: string,
+  signIn: (email: string, password: string) => Promise<void>,
+  notify: (oldEmail: string, newEmail: string) => Promise<void>,
+) {
+  const user = await db.selectFrom("user").select(["id", "email", "emailVerified"]).where("id", "=", userId).executeTakeFirst();
+  if (!user) throw notFound("User");
+  const next = newEmail.trim().toLowerCase();
+  if (next === user.email.toLowerCase()) throw new HttpError(400, "same_email", "That is already your email address.");
+
+  try {
+    await signIn(user.email, password);
+  } catch (error) {
+    if (error instanceof APIError) throw new HttpError(403, "invalid_password", "That password is not right.");
+    throw error;
+  }
+
+  const taken = await db
+    .selectFrom("user")
+    .select("id")
+    .where(sql<string>`lower(email)`, "=", next)
+    .where("id", "!=", userId)
+    .executeTakeFirst();
+  if (taken) throw conflict("email_taken", "That email address belongs to another account.");
+
+  await db.updateTable("user").set({ email: next, emailVerified: false, updatedAt: new Date() }).where("id", "=", userId).execute();
+  if (user.emailVerified) await notify(user.email, next).catch(() => {});
+  return getMe(userId);
+}
+
+/**
+ * The confirmation link, on request. Sign-up does not send one, so this is
+ * the only way an address gets confirmed; the route above it is what keeps
+ * it to a few a day, because each one is a paid email.
+ */
+export async function requestEmailVerification(userId: string, send: (email: string) => Promise<void>) {
+  const user = await db.selectFrom("user").select(["email", "emailVerified"]).where("id", "=", userId).executeTakeFirst();
+  if (!user) throw notFound("User");
+  if (user.emailVerified) throw conflict("already_verified", "This address is already confirmed.");
+  await send(user.email);
+  return { sent_to: user.email };
 }

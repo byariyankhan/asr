@@ -11,8 +11,20 @@ const handler = toNextJsHandler(auth);
 // /api/auth (session reads, sign-out) the loose one.
 const CREDENTIALS = /\/(sign-up|sign-in|forget-password|reset-password|change-password)(\/|$)/;
 
+// Two of Better Auth's own endpoints are not offered. send-verification-email
+// takes any address and mails it, and the only limit on it here would be the
+// loose per-IP one: a way for anybody to spend the email budget on other
+// people's inboxes. The app asks for its own link through /v1/me/email/verify,
+// which is per account and tight. change-email is off in the auth config and
+// would 404 anyway; it is listed so the two read together, and so the app's
+// own /v1/me/email is plainly the only way an address changes.
+const NOT_OFFERED = /\/(send-verification-email|change-email)(\/|$)/;
+
 async function limited(request: Request): Promise<Response | null> {
   const path = new URL(request.url).pathname;
+  if (NOT_OFFERED.test(path)) {
+    return NextResponse.json({ error: "not_found", message: "Not found." }, { status: 404 });
+  }
   const policy = CREDENTIALS.test(path) ? RATE_LIMITS.authCredentials : RATE_LIMITS.authOther;
   const ip = clientIpFromHeaders(request.headers) ?? "unknown";
   const result = await checkRateLimit(policy, ip);

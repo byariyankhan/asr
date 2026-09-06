@@ -91,6 +91,21 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
         _error.value = null
     }
 
+    /**
+     * Re-reads the profile from the server, keeping the session as it is
+     * when that fails. For the moments something outside this class changed
+     * the profile -- the email address, from Email & password -- and the
+     * screens should show what the server now holds.
+     */
+    fun refresh() {
+        viewModelScope.launch {
+            val token = tokens.current()
+            if (token.isNullOrBlank()) return@launch
+            val me = Api.me.get(token)
+            if (me is ApiResult.Ok) _session.value = Session.SignedIn(me.value)
+        }
+    }
+
     fun signUp(email: String, password: String) = submit(Analytics.signUp()) { Api.auth.signUp(email, password) }
 
     fun signIn(email: String, password: String) = submit(Analytics.login()) { Api.auth.signIn(email, password) }

@@ -196,6 +196,7 @@ fun AsrApp(
     val accountError by accountViewModel.error.collectAsStateWithLifecycle()
     val accountNotice by accountViewModel.notice.collectAsStateWithLifecycle()
     val accountDeleted by accountViewModel.deleted.collectAsStateWithLifecycle()
+    val emailChanged by accountViewModel.emailChanged.collectAsStateWithLifecycle()
     val passwordReset by accountViewModel.reset.collectAsStateWithLifecycle()
     val resetEmailSentTo by accountViewModel.resetEmailSentTo.collectAsStateWithLifecycle()
 
@@ -444,6 +445,15 @@ fun AsrApp(
     // Deletion is accepted by the server, so the token is spent: signing out
     // here rather than inside the account model keeps clearing it in one
     // place, which is the only way it reliably happens at all.
+    // The address lives in the session's copy of the profile, and the
+    // account screen changed it on the server: re-read, so the screen that
+    // shows the address shows the new one.
+    LaunchedEffect(emailChanged) {
+        if (!emailChanged) return@LaunchedEffect
+        accountViewModel.consumeEmailChanged()
+        viewModel.refresh()
+    }
+
     LaunchedEffect(accountDeleted) {
         if (!accountDeleted) return@LaunchedEffect
         accountViewModel.consumeDeleted()
@@ -1170,6 +1180,8 @@ fun AsrApp(
                                     emailVerified = current.me.emailVerified,
                                     onBack = { profileRoute = null },
                                     onChangePassword = accountViewModel::changePassword,
+                                    onSendVerification = accountViewModel::sendVerification,
+                                    onChangeEmail = accountViewModel::changeEmail,
                                     onSignOutOtherSessions =
                                         accountViewModel::signOutOtherSessions,
                                     busy = accountBusy,

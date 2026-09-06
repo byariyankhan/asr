@@ -2,6 +2,7 @@ package io.joinasr.app.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import okhttp3.MediaType.Companion.toMediaType
@@ -26,19 +27,21 @@ private data class ResetPassword(val newPassword: String, val token: String)
 @Serializable
 private data class DeleteAccount(val password: String)
 
+@Serializable
+private data class ChangeEmail(@SerialName("new_email") val newEmail: String, val password: String)
+
 /**
- * Everything about the account that is not the profile: the password, other
- * sessions, and deletion.
+ * Everything about the account that is not the profile: the email address,
+ * the password, other sessions, and deletion.
  *
  * Most of it lives under /api/auth, which is Better Auth's own surface
  * rather than this app's /v1. Deletion is the exception — it is a DELETE on
  * /v1/me, because it does more than remove a login: it schedules the account
  * and everything attached to it for removal, and signing in again inside the
- * grace window cancels that.
- *
- * Changing an email address is not here, because the server does not offer
- * it. Better Auth's change-email endpoint is off in this deployment, and a
- * client that called it would get a 404 dressed up as a bug in the app.
+ * grace window cancels that. The email address is the other: Better Auth's
+ * own change-email and send-verification endpoints are not offered, and the
+ * two calls under /v1/me/email are the app's, behind the password and a
+ * per-account limit on how many confirmation emails go out.
  */
 class AccountApi(
     private val client: OkHttpClient,
@@ -76,6 +79,27 @@ class AccountApi(
                 path = "/api/auth/reset-password",
                 token = null,
                 body = ApiJson.encodeToString(ResetPassword(newPassword, token)),
+            )
+        }
+
+    /**
+     * Asks for the confirmation link for the current address. Sign-up does
+     * not send one; this does, and the server allows a few a day.
+     */
+    suspend fun sendVerification(token: String): ApiResult<Unit> = withContext(Dispatchers.IO) {
+        post(path = "/v1/me/email/verify", token = token, body = "{}")
+    }
+
+    /**
+     * Changes the address in one step, behind the password. Nothing is
+     * mailed to the new address until the person asks for its link.
+     */
+    suspend fun changeEmail(token: String, newEmail: String, password: String): ApiResult<Unit> =
+        withContext(Dispatchers.IO) {
+            post(
+                path = "/v1/me/email",
+                token = token,
+                body = ApiJson.encodeToString(ChangeEmail(newEmail.trim(), password)),
             )
         }
 
