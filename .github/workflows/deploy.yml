@@ -64,7 +64,7 @@ jobs:
               echo "Verify it out of band before touching infra/vps-host-key.pub."
               exit 1
             fi
-            echo "could not reach the VPS to pre-verify; the step that follows retries on its own"
+            echo "could not reach the VPS to pre-verify; the steps that follow retry on their own"
           else
             echo "host key matches the pinned one"
           fi
@@ -74,13 +74,21 @@ jobs:
       # tree is unpacked beside the old one and swapped in, so a half-finished
       # transfer never becomes the live source, and src.old is one `mv` away
       # if a build needs to be undone in a hurry.
+      #
+      # Retried the same way the deploy step below is, because this is the
+      # first connection of the run and the one that failed: a deploy of a
+      # workflow-only change died here with "ssh: connect to host port 22:
+      # Connection timed out" while the API answered /v1/health throughout,
+      # and the pre-verify above had said the next step retries on its own,
+      # which it did not. The remote part is safe to run twice: it unpacks
+      # into src.new and swaps, so a repeat after a dropped connection lands
+      # the same tree again.
       - name: Ship the source to /opt/asr/src
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
           tar czf /tmp/asr-src.tgz --exclude=.git --exclude=node_modules --exclude=.next .
-          scp -i ~/.ssh/deploy_key /tmp/asr-src.tgz root@"$VPS_HOST":/tmp/asr-src.tgz
-          ssh -i ~/.ssh/deploy_key root@"$VPS_HOST" bash -s <<'REMOTE'
+          cat > /tmp/asr-ship.sh <<'REMOTE'
           set -e
           test -f /opt/asr/.env || { echo "No /opt/asr/.env — run the bootstrap workflow first."; exit 1; }
           rm -rf /opt/asr/src.new
@@ -94,6 +102,24 @@ jobs:
           install -m 700 /opt/asr/src/infra/backup.sh /opt/asr/backup.sh
           install -m 700 /opt/asr/src/infra/rollback.sh /opt/asr/rollback.sh
           REMOTE
+
+          attempt=1
+          delay=20
+          while true; do
+            if scp -i ~/.ssh/deploy_key -o ConnectTimeout=30 /tmp/asr-src.tgz root@"$VPS_HOST":/tmp/asr-src.tgz \
+               && ssh -i ~/.ssh/deploy_key -o ConnectTimeout=30 root@"$VPS_HOST" bash -s < /tmp/asr-ship.sh; then
+              break
+            fi
+            status=$?
+            if [ "$attempt" -ge 4 ]; then
+              echo "shipping the source failed after $attempt attempts (exit $status)"
+              exit "$status"
+            fi
+            echo "attempt $attempt failed (exit $status); retrying in ${delay}s"
+            sleep "$delay"
+            attempt=$((attempt + 1))
+            delay=$((delay * 2))
+          done
 
       # api and migrate are built one at a time on purpose: they share a
       # Dockerfile (api goes through `builder` to reach `runner`, migrate IS
