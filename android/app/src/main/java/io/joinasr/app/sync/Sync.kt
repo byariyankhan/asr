@@ -11,6 +11,7 @@ import io.joinasr.app.data.ActivityRules
 import io.joinasr.app.data.ApiResult
 import io.joinasr.app.data.DeviceRegistration
 import io.joinasr.app.data.EventCreate
+import io.joinasr.app.data.PactAppAdd
 import io.joinasr.app.data.PactCreate
 import io.joinasr.app.data.PactSnapshot
 import io.joinasr.app.data.RemotePact
@@ -143,13 +144,7 @@ class Sync(context: Context) {
         if (remote.status != null && remote.status != "active") return null
         val snapshot = remote.snapshot ?: return null
         val startedAt = parseInstantMillis(remote.startsAt) ?: return null
-        val apps = snapshot.apps.map {
-            PactApp(
-                packageName = it.packageName,
-                label = it.label,
-                limitMinutes = it.dailyLimitMinutes,
-            )
-        }
+        val apps = snapshot.apps.map(::localApp)
         if (apps.isEmpty()) return null
 
         // Registering is what moves the challenge onto this phone, signs the
@@ -183,6 +178,66 @@ class Sync(context: Context) {
      */
     suspend fun adopt(challenge: RemoteChallenge) {
         store.saveRemotePact(challenge.remoteId, challenge.pact.startedAtMillis)
+    }
+
+    /** What went out or came back on the wire, as the enforcement loop reads it. */
+    private fun localApp(remote: SnapshotApp) = PactApp(
+        packageName = remote.packageName,
+        label = remote.label,
+        limitMinutes = remote.dailyLimitMinutes,
+        addedOn = remote.addedOn,
+    )
+
+    /** Why an app could not be added, in words for the screen. */
+    sealed interface AddAppResult {
+        /** The server's copy of the challenge, with the app in it. */
+        data class Added(val pact: Pact) : AddAppResult
+        data class Refused(val message: String) : AddAppResult
+    }
+
+    /**
+     * Brings one more app under a limit on the running challenge.
+     *
+     * The one thing in this class that is not best-effort. Everything else
+     * here is the phone telling the server what already happened; this is
+     * the phone asking, and waiting for the answer, because the answer is
+     * the new challenge. The witnesses read the server's copy, and a phone
+     * that added an app locally and told the server later would spend that
+     * gap enforcing a promise nobody else could see. So no connection means
+     * no change, and the screen says so.
+     *
+     * The pact that comes back replaces the local one whole -- apps, the
+     * day each came in, everything. The start time and the duration are the
+     * phone's own, which the server's copy agrees with by construction.
+     *
+     * An app the server already has (a retry after a lost answer) is not a
+     * failure: the current copy is fetched and adopted the same way.
+     */
+    suspend fun addApp(pact: Pact, packageName: String, label: String, limitMinutes: Int): AddAppResult {
+        val token = tokens.current()
+            ?: return AddAppResult.Refused("Sign in again to change your challenge.")
+        val id = remotePactId(pact)
+            ?: return AddAppResult.Refused(NO_CONNECTION)
+        val body = PactAppAdd(packageName = packageName, label = label, dailyLimitMinutes = limitMinutes)
+        val remote = when (val answer = Api.pacts.addApp(token, id, body)) {
+            is ApiResult.Ok -> answer.value
+            is ApiResult.Offline -> return AddAppResult.Refused(NO_CONNECTION)
+            is ApiResult.Failure -> when {
+                answer.code == 409 && answer.error == "app_already_in_pact" ->
+                    (Api.pacts.current(token) as? ApiResult.Ok)?.value
+                        ?: return AddAppResult.Refused(NO_CONNECTION)
+                answer.code == 409 ->
+                    return AddAppResult.Refused("Your challenge has ended, so nothing can be added to it.")
+                else -> return AddAppResult.Refused(answer.message)
+            }
+        }
+        val apps = remote.snapshot?.apps?.map(::localApp).orEmpty()
+        // The server never hands back fewer apps than it was given; an
+        // answer with none is an answer that could not be read, and
+        // replacing a running challenge with an empty one is not a way to
+        // handle that.
+        if (apps.none { it.packageName == packageName }) return AddAppResult.Refused(NO_CONNECTION)
+        return AddAppResult.Added(pact.copy(apps = apps))
     }
 
     /**
@@ -520,6 +575,8 @@ class Sync(context: Context) {
         )
 
     companion object {
+        private const val NO_CONNECTION =
+            "Adding an app needs a connection, so your witnesses' copy of the challenge matches yours. Try again in a moment."
         /**
          * How far apart this phone's idea of when a challenge started and
          * the server's may be, and still be the same challenge.

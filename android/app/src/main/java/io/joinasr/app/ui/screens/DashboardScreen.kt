@@ -108,6 +108,8 @@ fun DashboardScreen(
     earnedMinutes: Map<String, Int>,
     /** Opens Figma 21 for one app, from the "Earn +10m" button on its row. */
     onEarnTime: (PactApp) -> Unit,
+    /** Opens the picker that brings one more app under a limit, mid-challenge. */
+    onAddApp: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = viewModel(),
 ) {
@@ -216,6 +218,13 @@ fun DashboardScreen(
             )
             Spacer(Modifier.height(10.dp))
         }
+        // The one thing a running challenge can still take: one more app.
+        // Not in the Figma frame, which drew the limits as fixed for the
+        // duration; they still are, and so is the list, except in this
+        // direction. Quiet on purpose -- an outline where the rows are
+        // filled -- because it is an option, not the next step.
+        AddAppRow(onClick = onAddApp)
+        Spacer(Modifier.height(10.dp))
 
         if (!working) {
             Spacer(Modifier.height(10.dp))
@@ -535,6 +544,51 @@ private fun UsageRow(
     }
 }
 
+/**
+ * The row that adds an app, drawn to the same measure as the rows above it
+ * so the list reads as one list with one open slot at the end.
+ */
+@Composable
+private fun AddAppRow(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(60.dp)
+            .clip(shape)
+            .border(1.dp, AsrColors.FieldBorder, shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("+", style = AsrType.display(22), color = AsrColors.Accent)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Add an app",
+                style = AsrType.Field.copy(fontWeight = AsrType.RowTitle.fontWeight),
+                color = AsrColors.TextPrimary,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                "Counts from today. Stays until the challenge ends.",
+                style = AsrType.Label.copy(fontSize = 12.sp),
+                color = AsrColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
 /** The green pill from Figma 13's TikTok row. */
 @Composable
 private fun EarnButton(onClick: () -> Unit) {
@@ -652,6 +706,7 @@ private fun DashboardPreview() {
                 earnedMinutes = 0,
                 onEarnTime = {},
             )
+            AddAppRow(onClick = {})
         }
     }
 }

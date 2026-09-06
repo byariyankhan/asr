@@ -10,6 +10,14 @@ data class PactApp(
     val packageName: String,
     val label: String,
     val limitMinutes: Int,
+    /**
+     * The local day (YYYY-MM-DD) this app was added to a running challenge,
+     * or null for one the challenge started with. Enforcement ignores it:
+     * an added app counts against the whole of today from the moment it is
+     * added. The progress screen reads it, so the days before the app was
+     * under a limit are not judged by that limit.
+     */
+    val addedOn: String? = null,
 )
 
 /**
@@ -17,9 +25,12 @@ data class PactApp(
  * the person started.
  *
  * The whole point of the product is that this is hard to walk away from, so
- * it is one immutable value written once. Nothing edits a field of it. A
- * change means a new pact, deliberately made, which is what "limits lock
- * when your challenge starts" has to mean if it is to mean anything.
+ * it is one immutable value. Nothing edits a field of it; the one change it
+ * takes is being replaced whole by the server's copy after an app is added
+ * ([PactViewModel.addApp]), and that change only ever tightens it -- an app
+ * joins, no app leaves, no limit moves. Anything else means a new pact,
+ * deliberately made, which is what "limits lock when your challenge starts"
+ * has to mean if it is to mean anything.
  *
  * [version] is here from the first release rather than added when it is
  * first needed, because the day it is needed is the day somebody's live
@@ -42,6 +53,22 @@ data class Pact(
         get() = apps.associate { it.packageName to it.limitMinutes }
 
     fun appFor(packageName: String): PactApp? = apps.firstOrNull { it.packageName == packageName }
+
+    /**
+     * For each app added after the start, the first instant of the local
+     * day it came in on -- what [io.joinasr.app.challenge.WeeklyProgress]
+     * needs to leave the days before it unjudged. Apps the challenge
+     * started with are absent. A day that cannot be read is treated as
+     * "from the start", which judges more rather than less.
+     */
+    fun judgedFrom(zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): Map<String, Long> =
+        apps.mapNotNull { app ->
+            val day = app.addedOn ?: return@mapNotNull null
+            val start = runCatching {
+                java.time.LocalDate.parse(day).atStartOfDay(zone).toInstant().toEpochMilli()
+            }.getOrNull() ?: return@mapNotNull null
+            app.packageName to start
+        }.toMap()
 
     /**
      * Whether this is something the enforcement loop can act on. An empty

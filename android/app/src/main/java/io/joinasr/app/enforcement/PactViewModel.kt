@@ -8,6 +8,7 @@ import io.joinasr.app.apps.AppEntry
 import io.joinasr.app.sync.Sync
 import io.joinasr.app.sync.Uuid7
 import io.joinasr.app.witness.WitnessStore
+import io.joinasr.app.sync.Sync.AddAppResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -146,6 +147,70 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
 
     fun acknowledgeEnded() {
         viewModelScope.launch { outcomes.markSeen() }
+    }
+
+    /** True from the tap on "Add to challenge" until the server has answered. */
+    private val _addingApp = MutableStateFlow(false)
+    val addingApp: StateFlow<Boolean> = _addingApp.asStateFlow()
+
+    /** Why the last add did not happen, until the screen clears it. */
+    private val _addAppError = MutableStateFlow<String?>(null)
+    val addAppError: StateFlow<String?> = _addAppError.asStateFlow()
+
+    /** The label of the app just added, until the screen acknowledges it. */
+    private val _appAdded = MutableStateFlow<String?>(null)
+    val appAdded: StateFlow<String?> = _appAdded.asStateFlow()
+
+    /**
+     * Brings one more app under a limit on the running challenge.
+     *
+     * The one change a running challenge takes, and only in this direction:
+     * an app joins, no app leaves, no limit moves. It counts from now
+     * against the whole of today -- an app already past the limit it was
+     * just given is blocked within the second, which is the day's usage and
+     * not a breach, the same as starting a challenge in the afternoon. The
+     * witnesses are not told; their summary shows one more app from today.
+     *
+     * Online only, unlike everything else about a challenge: the server's
+     * copy is what the witnesses read, and the new limit should exist for
+     * them the moment it exists for the person. The pact that comes back
+     * replaces the stored one whole, which is what the enforcement loop is
+     * already watching.
+     */
+    fun addApp(entry: AppEntry, limitMinutes: Int) {
+        if (_addingApp.value) return
+        viewModelScope.launch {
+            val pact = store.current() ?: return@launch
+            if (pact.appFor(entry.packageName) != null) {
+                _appAdded.value = entry.label
+                return@launch
+            }
+            _addingApp.value = true
+            _addAppError.value = null
+            val result = runCatching {
+                sync.addApp(pact, entry.packageName, entry.label, limitMinutes)
+            }.getOrElse { AddAppResult.Refused("Something went wrong. Try again in a moment.") }
+            when (result) {
+                is AddAppResult.Added -> {
+                    // Only if this is still the same challenge: a give-up
+                    // that raced this request must not be undone by it.
+                    if (store.current()?.startedAtMillis == pact.startedAtMillis) {
+                        store.save(result.pact)
+                        _appAdded.value = entry.label
+                    }
+                }
+                is AddAppResult.Refused -> _addAppError.value = result.message
+            }
+            _addingApp.value = false
+        }
+    }
+
+    fun clearAddAppError() {
+        _addAppError.value = null
+    }
+
+    fun acknowledgeAppAdded() {
+        _appAdded.value = null
     }
 
     /**

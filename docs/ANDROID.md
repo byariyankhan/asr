@@ -32,6 +32,21 @@ whether protection is actually on — the "PROTECTED" pill reads the real
 permission state rather than always saying yes. Setup ends when the pact is
 committed, not on a flag, so the pact existing *is* what "set up" means.
 
+**One thing a running challenge still takes: one more app.** The last row
+under Today's limits is "Add an app". It opens a picker (the setup list
+minus the apps already in the challenge, one choice, the same limit ladder
+as setup) and asks the server to append the app to the pact; the pact that
+comes back replaces the stored one whole, so the enforcement loop is
+measuring the new app within the second. The new limit applies to the whole
+of today, so an app already over it locks at once -- the day's usage, not a
+breach, the same as starting a challenge in the afternoon. Witnesses are not
+told. Nothing else about a running challenge changes: no app leaves and no
+limit moves. The day an app came in is kept (`PactApp.addedOn`) so the
+progress screen does not judge the days before it by a limit that did not
+exist yet. Online only, unlike the rest of a challenge: the server's copy is
+what the witnesses read, and the two should never disagree about which apps
+are in it.
+
 **Signing in lands on the dashboard.** Setup is entered from a button on
 it, not by having no pact. Half of this product's users never run a
 challenge at all — somebody invited to witness a friend signs up to answer

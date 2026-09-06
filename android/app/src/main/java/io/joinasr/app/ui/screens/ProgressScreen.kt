@@ -81,7 +81,8 @@ fun ProgressScreen(
     // week of queries is not something to repeat every few seconds.
     val days by produceState(initialValue = emptyList<DayOutcome>(), pact) {
         val history = UsageHistory.lastDays(context, days = 7)
-        value = WeeklyProgress.outcomes(history, limits)
+        // An app added mid-challenge is judged from the day it came in.
+        value = WeeklyProgress.outcomes(history, limits, pact?.judgedFrom().orEmpty())
     }
 
     val allowance = WeeklyProgress.dailyAllowance(limits)

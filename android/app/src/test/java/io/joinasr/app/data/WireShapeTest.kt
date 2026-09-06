@@ -24,6 +24,35 @@ import org.junit.Test
 class WireShapeTest {
 
     @Test
+    fun `an app added to a running challenge is three fields and no added_on`() {
+        // Repeated character for character in wire-contract.test.ts. The
+        // day it came in is the server's to stamp; nothing here sends one.
+        val body = PactAppAdd(
+            packageName = "com.zhiliaoapp.musically",
+            label = "TikTok",
+            dailyLimitMinutes = 20,
+        )
+        assertEquals(
+            """{"package":"com.zhiliaoapp.musically","label":"TikTok","daily_limit_min":20}""",
+            ApiJson.encodeToString(body),
+        )
+    }
+
+    @Test
+    fun `an app the server stamped reads back with its day, and one it did not reads back without`() {
+        val apps = ApiJson.decodeFromString<List<SnapshotApp>>(
+            """[{"package":"com.instagram.android","label":"Instagram","daily_limit_min":30},""" +
+                """{"package":"com.zhiliaoapp.musically","label":"TikTok","daily_limit_min":20,"added_on":"2026-09-06"}]""",
+        )
+        assertEquals(listOf(null, "2026-09-06"), apps.map { it.addedOn })
+        // And a snapshot the phone sends never carries the field at all.
+        assertEquals(
+            """{"package":"com.instagram.android","label":"Instagram","daily_limit_min":30}""",
+            ApiJson.encodeToString(apps.first()),
+        )
+    }
+
+    @Test
     fun `a pact carries its reset time and its activity rules`() {
         val body = PactCreate(
             deviceId = "8f14e45f-ea9e-4c3b-9d1a-2b6c7d8e9f01",
