@@ -11,7 +11,7 @@ export const DELETION_GRACE_DAYS = 7;
 export async function exportAccount(userId: string) {
   const user = await db
     .selectFrom("user")
-    .select(["id", "name", "email", "emailVerified", "timezone", "notify_email", "notify_push", "date_of_birth", "country", "gender", "createdAt"])
+    .select(["id", "name", "first_name", "last_name", "email", "emailVerified", "timezone", "notify_email", "notify_push", "date_of_birth", "country", "gender", "createdAt"])
     .where("id", "=", userId)
     .executeTakeFirst();
   if (!user) throw notFound("User");

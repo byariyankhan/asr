@@ -37,10 +37,10 @@ describe("what the Android app sends", () => {
 
   it("an optional it has nothing for is absent, not null", () => {
     expect(meUpdate.parse(JSON.parse('{"country":"BD"}'))).toEqual({ country: "BD" });
-    // Which is why the app must not send one. `name` is optional but not
-    // nullable -- there is no such thing as clearing your name -- so a null
-    // in the body is a rejected request, not a no-op.
-    expect(() => meUpdate.parse({ name: null })).toThrow();
+    // Which is why the app must not send one. `first_name` is optional but
+    // not nullable -- there is no such thing as clearing your name -- so a
+    // null in the body is a rejected request, not a no-op.
+    expect(() => meUpdate.parse({ first_name: null })).toThrow();
     // And a body with every field left out has nothing to say at all.
     expect(() => meUpdate.parse({})).toThrow();
   });
