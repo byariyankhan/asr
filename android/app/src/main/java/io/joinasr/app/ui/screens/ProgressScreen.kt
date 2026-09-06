@@ -33,6 +33,7 @@ import io.joinasr.app.daysLabel
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.challenge.DayOutcome
 import io.joinasr.app.challenge.WeeklyProgress
+import io.joinasr.app.enforcement.CarriedUsage
 import io.joinasr.app.enforcement.Pact
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.formatMinutes
@@ -81,7 +82,14 @@ fun ProgressScreen(
     // Read once when the screen opens. Yesterday does not change, and a
     // week of queries is not something to repeat every few seconds.
     val days by produceState(initialValue = emptyList<DayOutcome>(), pact) {
-        val history = UsageHistory.lastDays(context, days = 7)
+        val measured = UsageHistory.lastDays(context, days = 7)
+        // Today is the whole day, wherever it was spent: the minutes a
+        // challenge brought with it from another phone belong to today's
+        // bar, as they do to the dashboard and the block screen.
+        val elsewhere = CarriedUsage(context).forDay(CarriedUsage.today())
+        val history = measured.mapIndexed { index, day ->
+            if (index == measured.lastIndex) day.plus(elsewhere) else day
+        }
         // Judged only from the day the challenge began: the days before it
         // are drawn for comparison, not counted as breaches of limits that
         // did not exist yet. An app added mid-challenge is judged from the

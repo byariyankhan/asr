@@ -48,6 +48,18 @@ class DayTest {
     }
 
     @Test
+    fun `the next midnight is the calendar's, not today's plus twenty-four hours`() {
+        // London springs forward on 29 March 2026: the day is 23 hours
+        // long, so midnight plus a day lands at 01:00 on the 30th.
+        val noon = millis(london, 2026, 3, 29, 12, 0)
+        assertEquals(millis(london, 2026, 3, 30, 0, 0), Day.nextMidnight(noon, london))
+        assertEquals(23L * 60 * 60 * 1000, Day.nextMidnight(noon, london) - Day.startOfDay(noon, london))
+        // An ordinary day, for comparison.
+        val evening = millis(dhaka, 2026, 9, 3, 23, 30)
+        assertEquals(millis(dhaka, 2026, 9, 4, 0, 0), Day.nextMidnight(evening, dhaka))
+    }
+
+    @Test
     fun `a day that does not start at midnight still starts where the clock says`() {
         // Lord Howe Island shifts by thirty minutes; several zones have had
         // a DST change land exactly on midnight, so "midnight" is whatever

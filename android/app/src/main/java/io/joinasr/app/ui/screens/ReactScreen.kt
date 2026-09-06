@@ -36,6 +36,7 @@ import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
+import io.joinasr.app.witness.Pronouns
 import io.joinasr.app.witness.Reaction
 import io.joinasr.app.witness.Reactions
 
@@ -57,6 +58,8 @@ fun ReactScreen(
     item: InboxItem,
     /** Their name, when this phone knows it from the supporting list. */
     personName: String?,
+    /** Their gender, from their profile: what "visible to him" is built from. */
+    gender: String?,
     /** What was already sent for this event, if anything. */
     chosen: String?,
     busy: Boolean,
@@ -67,7 +70,7 @@ fun ReactScreen(
     val options = Reactions.forEvent(if (item.kind == "pact_broken") "broken" else item.kind)
     var picked by remember(item.id) { mutableStateOf(Reactions.of(chosen) ?: options.first()) }
     val breach = item.kind == "pact_broken"
-    val who = personName?.trim()?.takeIf { it.isNotBlank() } ?: "They"
+    val p = Pronouns.of(gender)
 
     Column(
         modifier = modifier
@@ -90,7 +93,7 @@ fun ReactScreen(
         EventCard(item = item, breach = breach)
 
         Spacer(Modifier.height(18.dp))
-        VisibilityNote(who = who)
+        VisibilityNote(p)
 
         Spacer(Modifier.height(26.dp))
         Text(
@@ -193,7 +196,7 @@ private fun EventCard(item: InboxItem, breach: Boolean) {
 }
 
 @Composable
-private fun VisibilityNote(who: String) {
+private fun VisibilityNote(p: Pronouns) {
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier = Modifier
@@ -203,13 +206,13 @@ private fun VisibilityNote(who: String) {
             .padding(15.dp),
     ) {
         Text(
-            "Your reaction is visible to them",
+            "Your reaction is visible to ${p.them}",
             style = AsrType.Field.copy(fontSize = 15.sp),
             color = AsrColors.TextPrimary,
         )
         Spacer(Modifier.height(7.dp))
         Text(
-            "It appears with your profile photo on their Witnesses page.",
+            "It appears with your profile photo on ${p.their} Witnesses page.",
             style = AsrType.Legal.copy(fontSize = 13.sp),
             color = AsrColors.TextSecondary,
         )
@@ -284,6 +287,7 @@ private fun ReactPreview() {
                 eventId = "e1",
             ),
             personName = "Rafi",
+            gender = "male",
             chosen = null,
             busy = false,
             onBack = {},

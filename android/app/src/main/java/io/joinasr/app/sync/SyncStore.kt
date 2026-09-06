@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import io.joinasr.app.enforcement.Pact
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -31,7 +32,41 @@ data class PendingEvent(
     val appPackage: String? = null,
     val minutes: Int? = null,
     val occurredAtMillis: Long,
+    /**
+     * Which challenge it happened in, by the start time that identifies a
+     * pact on this phone. Null only on an event queued by a build before
+     * this field existed; [Outbox] treats one of those as nobody's.
+     */
+    val pactStartedAtMillis: Long? = null,
 )
+
+/**
+ * Which queued events belong to which challenge.
+ *
+ * The outbox is one queue and the phone can hold two challenges' worth of
+ * it: a give-up that happened offline, then a new challenge started the
+ * same afternoon, then a limit reached in it. Drained as one list against
+ * one id, the new challenge's breach was filed under the old one -- and
+ * before that, nothing was sent at all, because creating the new pact
+ * answered 409 while the old one was still open on the server, and the
+ * event that would have closed it was sitting behind that very refusal.
+ */
+object Outbox {
+
+    /** The events that happened in [pact], and no other. */
+    fun forPact(queued: List<PendingEvent>, pact: Pact): List<PendingEvent> =
+        queued.filter { it.pactStartedAtMillis == pact.startedAtMillis }
+
+    /**
+     * Whether nothing queued belongs to another challenge, which is the
+     * condition for adopting an active pact the server already has as
+     * [pact]'s own. An event of unknown origin counts as another's: the
+     * cautious answer, since adopting wrongly files this challenge's
+     * breaches against the last one.
+     */
+    fun clearOfOthers(queued: List<PendingEvent>, pact: Pact): Boolean =
+        queued.none { it.pactStartedAtMillis != pact.startedAtMillis }
+}
 
 /**
  * What this phone knows about the server's copy of things.

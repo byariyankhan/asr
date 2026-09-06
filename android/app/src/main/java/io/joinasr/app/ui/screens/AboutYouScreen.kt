@@ -29,6 +29,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +68,12 @@ import io.joinasr.app.ui.theme.AsrType
  * The other three fields are required, and date of birth genuinely is: the
  * server refuses an account under thirteen, so it has to be asked.
  */
+/** A picked choice across a rotation; nothing when none is picked. */
+private val ChoiceSaver = listSaver<Choice?, String>(
+    save = { if (it == null) emptyList() else listOf(it.value, it.label) },
+    restore = { if (it.size == 2) Choice(it[0], it[1]) else null },
+)
+
 @Composable
 fun AboutYouScreen(
     onBack: () -> Unit,
@@ -79,11 +87,15 @@ fun AboutYouScreen(
 ) {
     val context = LocalContext.current
 
-    var firstName by remember { mutableStateOf(initialFirstName) }
-    var lastName by remember { mutableStateOf(initialLastName) }
-    var dob by remember { mutableStateOf("") }
-    var country by remember { mutableStateOf<Choice?>(null) }
-    var gender by remember { mutableStateOf<Choice?>(null) }
+    // The typed and chosen answers survive the activity being rebuilt --
+    // and it is rebuilt here more than most places, because picking a photo
+    // leaves for another app. The photo bytes themselves do not go in the
+    // saved state; they are re-read from the picked file.
+    var firstName by rememberSaveable { mutableStateOf(initialFirstName) }
+    var lastName by rememberSaveable { mutableStateOf(initialLastName) }
+    var dob by rememberSaveable { mutableStateOf("") }
+    var country by rememberSaveable(stateSaver = ChoiceSaver) { mutableStateOf<Choice?>(null) }
+    var gender by rememberSaveable(stateSaver = ChoiceSaver) { mutableStateOf<Choice?>(null) }
     var preview by remember { mutableStateOf<ByteArray?>(null) }
     var photoError by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<Uri?>(null) }

@@ -18,6 +18,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -86,8 +88,6 @@ import io.joinasr.app.ui.screens.UsageAccessScreen
 import io.joinasr.app.ui.screens.WelcomeScreen
 import io.joinasr.app.ui.screens.WitnessInviteScreen
 import io.joinasr.app.DeepLink
-import io.joinasr.app.data.InboxItem
-import io.joinasr.app.data.SupportedPerson
 import io.joinasr.app.witness.WitnessViewModel
 import io.joinasr.app.ui.theme.AsrColors
 
@@ -105,10 +105,48 @@ private sealed interface Destination {
 
     /** Figma 34. Carries the address so the screen can name it. */
     data class CheckEmail(val email: String) : Destination
-
-    /** Figma 35, reached from the link in the email rather than from a tap. */
-    data class ResetPassword(val token: String) : Destination
 }
+
+/**
+ * How the signed-out screen survives a rotation: a tag, and the address for
+ * the one destination that carries one. Everything in this file that says
+ * where the person is used to be plain `remember`, which Android throws
+ * away with the activity on every rotation, font-size change and split-
+ * screen resize -- so turning the phone in the middle of setup dropped the
+ * person on the dashboard with every choice gone.
+ */
+private val DestinationSaver = listSaver<Destination, String>(
+    save = { where ->
+        when (where) {
+            Destination.Welcome -> listOf("welcome")
+            Destination.SignUp -> listOf("sign_up")
+            Destination.LogIn -> listOf("log_in")
+            Destination.ForgotPassword -> listOf("forgot")
+            is Destination.CheckEmail -> listOf("check_email", where.email)
+        }
+    },
+    restore = { saved ->
+        when (saved.firstOrNull()) {
+            "sign_up" -> Destination.SignUp
+            "log_in" -> Destination.LogIn
+            "forgot" -> Destination.ForgotPassword
+            "check_email" -> Destination.CheckEmail(saved.getOrElse(1) { "" })
+            else -> Destination.Welcome
+        }
+    },
+)
+
+/** The apps chosen during setup, flattened to strings for the saved state. */
+private val AppEntriesSaver = listSaver<List<AppEntry>, String>(
+    save = { apps -> apps.flatMap { listOf(it.packageName, it.label) } },
+    restore = { flat -> flat.chunked(2).map { AppEntry(it[0], it[1]) } },
+)
+
+/** The limits chosen during setup: package, minutes, package, minutes. */
+private val LimitsSaver = listSaver<Map<String, Int>, Any>(
+    save = { limits -> limits.flatMap { (packageName, minutes) -> listOf(packageName, minutes) } },
+    restore = { flat -> flat.chunked(2).associate { it[0] as String to it[1] as Int } },
+)
 
 /**
  * The setup steps that come after an account exists.
@@ -132,16 +170,16 @@ private sealed interface Destination {
  * a challenge, so the challenge is created first and they are invited to it
  * on the way out.
  */
-private sealed interface SetupStep {
-    data object Duration : SetupStep
-    data object UsageAccess : SetupStep
-    data object ChooseApps : SetupStep
-    data object DailyLimits : SetupStep
-    data object Protection : SetupStep
-    data object BlockingDisclosure : SetupStep
+private enum class SetupStep {
+    Duration,
+    UsageAccess,
+    ChooseApps,
+    DailyLimits,
+    Protection,
+    BlockingDisclosure,
     /** Battery optimisation and the manufacturer's switches, from the Protection step. */
-    data object Background : SetupStep
-    data object Review : SetupStep
+    Background,
+    Review,
 }
 
 /**
@@ -205,15 +243,19 @@ fun AsrApp(
     val resetEmailSentTo by accountViewModel.resetEmailSentTo.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
-    var destination by remember { mutableStateOf<Destination>(Destination.Welcome) }
-    var setupStep by remember { mutableStateOf<SetupStep>(SetupStep.Duration) }
-    var tab by remember { mutableStateOf(AsrTab.Home) }
+    // Saved state, all of it, for the reason DestinationSaver gives: where
+    // the person is has to survive the activity being rebuilt under them.
+    var destination by rememberSaveable(stateSaver = DestinationSaver) {
+        mutableStateOf<Destination>(Destination.Welcome)
+    }
+    var setupStep by rememberSaveable { mutableStateOf(SetupStep.Duration) }
+    var tab by rememberSaveable { mutableStateOf(AsrTab.Home) }
     // Where the Profile tab is: null is its own overview, anything else is a
     // screen stacked on top of it. One nullable value rather than a back
     // stack, for the same reason Destination is: three destinations do not
     // need a navigation library.
-    var profileRoute by remember { mutableStateOf<ProfileDestination?>(null) }
-    var addingWitness by remember { mutableStateOf(false) }
+    var profileRoute by rememberSaveable { mutableStateOf<ProfileDestination?>(null) }
+    var addingWitness by rememberSaveable { mutableStateOf(false) }
 
     /**
      * Whether the way out is open on screen.
@@ -225,27 +267,29 @@ fun AsrApp(
      */
     var givingUp by remember { mutableStateOf(false) }
     // Figma 16's two halves, and Figma 17 stacked on the second of them.
-    var circleTab by remember { mutableStateOf(CircleTab.Mine) }
-    var openPerson by remember { mutableStateOf<SupportedPerson?>(null) }
+    var circleTab by rememberSaveable { mutableStateOf(CircleTab.Mine) }
+    // The open person by id, found again in the list after a rotation.
+    var openPersonId by rememberSaveable { mutableStateOf<String?>(null) }
+    val openPerson = openPersonId?.let { id -> supporting.firstOrNull { it.id == id } }
     // Figma 31, which sits on top of Personal Details rather than in the
     // profile's row list: the design puts it at the bottom of that screen.
-    var deletingAccount by remember { mutableStateOf(false) }
+    var deletingAccount by rememberSaveable { mutableStateOf(false) }
     // Figma 27, opened from the NOT PROTECTED pill on the dashboard.
-    var showingProtectionLost by remember { mutableStateOf(false) }
+    var showingProtectionLost by rememberSaveable { mutableStateOf(false) }
     // Figma 19, opened from the bell.
-    var showingNotifications by remember { mutableStateOf(false) }
+    var showingNotifications by rememberSaveable { mutableStateOf(false) }
     // Figma 21-24. The package the block screen sent, held for as long as
     // the person is inside the earn flow.
-    var earningFor by remember { mutableStateOf<String?>(null) }
+    var earningFor by rememberSaveable { mutableStateOf<String?>(null) }
     /** The picker that brings one more app under a limit, over the dashboard. */
-    var addingApp by remember { mutableStateOf(false) }
+    var addingApp by rememberSaveable { mutableStateOf(false) }
     /**
      * True when the person has stepped back from Figma 23 while the walk or
      * the focus session goes on. The activity keeps running; the screen is
      * simply not in front. Back and the chevron set it; a new activity, or
      * the running one ending, clears it; the Earn button reopens it.
      */
-    var activityMinimised by remember { mutableStateOf(false) }
+    var activityMinimised by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(activeActivity?.id) { activityMinimised = false }
     // True while Figma 22 is showing, between choosing a walk and the grant.
     var askingForSteps by remember { mutableStateOf(false) }
@@ -287,22 +331,26 @@ fun AsrApp(
             runCatching { context.startActivity(Permissions.appNotificationSettingsIntent(context)) }
         }
     }
-    // Figma 25, opened from a notification about somebody else.
-    var reactingTo by remember { mutableStateOf<InboxItem?>(null) }
+    // Figma 25, opened from a notification about somebody else. By id, so
+    // it is still open after a rotation; gone if the inbox no longer has it.
+    var reactingToId by rememberSaveable { mutableStateOf<String?>(null) }
+    val reactingTo = reactingToId?.let { id -> inboxItems.firstOrNull { it.id == id } }
     // Figma 18. The code from a witness link, held until it is answered.
     var inviteCode by remember { mutableStateOf<String?>(null) }
     // True while somebody who opened an invite is going through sign-up.
     // The code is kept the whole time, so they land back on the invitation
     // with an account rather than on an empty dashboard wondering where the
     // link went.
-    var inviteDeferred by remember { mutableStateOf(false) }
+    var inviteDeferred by rememberSaveable { mutableStateOf(false) }
     // True between committing a pact and pressing "Go to dashboard" on
-    // Figma 12. Not stored: it is a moment, not a state of the challenge,
-    // and a person who closes the app during it has still started.
-    var justStarted by remember { mutableStateOf(false) }
+    // Figma 12. Not written to disk: it is a moment, not a state of the
+    // challenge, and a person who closes the app during it has still
+    // started. It does survive the activity being rebuilt, so turning the
+    // phone on that screen does not skip it.
+    var justStarted by rememberSaveable { mutableStateOf(false) }
     /** Whether Continue has been pressed on the witness screen since this
      *  challenge started. Enabled only once an invitation has gone out. */
-    var witnessesOffered by remember { mutableStateOf(false) }
+    var witnessesOffered by rememberSaveable { mutableStateOf(false) }
 
     /**
      * Whether the person is inside the setup flow.
@@ -315,10 +363,13 @@ fun AsrApp(
      * asked for. Signing in now lands on the dashboard, and setup is entered
      * from a button on it.
      *
-     * Not stored. Backing out of the first step leaves nothing behind,
-     * which is the point: nothing is committed until the review screen.
+     * Not written to disk. Backing out of the first step leaves nothing
+     * behind, which is the point: nothing is committed until the review
+     * screen. It is saved with the activity, though, along with the choices
+     * below: rotating the phone on step four used to be the same as backing
+     * out of all four.
      */
-    var startingChallenge by remember { mutableStateOf(false) }
+    var startingChallenge by rememberSaveable { mutableStateOf(false) }
 
     /**
      * The two grants that make a challenge mean anything, re-read whenever
@@ -342,14 +393,31 @@ fun AsrApp(
     // half-made challenge is not something the app should remember: it is
     // committed whole on the last step, or it never existed. After that it
     // is read back from storage, never from here.
-    var chosenDays by remember { mutableIntStateOf(ChallengeDuration.DEFAULT_DAYS) }
-    var chosenApps by remember { mutableStateOf(emptyList<AppEntry>()) }
-    var chosenLimits by remember { mutableStateOf(emptyMap<String, Int>()) }
+    var chosenDays by rememberSaveable { mutableIntStateOf(ChallengeDuration.DEFAULT_DAYS) }
+    var chosenApps by rememberSaveable(stateSaver = AppEntriesSaver) { mutableStateOf(emptyList<AppEntry>()) }
+    var chosenLimits by rememberSaveable(stateSaver = LimitsSaver) { mutableStateOf(emptyMap<String, Int>()) }
 
     // The keep-it-running screen, opened from the dashboard's warning when
     // the loop is not alive. Not a tab and not setup: a repair, from where
     // the damage shows.
-    var fixingProtection by remember { mutableStateOf(false) }
+    var fixingProtection by rememberSaveable { mutableStateOf(false) }
+
+    /**
+     * The token from a reset link, while Figma 35 is open over everything.
+     *
+     * Over everything, signed in or not, and nobody is signed out to show
+     * it. The link used to sign the phone out first -- before the token had
+     * been tried -- so an expired or wrong link cost a working session, and
+     * with it the challenge running on this phone: the pact was wiped, the
+     * loop stopped, and a day later the witnesses heard the phone had gone
+     * dark. Now the token is spent first, and what follows depends on
+     * whether it worked; see the effect on `passwordReset`.
+     */
+    var resetToken by rememberSaveable { mutableStateOf<String?>(null) }
+    // The password just submitted, kept only until the answer comes back
+    // and never saved with the activity. It is what signs the person back
+    // in afterwards without asking them to type it again.
+    var resetSubmitted by remember { mutableStateOf<String?>(null) }
 
     // The one place the loop is started from inside the app. Starting an
     // already-running service costs one onStartCommand, and the service
@@ -372,21 +440,18 @@ fun AsrApp(
         viewModel.clearError()
         accountViewModel.clear()
     }
-    LaunchedEffect(profileRoute, deletingAccount) { accountViewModel.clear() }
+    LaunchedEffect(profileRoute, deletingAccount, resetToken) { accountViewModel.clear() }
 
     // A link takes precedence over whatever screen was showing, because
     // opening one is the person saying where they want to be.
     //
-    // A reset link also signs them out first: the token is proof of reaching
-    // the inbox, the server revokes every session when it is spent, and
-    // staying on a signed-in screen behind it would only mean the next
-    // request 401s.
+    // A reset link opens the form and nothing else. Whether anybody ends up
+    // signed out is decided when the token has actually been spent, below.
     LaunchedEffect(link) {
         when (val opened = link) {
             null -> Unit
             is DeepLink.Reset -> {
-                viewModel.signOut()
-                destination = Destination.ResetPassword(opened.token)
+                resetToken = opened.token
                 onLinkHandled()
             }
             is DeepLink.Invite -> {
@@ -507,10 +572,28 @@ fun AsrApp(
         viewModel.signOut()
     }
 
+    // The token has been spent and the server has revoked every session of
+    // that account. Signed out, that is the log-in screen. Signed in, this
+    // phone's own session is among the revoked -- so it signs straight back
+    // in with the password just typed, and the challenge running here never
+    // notices. Only when that cannot be done (the password was lost to a
+    // rebuild of the activity mid-request) does the phone sign out the
+    // ordinary way.
     LaunchedEffect(passwordReset) {
         if (!passwordReset) return@LaunchedEffect
         accountViewModel.consumeReset()
-        destination = Destination.LogIn
+        val password = resetSubmitted
+        resetSubmitted = null
+        resetToken = null
+        val me = (session as? Session.SignedIn)?.me
+        when {
+            me == null -> destination = Destination.LogIn
+            password != null -> viewModel.reauthenticate(me.email, password)
+            else -> {
+                destination = Destination.LogIn
+                viewModel.signOut()
+            }
+        }
     }
 
     // Figma 34 says "reset link sent" as a fact, so it is reached when the
@@ -585,6 +668,10 @@ fun AsrApp(
     val invitationOpen = code != null && (signedIn || !inviteDeferred) && !needsProfile
     val earnAppNow = (pactState as? PactState.Active)?.pact?.let { pact -> earningFor?.let(pact::appFor) }
     val backAction: (() -> Unit)? = when {
+        resetToken != null -> ({
+            resetToken = null
+            if (!signedIn) destination = Destination.LogIn
+        })
         invitationOpen -> ({
             inviteCode = null
             inviteDeferred = false
@@ -630,7 +717,7 @@ fun AsrApp(
             earningFor = null
             earnViewModel.clearError()
         })
-        tab == AsrTab.Home && reactingTo != null -> ({ reactingTo = null })
+        tab == AsrTab.Home && reactingTo != null -> ({ reactingToId = null })
         tab == AsrTab.Home && showingNotifications -> ({ showingNotifications = false })
         tab == AsrTab.Home && showingProtectionLost -> ({ showingProtectionLost = false })
         tab == AsrTab.Home && fixingProtection -> ({ fixingProtection = false })
@@ -641,7 +728,7 @@ fun AsrApp(
         // Progress
         tab == AsrTab.Progress && givingUp -> ({ givingUp = false })
         // Witnesses
-        tab == AsrTab.Witnesses && openPerson != null -> ({ openPerson = null })
+        tab == AsrTab.Witnesses && openPerson != null -> ({ openPersonId = null })
         tab == AsrTab.Witnesses && addingWitness -> ({ addingWitness = false })
         // Profile
         tab == AsrTab.Profile && deletingAccount -> ({ deletingAccount = false })
@@ -658,7 +745,8 @@ fun AsrApp(
     // back to the invitation, not to Welcome with the invitation hidden
     // behind it until the next launch.
     BackHandler(
-        enabled = session is Session.SignedOut && !invitationOpen && destination != Destination.Welcome,
+        enabled = session is Session.SignedOut && resetToken == null && !invitationOpen &&
+            destination != Destination.Welcome,
     ) {
         if (inviteDeferred && code != null) {
             inviteDeferred = false
@@ -667,14 +755,32 @@ fun AsrApp(
             destination = when (destination) {
                 Destination.ForgotPassword -> Destination.LogIn
                 is Destination.CheckEmail -> Destination.ForgotPassword
-                is Destination.ResetPassword -> Destination.LogIn
                 else -> Destination.Welcome
             }
         }
     }
 
 
-    if (code != null && (signedIn || !inviteDeferred) && !needsProfile) {
+    val resetting = resetToken
+    if (resetting != null) {
+        // Figma 35, reached from the link in the email. Over everything,
+        // signed in or not: it needs no session, and it takes none away.
+        // Back goes to log in rather than to a previous screen when signed
+        // out, because there is no previous screen when the app was opened
+        // by an email.
+        ResetPasswordScreen(
+            onBack = {
+                resetToken = null
+                if (!signedIn) destination = Destination.LogIn
+            },
+            onSubmit = { password ->
+                resetSubmitted = password
+                accountViewModel.resetPassword(resetting, password)
+            },
+            busy = accountBusy,
+            errorMessage = accountError,
+        )
+    } else if (code != null && (signedIn || !inviteDeferred) && !needsProfile) {
         // Figma 18, over everything. Opening the link is the person saying
         // where they want to be, and it works signed out because the person
         // being asked to vouch usually has no account yet.
@@ -872,7 +978,7 @@ fun AsrApp(
                     // Figma 12.
                     ChallengeStartedScreen(
                         days = started.durationDays,
-                        witnesses = witnesses.size,
+                        witnesses = witnesses,
                         protectionReady = protection.requiredGranted,
                         onContinue = {
                             justStarted = false
@@ -955,7 +1061,7 @@ fun AsrApp(
                 // trap for the next person editing this.
                 val goToTab = { target: AsrTab ->
                     // Home
-                    reactingTo = null
+                    reactingToId = null
                     earningFor = null
                     earnViewModel.clearError()
                     addingApp = false
@@ -972,7 +1078,7 @@ fun AsrApp(
                     // Progress
                     givingUp = false
                     // Witnesses
-                    openPerson = null
+                    openPersonId = null
                     addingWitness = false
                     circleTab = CircleTab.Mine
                     // Profile
@@ -1074,15 +1180,16 @@ fun AsrApp(
                                     ReactScreen(
                                         item = about,
                                         personName = person?.user?.name,
+                                        gender = person?.user?.gender ?: about.aboutUser?.gender,
                                         chosen = about.eventId?.let { reactions[it] },
                                         busy = false,
-                                        onBack = { reactingTo = null },
+                                        onBack = { reactingToId = null },
                                         onSend = { emoji ->
                                             val eventId = about.eventId
                                             if (person != null && eventId != null) {
                                                 witnessViewModel.react(person.id, eventId, emoji)
                                             }
-                                            reactingTo = null
+                                            reactingToId = null
                                         },
                                     )
                                 } else if (showingNotifications) {
@@ -1100,7 +1207,7 @@ fun AsrApp(
                                             // to. The rest are read and no more.
                                             val canReact = item.eventId != null &&
                                                 supporting.any { it.user.id == item.aboutUserId }
-                                            if (canReact) reactingTo = item
+                                            if (canReact) reactingToId = item.id
                                         },
                                         onMarkAllRead = inboxViewModel::markAllRead,
                                         onTurnOnNotifications = turnOnNotifications,
@@ -1250,7 +1357,7 @@ fun AsrApp(
                                         person = person,
                                         progress = witnessProgress[person.id],
                                         reactions = reactions,
-                                        onBack = { openPerson = null },
+                                        onBack = { openPersonId = null },
                                         onReact = { eventId, emoji ->
                                             witnessViewModel.react(person.id, eventId, emoji)
                                         },
@@ -1283,7 +1390,7 @@ fun AsrApp(
                                         progress = witnessProgress,
                                         onLoadProgress = witnessViewModel::loadProgress,
                                         onOpenPerson = {
-                                            openPerson = it
+                                            openPersonId = it.id
                                             witnessViewModel.loadProgress(it.id)
                                         },
                                         onAdd = { addingWitness = true },
@@ -1431,18 +1538,6 @@ fun AsrApp(
                 onBackToLogIn = { destination = Destination.LogIn },
                 busy = accountBusy,
                 notice = accountNotice,
-                errorMessage = accountError,
-            )
-
-            // Figma 35, reached from the link. Back goes to log in rather
-            // than to the previous screen: there is no previous screen when
-            // the app was opened by an email.
-            is Destination.ResetPassword -> ResetPasswordScreen(
-                onBack = { destination = Destination.LogIn },
-                onSubmit = { password ->
-                    accountViewModel.resetPassword(where.token, password)
-                },
-                busy = accountBusy,
                 errorMessage = accountError,
             )
         }

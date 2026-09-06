@@ -32,7 +32,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        link = DeepLink.from(intent)
+        // Only on a fresh start. The intent that opened the activity is
+        // still attached when Android rebuilds it for a rotation, and
+        // reading it again re-fired the link every time: the reset form
+        // reopened with a token already spent, the invitation reopened
+        // after being answered.
+        if (savedInstanceState == null) link = DeepLink.from(intent)
         // Edge to edge, then the app's own background painted behind the
         // status and navigation bars — without it they stay the system's
         // default and the black screen ends in two grey stripes.
@@ -47,9 +52,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     AsrApp(
                         link = link,
-                        // Consumed once the screen has it, so rotating the
-                        // phone afterwards does not reopen a screen with a
-                        // token that has already been spent.
+                        // Consumed once the screen has it; what it opened
+                        // is the screen's own state from then on.
                         onLinkHandled = { link = null },
                     )
                 }

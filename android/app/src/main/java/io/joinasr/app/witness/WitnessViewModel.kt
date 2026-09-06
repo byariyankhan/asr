@@ -209,6 +209,7 @@ class WitnessViewModel(application: Application) : AndroidViewModel(application)
                     name = it.user?.name,
                     image = it.user?.image,
                     reactions = it.reactions,
+                    gender = it.user?.gender,
                 )
             }
             store.replace(mine)

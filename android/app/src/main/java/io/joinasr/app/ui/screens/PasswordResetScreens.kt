@@ -20,7 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,7 +61,7 @@ fun ForgotPasswordScreen(
     modifier: Modifier = Modifier,
     initialEmail: String = "",
 ) {
-    var email by remember { mutableStateOf(initialEmail) }
+    var email by rememberSaveable { mutableStateOf(initialEmail) }
 
     Column(
         modifier = modifier
@@ -245,8 +245,8 @@ fun ResetPasswordScreen(
     errorMessage: String?,
     modifier: Modifier = Modifier,
 ) {
-    var password by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var confirm by rememberSaveable { mutableStateOf("") }
 
     val longEnough = password.length >= MIN_PASSWORD
     val matches = password == confirm

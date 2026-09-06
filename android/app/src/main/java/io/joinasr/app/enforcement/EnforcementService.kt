@@ -91,6 +91,7 @@ class EnforcementService : Service() {
      *  have changed: an unchanged day is not news. */
     private var lastSummaryMillis = 0L
     private var lastSummarySent: Map<String, Int> = emptyMap()
+    private var lastEarnedSent: Map<String, Int> = emptyMap()
 
     /** Whether a limited app was in front on the last pass, so that putting
      *  it down can be noticed. */
@@ -364,7 +365,7 @@ class EnforcementService : Service() {
 
         reportLimitsReached(current, snapshot, earned, now)
 
-        sendSummaryIfDue(current, now, snapshot.minutesByPackage, snapshot.foregroundPackage)
+        sendSummaryIfDue(current, now, snapshot.minutesByPackage, earned, snapshot.foregroundPackage)
 
         val blocked = Enforcement.decide(current, snapshot, earned) as? Decision.Block
         when (blockWatch.next(blocked?.app?.packageName, now)) {
@@ -425,6 +426,7 @@ class EnforcementService : Service() {
                         type = "limit_hit",
                         appPackage = app.packageName,
                         occurredAtMillis = now,
+                        pactStartedAtMillis = pact.startedAtMillis,
                     ),
                 )
             }
@@ -453,7 +455,10 @@ class EnforcementService : Service() {
         try {
             completionAskedAtElapsed = SystemClock.elapsedRealtime()
             val now = System.currentTimeMillis()
-            val watching = runCatching { witnesses.current().size }.getOrDefault(0)
+            // Only the people who accepted: they are the ones the server
+            // will tell, and the ones the ending screen names.
+            val watching = runCatching { witnesses.current().filter { it.accepted } }
+                .getOrDefault(emptyList())
             // Built in the one place every way of ending is built, so what
             // this writes down and what the witnesses are told cannot drift
             // apart.
@@ -487,7 +492,7 @@ class EnforcementService : Service() {
             } else {
                 runCatching {
                     sync.report(pact, completed.event)
-                    if (sync.isDrained()) outcomes.markReported()
+                    if (sync.isDrained(pact)) outcomes.markReported()
                 }
             }
 
@@ -526,6 +531,16 @@ class EnforcementService : Service() {
         if (nowMillis - lastFlushMillis < FLUSH_EVERY_MILLIS) return
         lastFlushMillis = nowMillis
         runCatching {
+            // The last challenge's ending first, if it is still owed. Its
+            // event closes that pact on the server, and until it is closed
+            // the server refuses to create this one -- so a give-up that
+            // happened offline used to hold every event of the challenge
+            // started after it, until the app was next opened.
+            outcomes.current()?.takeIf { !it.reported }?.let { ended ->
+                val previous = ended.asPact()
+                sync.drain(previous)
+                if (sync.isDrained(previous)) outcomes.markReported()
+            }
             sync.drain(pact)
             // Measured, not assumed. A heartbeat that always says true is
             // worse than none: it is what a witness would be trusting. Both
@@ -563,21 +578,28 @@ class EnforcementService : Service() {
         pact: Pact,
         nowMillis: Long,
         minutesByPackage: Map<String, Int>,
+        earnedByPackage: Map<String, Int>,
         foreground: String?,
     ) {
         val using = foreground != null && pact.appFor(foreground) != null
         val justPutItDown = wasUsingLimitedApp && !using
         wasUsingLimitedApp = using
 
-        if (minutesByPackage == lastSummarySent) return
+        // Earned minutes are part of the figure: a walk that raised the
+        // allowance changes whether today is within limits, and a witness
+        // must see the same answer this phone gives.
+        if (minutesByPackage == lastSummarySent && earnedByPackage == lastEarnedSent) return
         val due = justPutItDown ||
             (using && nowMillis - lastSummaryMillis >= SUMMARY_WHILE_USING_MILLIS) ||
             nowMillis - lastSummaryMillis >= SUMMARY_FLOOR_MILLIS
         if (!due) return
 
         lastSummaryMillis = nowMillis
-        val sent = runCatching { sync.sendSummary(pact, minutesByPackage) }.getOrDefault(false)
-        if (sent) lastSummarySent = minutesByPackage
+        val sent = runCatching { sync.sendSummary(pact, minutesByPackage, earnedByPackage) }.getOrDefault(false)
+        if (sent) {
+            lastSummarySent = minutesByPackage
+            lastEarnedSent = earnedByPackage
+        }
     }
 
     /**
@@ -692,7 +714,7 @@ class EnforcementService : Service() {
      */
     private fun nextResetText(): String {
         val now = System.currentTimeMillis()
-        val tomorrow = Day.startOfDay(now) + DAY_MILLIS
+        val tomorrow = Day.nextMidnight(now)
         val time = DateFormat.getTimeFormat(this).format(Date(tomorrow))
         return getString(R.string.block_available_again, time)
     }
@@ -779,7 +801,6 @@ class EnforcementService : Service() {
         /** The IMPORTANCE_LOW channel this replaced. See [createChannel]. */
         private const val LEGACY_CHANNEL_ID = "protection"
         private const val NOTIFICATION_ID = 1
-        private const val DAY_MILLIS = 24L * 60 * 60 * 1000
 
         /** How long to sleep between errands while the screen is off. The
          *  screen coming back interrupts this; nothing else needs to. */

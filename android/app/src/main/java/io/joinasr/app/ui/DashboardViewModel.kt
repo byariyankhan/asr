@@ -3,6 +3,7 @@ package io.joinasr.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.joinasr.app.enforcement.CarriedUsage
 import io.joinasr.app.enforcement.ProtectionStatusStore
 import io.joinasr.app.usage.usageReader
 import kotlinx.coroutines.Dispatchers
@@ -48,11 +49,19 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val reader = usageReader(application)
     private val protection = ProtectionStatusStore(application)
+    private val carried = CarriedUsage(application)
     private val openedAt = System.currentTimeMillis()
 
+    // The same whole-day figure the loop decides on: what this phone can
+    // see, plus what the day already held when the challenge arrived here
+    // from another handset. Without the second part the row said "5 of 30
+    // min" while the block screen, counting the twenty-five minutes spent
+    // on the old phone, said thirty.
     private val readings = flow {
         while (true) {
-            emit(reader.poll().minutesByPackage to System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            val elsewhere = carried.forDay(CarriedUsage.today(now))
+            emit(reader.poll().plus(elsewhere).minutesByPackage to now)
             delay(POLL_MILLIS)
         }
     }.flowOn(Dispatchers.Default)

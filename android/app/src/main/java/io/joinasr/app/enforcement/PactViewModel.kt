@@ -124,8 +124,9 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
             val ended = outcomes.current() ?: return@launch
             if (ended.reported) return@launch
             runCatching {
-                sync.drain(ended.asPact())
-                if (sync.isDrained()) outcomes.markReported()
+                val pact = ended.asPact()
+                sync.drain(pact)
+                if (sync.isDrained(pact)) outcomes.markReported()
             }
         }
     }
@@ -240,8 +241,8 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
             val now = System.currentTimeMillis()
             val ending = Endings.gaveUp(
                 pact = pact,
-                witnesses = runCatching { witnesses.current().count { it.accepted } }
-                    .getOrDefault(0),
+                witnesses = runCatching { witnesses.current().filter { it.accepted } }
+                    .getOrDefault(emptyList()),
                 eventId = Uuid7.next(now),
                 nowMillis = now,
             )
@@ -249,20 +250,9 @@ class PactViewModel(application: Application) : AndroidViewModel(application) {
             Analytics.log(Analytics.challengeBroken("user_gave_up", pact.durationDays))
             runCatching {
                 sync.report(pact, ending.event)
-                if (sync.isDrained()) outcomes.markReported()
+                if (sync.isDrained(pact)) outcomes.markReported()
             }
             store.clear()
         }
     }
 }
-
-/**
- * A finished challenge, back in the shape the sync layer needs to address
- * it. Only ever used to find or create the server's copy of something that
- * has already ended, which is why nothing enforces it.
- */
-private fun PactOutcome.asPact() = Pact(
-    apps = apps,
-    startedAtMillis = startedAtMillis,
-    durationDays = durationDays,
-)

@@ -15,6 +15,16 @@ data class DayUsage(
 ) {
     fun totalMinutes(packages: Collection<String>): Int =
         packages.sumOf { minutesByPackage[it] ?: 0 }
+
+    /** This day with minutes spent elsewhere -- on the phone before this one -- added in. */
+    fun plus(elsewhere: Map<String, Int>): DayUsage {
+        if (elsewhere.isEmpty()) return this
+        val merged = minutesByPackage.toMutableMap()
+        for ((packageName, minutes) in elsewhere) {
+            merged[packageName] = (merged[packageName] ?: 0) + minutes
+        }
+        return copy(minutesByPackage = merged)
+    }
 }
 
 /**

@@ -347,7 +347,7 @@ class Sync(context: Context) {
         if (created is ApiResult.Ok) Analytics.log(Analytics.pactStarted(pact.durationDays))
         val id = when {
             created is ApiResult.Ok -> created.value.id
-            created is ApiResult.Failure && created.code == 409 && store.pending().isEmpty() ->
+            created is ApiResult.Failure && created.code == 409 && Outbox.clearOfOthers(store.pending(), pact) ->
                 (Api.pacts.current(token) as? ApiResult.Ok)?.value?.takeIf { mine(it, pact) }?.id
             else -> null
         } ?: return null
@@ -402,9 +402,16 @@ class Sync(context: Context) {
     }
 
     /**
-     * Sends everything queued, oldest first, and stops at the first one that
-     * does not go through — so a phone that comes back on a train does not
-     * report a breach before the challenge it belongs to.
+     * Sends everything queued for [pact], oldest first, and stops at the
+     * first one that does not go through — so a phone that comes back on a
+     * train does not report a breach before the challenge it belongs to.
+     *
+     * Only [pact]'s own events. The outbox can hold two challenges' worth: a
+     * give-up that happened offline and the breaches of the challenge
+     * started after it. Sent against one id, the second challenge's events
+     * were filed under the first -- or refused, once it had closed -- and
+     * whoever holds the previous challenge's ending drains it separately,
+     * under its own id. See [Outbox].
      *
      * What happens to an event the server answers with an error is
      * [OutboxPolicy]'s decision: kept when the server may yet take it, dropped
@@ -413,10 +420,11 @@ class Sync(context: Context) {
      * is a witness never told, and every deploy serves a minute of 502s.
      */
     suspend fun drain(pact: Pact?) {
-        val queued = store.pending()
+        if (pact == null) return
+        val queued = Outbox.forPact(store.pending(), pact)
         if (queued.isEmpty()) return
         val token = tokens.current() ?: return
-        val pactId = pact?.let { remotePactId(it) } ?: return
+        val pactId = remotePactId(pact) ?: return
 
         for (event in queued.sortedBy { it.occurredAtMillis }) {
             when (val result = Api.pacts.postEvent(token = token, pactId = pactId, event = wire(event))) {
@@ -472,14 +480,24 @@ class Sync(context: Context) {
      * to limit, and only their totals -- never what else is on the phone,
      * and never anything under an app they did not put in the challenge.
      */
-    suspend fun sendSummary(pact: Pact, minutesByPackage: Map<String, Int>): Boolean {
+    suspend fun sendSummary(
+        pact: Pact,
+        minutesByPackage: Map<String, Int>,
+        earnedByPackage: Map<String, Int> = emptyMap(),
+    ): Boolean {
         val token = tokens.current() ?: return false
         val pactId = remotePactId(pact) ?: return false
+        // The bonus rides along with the minutes. Without it the server
+        // judged every day against the bare limit: somebody who walked for
+        // ten more minutes of Instagram and used thirty-five of forty was
+        // "within limits" on their own phone and over on their mother's,
+        // and lost the streak the next morning for it.
         val apps = pact.apps.map {
             SummaryApp(
                 packageName = it.packageName,
                 minutesUsed = (minutesByPackage[it.packageName] ?: 0).coerceIn(0, 1440),
                 limitMinutes = it.limitMinutes,
+                earnedMinutes = (earnedByPackage[it.packageName] ?: 0).coerceIn(0, 600),
             )
         }
         if (apps.isEmpty()) return false
@@ -555,7 +573,8 @@ class Sync(context: Context) {
     }
 
     /** Whether everything queued has gone through. */
-    suspend fun isDrained(): Boolean = store.pending().isEmpty()
+    /** Whether nothing that happened in [pact] is still waiting to be sent. */
+    suspend fun isDrained(pact: Pact): Boolean = Outbox.forPact(store.pending(), pact).isEmpty()
 
     /**
      * An ISO timestamp from the server, in milliseconds. Null when it is

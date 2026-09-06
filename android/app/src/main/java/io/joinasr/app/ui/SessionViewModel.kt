@@ -110,6 +110,38 @@ class SessionViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signIn(email: String, password: String) = submit(Analytics.login()) { Api.auth.signIn(email, password) }
 
+    /**
+     * Signs back in after a password reset made from inside the app.
+     *
+     * The server revokes every session of the account when a reset token is
+     * spent, this phone's included, so the person would otherwise be
+     * signed out by the next request that answered 401 -- and signing out
+     * here means the challenge running on this phone stops being enforced.
+     * Signing straight back in with the password they just typed keeps
+     * everything as it was.
+     *
+     * If the new password does not open this account, the link was for a
+     * different one and nothing about this session changed, unless the
+     * server says it has: only a definite 401 signs the phone out, never a
+     * request that merely failed.
+     */
+    fun reauthenticate(email: String, password: String) {
+        viewModelScope.launch {
+            when (val result = Api.auth.signIn(email, password)) {
+                is ApiResult.Ok -> {
+                    tokens.save(result.value)
+                    resolve(result.value, clearTokenOnUnauthorised = false)
+                }
+                else -> {
+                    val token = tokens.current()
+                    val me = token?.let { Api.me.get(it) }
+                    val revoked = me is ApiResult.Failure && me.code == 401
+                    if (revoked) signOut()
+                }
+            }
+        }
+    }
+
     fun signOut() {
         viewModelScope.launch {
             // The push token goes first, while there is still a session to

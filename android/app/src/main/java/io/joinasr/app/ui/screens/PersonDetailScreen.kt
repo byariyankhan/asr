@@ -113,7 +113,7 @@ fun PersonDetailScreen(
         )
 
         Spacer(Modifier.height(18.dp))
-        StreakHero(progress = progress, active = current != null)
+        StreakHero(progress = progress, active = current != null, p = Pronouns.of(person.user.gender))
 
         Spacer(Modifier.height(22.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -185,7 +185,7 @@ fun PersonDetailScreen(
 }
 
 @Composable
-private fun StreakHero(progress: WitnessProgress?, active: Boolean) {
+private fun StreakHero(progress: WitnessProgress?, active: Boolean, p: Pronouns) {
     val shape = RoundedCornerShape(20.dp)
     val current = progress?.current
     Row(
@@ -205,7 +205,7 @@ private fun StreakHero(progress: WitnessProgress?, active: Boolean) {
             Spacer(Modifier.height(4.dp))
             Text(
                 when {
-                    progress == null -> "READING THEIR PROGRESS"
+                    progress == null -> "READING ${p.their.uppercase()} PROGRESS"
                     current != null -> {
                         val left = (current.of - current.day).coerceAtLeast(0)
                         "CURRENT STREAK · ${daysLabelUpper(left)} LEFT"

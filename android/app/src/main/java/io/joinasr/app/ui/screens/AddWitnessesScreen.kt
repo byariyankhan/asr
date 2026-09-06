@@ -23,7 +23,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,6 +82,12 @@ import io.joinasr.app.witness.Witness
  * be a witness until somebody has actually accepted. That happens on the
  * circle screen, by name.
  */
+/** The picked relationship across a rotation; nothing when none is picked. */
+private val RelationshipSaver = listSaver<Relationship?, String>(
+    save = { if (it == null) emptyList() else listOf(it.value, it.label) },
+    restore = { if (it.size == 2) Relationship(it[0], it[1]) else null },
+)
+
 @Composable
 fun AddWitnessesScreen(
     challengeDays: Int,
@@ -111,7 +118,7 @@ fun AddWitnessesScreen(
     // What the picker has selected but not yet shared. Cleared once the
     // invitation is actually on its way, so the next one starts from an
     // empty field rather than from the last relationship chosen.
-    var chosen by remember { mutableStateOf<Relationship?>(null) }
+    var chosen by rememberSaveable(stateSaver = RelationshipSaver) { mutableStateOf<Relationship?>(null) }
 
     // The sheet opens when the invite comes back, not when Invite is pressed:
     // there is nothing to share until the server has issued the link.

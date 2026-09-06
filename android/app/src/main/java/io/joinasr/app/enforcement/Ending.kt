@@ -1,6 +1,7 @@
 package io.joinasr.app.enforcement
 
 import io.joinasr.app.sync.PendingEvent
+import io.joinasr.app.witness.Witness
 
 /**
  * What ending a challenge produces: something to keep and something to send.
@@ -38,7 +39,8 @@ object Endings {
      */
     fun gaveUp(
         pact: Pact,
-        witnesses: Int,
+        /** The people who will hear about it: those who accepted, nobody else. */
+        witnesses: List<Witness>,
         eventId: String,
         nowMillis: Long,
     ) = Ending(
@@ -49,13 +51,14 @@ object Endings {
             reason = "user_gave_up",
             appPackage = null,
             occurredAtMillis = nowMillis,
+            pactStartedAtMillis = pact.startedAtMillis,
         ),
     )
 
     /** They reached the end of it. */
     fun completed(
         pact: Pact,
-        witnesses: Int,
+        witnesses: List<Witness>,
         eventId: String,
         nowMillis: Long,
     ) = Ending(
@@ -66,6 +69,7 @@ object Endings {
             reason = null,
             appPackage = null,
             occurredAtMillis = nowMillis,
+            pactStartedAtMillis = pact.startedAtMillis,
         ),
     )
 
@@ -73,7 +77,7 @@ object Endings {
         pact: Pact,
         result: PactResult,
         breach: Breach?,
-        witnesses: Int,
+        witnesses: List<Witness>,
         nowMillis: Long,
     ) = PactOutcome(
         result = result,
@@ -82,7 +86,8 @@ object Endings {
         durationDays = pact.durationDays,
         apps = pact.apps,
         breach = breach,
-        witnesses = witnesses,
+        witnesses = witnesses.size,
         reported = false,
+        witnessesTold = witnesses.map { WitnessTold(it.label, it.gender) },
     )
 }
