@@ -36,6 +36,7 @@ import io.joinasr.app.challenge.WeeklyProgress
 import io.joinasr.app.enforcement.Pact
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.formatMinutes
+import io.joinasr.app.usage.Day
 import io.joinasr.app.usage.UsageHistory
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
@@ -81,8 +82,16 @@ fun ProgressScreen(
     // week of queries is not something to repeat every few seconds.
     val days by produceState(initialValue = emptyList<DayOutcome>(), pact) {
         val history = UsageHistory.lastDays(context, days = 7)
-        // An app added mid-challenge is judged from the day it came in.
-        value = WeeklyProgress.outcomes(history, limits, pact?.judgedFrom().orEmpty())
+        // Judged only from the day the challenge began: the days before it
+        // are drawn for comparison, not counted as breaches of limits that
+        // did not exist yet. An app added mid-challenge is judged from the
+        // day it came in, the same way.
+        value = WeeklyProgress.outcomes(
+            history,
+            limits,
+            judgedFrom = pact?.judgedFrom().orEmpty(),
+            challengeFrom = pact?.let { Day.startOfDay(it.startedAtMillis) } ?: Long.MIN_VALUE,
+        )
     }
 
     val allowance = WeeklyProgress.dailyAllowance(limits)
@@ -126,8 +135,10 @@ fun ProgressScreen(
 
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(15.dp)) {
+            // Out of the days the challenge has actually covered this week,
+            // not out of seven: on day one the honest figure is 1 / 1.
             StatCard(
-                value = "${WeeklyProgress.daysWithinLimits(days)} / ${days.size.coerceAtLeast(1)}",
+                value = "${WeeklyProgress.daysWithinLimits(days)} / ${WeeklyProgress.daysJudged(days).coerceAtLeast(1)}",
                 caption = "DAYS WITHIN LIMITS",
                 modifier = Modifier.weight(1f),
             )
@@ -293,10 +304,23 @@ private fun UsageTrend(days: List<DayOutcome>, allowance: Int) {
                             .height(plotHeight * fraction)
                             .clip(RoundedCornerShape(9.dp))
                             .background(
-                                if (day.withinLimits) AsrColors.Accent else AsrColors.TextTertiary,
+                                when (day.withinLimits) {
+                                    true -> AsrColors.Accent
+                                    false -> AsrColors.TextTertiary
+                                    // Before the challenge: shown, not judged.
+                                    null -> AsrColors.Track
+                                },
                             ),
                     )
                 }
+            }
+            if (days.any { it.withinLimits == null }) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Faint bars are days before this challenge began, for comparison.",
+                    style = AsrType.Legal.copy(fontSize = 11.sp),
+                    color = AsrColors.TextTertiary,
+                )
             }
             Spacer(Modifier.height(8.dp))
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(AsrColors.Track))
