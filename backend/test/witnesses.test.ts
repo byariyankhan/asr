@@ -188,7 +188,7 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
     await updateWitness(alice, witnessRowId, { views_progress: true });
   });
 
-  it("witness reacts to a breach; the user sees it; roast copy was used", async () => {
+  it("witness reacts to a breach; the user sees it; the relationship's voice was used", async () => {
     const pact = (await getCurrentPact(alice))!;
     const breach = await recordDeviceEvent(alice, pact.id, {
       id: newId(),
@@ -202,7 +202,9 @@ describe.skipIf(!DATABASE_URL)("witnesses", async () => {
       .select(["recipient_id", "kind", "title"])
       .where("event_id", "=", breach.event.id)
       .execute();
-    expect(told).toEqual([{ recipient_id: bob, kind: "pact_broken", title: "Alice folded" }]);
+    // Bob is Alice's friend by now (updateWitness above), so a limit blown
+    // past comes in the friend's voice, about a woman.
+    expect(told).toEqual([{ recipient_id: bob, kind: "pact_broken", title: "Alice broke the pact. 💀" }]);
 
     const r1 = await react(bob, witnessRowId, breach.event.id, "tomato");
     expect(r1.emoji).toBe("tomato");

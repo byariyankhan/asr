@@ -58,22 +58,29 @@ const ABANDONED: ReadonlySet<string> = new Set<EventReason>([
 ]);
 
 /**
- * Which of the two relationship-aware events this is, or null for the ones
- * that keep the older plain copy.
+ * The voice each kind is spoken in.
  *
- * `pact_broken` is three things. A limit somebody blew past keeps the plain
- * copy. A pact somebody switched off or deleted their way out of is
- * `challenge_abandoned`. And somebody who opened the app and pressed Give up
- * is `challenge_given_up` -- the same ending, reached by the opposite act,
- * and telling their mother they uninstalled it would be false about the one
- * person who was honest about stopping.
+ * `pact_broken` is three things. A limit somebody blew past is
+ * `limit_broken`. A pact somebody switched off or deleted their way out of
+ * is `challenge_abandoned`. And somebody who opened the app and pressed
+ * Give up is `challenge_given_up` -- the same ending, reached by the
+ * opposite act, and telling their mother they uninstalled it would be false
+ * about the one person who was honest about stopping.
  */
-function relationshipEventFor(kind: WitnessKind, reason?: EventReason | null): WitnessEvent | null {
-  if (kind === "time_earned") return "time_earned";
-  if (kind === "uninstalled") return "challenge_abandoned";
-  if (kind === "pact_broken" && reason === "user_gave_up") return "challenge_given_up";
-  if (kind === "pact_broken" && reason && ABANDONED.has(reason)) return "challenge_abandoned";
-  return null;
+export function eventForKind(kind: WitnessKind, reason?: EventReason | null): WitnessEvent {
+  switch (kind) {
+    case "time_earned": return "time_earned";
+    case "uninstalled": return "challenge_abandoned";
+    case "pact_broken":
+      if (reason === "user_gave_up") return "challenge_given_up";
+      if (reason && ABANDONED.has(reason)) return "challenge_abandoned";
+      return "limit_broken";
+    case "pact_started": return "pact_started";
+    case "pact_completed": return "pact_completed";
+    case "pact_moved": return "pact_moved";
+    case "protection_off": return "protection_off";
+    case "protection_lost": return "protection_lost";
+  }
 }
 
 // One queued push per accepted witness who asked for this kind. Delivery
@@ -100,7 +107,6 @@ export async function queueWitnessNotifications(
     .innerJoin("user as u", "u.id", "witness.user_id")
     .select([
       "witness.witness_user_id",
-      "witness.roast_mode",
       "witness.relationship",
       "u.name as user_name",
       // Asked for at sign-up and required before the profile counts as
@@ -117,23 +123,19 @@ export async function queueWitnessNotifications(
     .where(`witness.${PREF_FOR_KIND[args.kind]}`, "=", true)
     .execute();
 
-  const event = relationshipEventFor(args.kind, args.reason);
+  const event = eventForKind(args.kind, args.reason);
 
   let queued = 0;
   for (const w of witnesses) {
     if (!w.witness_user_id) continue;
-    // The two events this product has words for read in the voice of the
-    // relationship. Everything else keeps the plainer copy: nobody has
-    // written nine versions of "they started a pact", and inventing them
-    // would be guessing at a tone.
-    const copy = event
-      ? relationshipCopy(event, w.relationship, {
-          userName: w.user_name,
-          gender: w.user_gender,
-          appName: args.appName ?? "daily",
-          extraMinutes: args.minutes ?? 0,
-        })
-      : witnessCopy(args.kind, w.user_name, w.roast_mode);
+    // Every kind reads in the voice of the relationship, about a person
+    // whose pronoun the profile knows.
+    const copy = relationshipCopy(event, w.relationship, {
+      userName: w.user_name,
+      gender: w.user_gender,
+      appName: args.appName ?? "daily",
+      extraMinutes: args.minutes ?? 0,
+    });
     const inserted = await queueNotification(trx, {
       recipientId: w.witness_user_id,
       aboutUserId: args.userId,
@@ -199,56 +201,5 @@ function deliverAfterResponse(): void {
     });
   } catch {
     // Not in a request. The sweep has it.
-  }
-}
-
-/**
- * The plain copy, for the events nobody has written relationship voices for.
- *
- * `uninstalled` and `time_earned` never reach here in practice --
- * relationshipEventFor claims both -- but they stay answered, because a
- * function that can return undefined for a case somebody adds later is a
- * notification that silently does not send.
- */
-export function witnessCopy(kind: WitnessKind, name: string, roast: boolean): { title: string; body: string } {
-  switch (kind) {
-    case "time_earned":
-      return { title: `${name} earned more time`, body: `${name} earned extra minutes inside the rules.` };
-    case "pact_started":
-      return { title: `${name} made a pact`, body: `${name} started a new pact and named you as a witness.` };
-    case "pact_completed":
-      return { title: `${name} kept their word`, body: `${name} finished their pact. Tell them you noticed.` };
-    case "pact_broken":
-      return roast
-        ? { title: `${name} folded`, body: `${name} broke their pact. You know what to do.` }
-        : { title: `${name} broke their pact`, body: `${name} didn't make it this time. A word from you might help.` };
-    case "uninstalled":
-      return roast
-        ? { title: `${name} deleted the app`, body: `${name} removed Asr mid-pact. Bold move.` }
-        : { title: `${name} removed Asr`, body: `${name} uninstalled the app during their pact, so it ended as broken.` };
-    case "pact_moved":
-      return roast
-        ? {
-            title: `${name} changed phones`,
-            body: `${name} moved the challenge to another phone. Same days, same limits, new handset.`,
-          }
-        : {
-            title: `${name} moved to another phone`,
-            body: `${name}'s challenge is being kept on a different phone now. The days and the limits are unchanged.`,
-          };
-    case "protection_off":
-      return roast
-        ? {
-            title: `${name} switched blocking off`,
-            body: `${name}'s phone has not been blocking anything for two hours. The challenge is still running. Nothing is stopping the apps.`,
-          }
-        : {
-            title: `${name}'s challenge is not being enforced`,
-            body: `Blocking has been off on ${name}'s phone for two hours. The challenge is running, but nothing is stopping the apps.`,
-          };
-    case "protection_lost":
-      return roast
-        ? { title: `${name} went dark`, body: `${name}'s protection has been off for a day. Suspicious.` }
-        : { title: `${name}'s protection stopped`, body: `We haven't heard from ${name}'s phone in a day. Check in with them.` };
   }
 }

@@ -33,6 +33,7 @@ import io.joinasr.app.ui.components.AsrProfilePhoto
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
+import io.joinasr.app.witness.Pronouns
 import io.joinasr.app.witness.Relationships
 
 /**
@@ -86,6 +87,9 @@ fun WitnessInviteScreen(
         // the way down. The headline speaks for the lookup; a refusal to
         // accept belongs next to the button that was pressed.
         val unopened = invite == null
+        // The inviter's own pronoun, from the profile. "Their challenge"
+        // about a man's own brother read as a hedge.
+        val p = Pronouns.of(invite?.gender)
         Text(
             when {
                 unopened && errorMessage != null -> "This invite is closed."
@@ -100,7 +104,7 @@ fun WitnessInviteScreen(
             when {
                 unopened && errorMessage != null -> errorMessage
                 unopened -> "One moment."
-                else -> "Become a witness for their challenge."
+                else -> "Become a witness for ${p.their} challenge."
             },
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
@@ -121,13 +125,13 @@ fun WitnessInviteScreen(
                 color = AsrColors.TextPrimary,
             )
             Spacer(Modifier.height(12.dp))
-            WhatYouSee(name = name)
+            WhatYouSee(name = name, p = p)
 
             Spacer(Modifier.height(18.dp))
             PrivacyCard(name = name)
 
             Spacer(Modifier.height(14.dp))
-            Note("◎", "You'll get updates when they keep or break the pact.")
+            Note("◎", "You'll hear when the pact is kept, and the moment it breaks.")
 
             errorMessage?.let {
                 Spacer(Modifier.height(20.dp))
@@ -190,7 +194,7 @@ private fun InviterCard(name: String, relationship: String, image: String?) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "They want you to help keep this pact honest.",
+                "Asking you to help keep this pact honest.",
                 style = AsrType.Legal.copy(fontSize = 12.sp),
                 color = AsrColors.TextTertiary,
             )
@@ -201,7 +205,7 @@ private fun InviterCard(name: String, relationship: String, image: String?) {
 }
 
 @Composable
-private fun WhatYouSee(name: String) {
+private fun WhatYouSee(name: String, p: Pronouns) {
     val shape = RoundedCornerShape(20.dp)
     Column(
         modifier = Modifier
@@ -211,8 +215,8 @@ private fun WhatYouSee(name: String) {
             .padding(16.dp),
     ) {
         for (line in listOf(
-            "Which apps they limited, and for how long each day",
-            "How far into the challenge they are, and their streak",
+            "Which apps ${p.they} limited, and for how long each day",
+            "How far into the challenge ${p.they} ${p.are}, and ${p.their} streak",
             "The moment a limit stops holding, as it happens",
         )) {
             Row(verticalAlignment = Alignment.Top) {
@@ -228,7 +232,7 @@ private fun WhatYouSee(name: String) {
             Spacer(Modifier.height(10.dp))
         }
         Text(
-            "The numbers appear once you accept. Until then $name's limits are theirs.",
+            "The numbers appear once you accept. Until then $name's limits are ${p.theirs}.",
             style = AsrType.Legal.copy(fontSize = 12.sp),
             color = AsrColors.TextTertiary,
         )

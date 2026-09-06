@@ -136,7 +136,8 @@ describe.skipIf(!DATABASE_URL)("what the server does not take the phone's word f
         .where("kind", "=", "protection_off")
         .execute();
       expect(told).toHaveLength(1);
-      expect(told[0]?.body).toContain("nothing is stopping the apps");
+      // In the witness's own relationship voice now; every voice says how long.
+      expect(told[0]?.body).toMatch(/two hours/);
       expect(told[0]?.body).not.toContain("new phone");
       // Not broken by it: nobody used anything they agreed not to.
       expect((await getCurrentPact(owner))!.status).toBe("active");
