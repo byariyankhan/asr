@@ -23,7 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +60,16 @@ import io.joinasr.app.ui.theme.AsrType
  * challenge starts. It is stated here, before anything is committed, because
  * this is the last screen where changing them is free.
  */
+/** The adjusted limits across a rotation: package, minutes, package, minutes. */
+private val LimitsMapSaver = listSaver<SnapshotStateMap<String, Int>, Any>(
+    save = { limits -> limits.entries.flatMap { (packageName, minutes) -> listOf(packageName, minutes) } },
+    restore = { flat ->
+        mutableStateMapOf<String, Int>().apply {
+            for (pair in flat.chunked(2)) put(pair[0] as String, pair[1] as Int)
+        }
+    },
+)
+
 @Composable
 fun DailyLimitsScreen(
     apps: List<AppEntry>,
@@ -68,7 +80,7 @@ fun DailyLimitsScreen(
     // Keyed by package name, seeded once. A recomposition must not reset a
     // limit somebody has just adjusted, and a person adding an app on the
     // previous screen and coming back should find their other limits intact.
-    val limits = remember(apps) {
+    val limits = rememberSaveable(apps, saver = LimitsMapSaver) {
         mutableStateMapOf<String, Int>().apply {
             putAll(DailyLimit.defaultsFor(apps.map { it.packageName }))
         }

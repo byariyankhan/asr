@@ -30,6 +30,7 @@ import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
+import io.joinasr.app.witness.Witness
 
 /**
  * Figma 12 — Challenge / Started (node 125:2).
@@ -43,7 +44,8 @@ import io.joinasr.app.ui.theme.AsrType
 @Composable
 fun ChallengeStartedScreen(
     days: Int,
-    witnesses: Int,
+    /** Everyone invited so far. One of them is named; more are "they". */
+    witnesses: List<Witness>,
     protectionReady: Boolean,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier,
@@ -102,19 +104,19 @@ fun ChallengeStartedScreen(
         )
         Spacer(Modifier.height(12.dp))
         Assurance(
-            title = if (witnesses == 0) {
-                "No witnesses attached"
-            } else if (witnesses == 1) {
-                "1 witness attached"
-            } else {
-                "$witnesses witnesses attached"
+            title = when (witnesses.size) {
+                0 -> "No witnesses attached"
+                1 -> "1 witness attached"
+                else -> "${witnesses.size} witnesses attached"
             },
-            detail = if (witnesses == 0) {
-                "Nobody will be told if the pact breaks."
-            } else {
-                "They'll be notified if the pact is breached."
+            detail = when (witnesses.size) {
+                0 -> "Nobody will be told if the pact breaks."
+                // The one person, by what they are to this person: "Your
+                // mother will be told", not "They'll be notified".
+                1 -> "${witnesses.single().mention.replaceFirstChar { it.uppercase() }} will be told if the pact breaks."
+                else -> "They'll be told if the pact breaks."
             },
-            ok = witnesses > 0,
+            ok = witnesses.isNotEmpty(),
         )
         Spacer(Modifier.height(12.dp))
         Assurance(
@@ -212,7 +214,7 @@ private fun StartedPreview() {
     AsrTheme {
         ChallengeStartedScreen(
             days = 14,
-            witnesses = 3,
+            witnesses = listOf(Witness("1", "mother", 0), Witness("2", "friend", 0), Witness("3", "brother", 0)),
             protectionReady = true,
             onContinue = {},
         )

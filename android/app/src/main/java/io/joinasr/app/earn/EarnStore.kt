@@ -6,8 +6,12 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import io.joinasr.app.usage.Day
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -52,11 +56,25 @@ class EarnStore(context: Context) {
     /**
      * Today's earned minutes per package, or nothing if the stored figures
      * belong to a day that has ended.
+     *
+     * Re-read at midnight as well as on every write. A screen left open
+     * across it used to keep showing yesterday's bonus in today's
+     * allowance -- "5 of 40 min" against a limit of 30 -- while the loop,
+     * which asks afresh on every pass, was already enforcing the 30.
      */
-    val earned: Flow<EarnedToday> = store.data.map { preferences ->
+    val earned: Flow<EarnedToday> = combine(store.data, midnights()) { preferences, _ ->
         val stored = decodeEarned(preferences[EARNED])
         val today = today()
         if (stored == null || stored.day != today) EarnedToday(today) else stored
+    }
+
+    /** Emits once now, then once each time the local date changes. */
+    private fun midnights(): Flow<Unit> = flow {
+        while (true) {
+            emit(Unit)
+            val now = System.currentTimeMillis()
+            delay((Day.nextMidnight(now) - now).coerceAtLeast(1_000L) + 1_000L)
+        }
     }
 
     suspend fun earnedToday(): EarnedToday = earned.first()

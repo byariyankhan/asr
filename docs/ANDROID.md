@@ -395,6 +395,17 @@ every 5xx. The first version dropped on a 502, and every deploy serves a
 minute of those; a person who gave up in that minute saw "SENT" and nobody
 was told.
 
+Every event is stamped with the start time of the pact it happened in, and a
+drain sends only one pact's events under that pact's server id (`Outbox`).
+The queue can hold two challenges' worth -- a give-up that happened offline,
+then a challenge started the same afternoon, then a limit reached in it --
+and drained as one list it deadlocked: creating the new pact answered 409
+while the old one was still open on the server, and the event that would
+have closed it was sitting behind that refusal. So the loop drains the last
+ending first if it is still owed, then the running challenge; and an active
+pact on the server is adopted as this challenge's own only when nothing
+queued belongs to another.
+
 ## Heartbeat
 
 The enforcement loop posts it every 30 minutes, alongside draining the

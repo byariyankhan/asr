@@ -145,7 +145,11 @@ private fun WhoGetsTold(witnesses: List<Witness>) {
             .padding(16.dp),
     ) {
         Text(
-            "They will be told",
+            if (witnesses.size == 1) {
+                "${witnesses.single().mention.replaceFirstChar { it.uppercase() }} will be told"
+            } else {
+                "They will be told"
+            },
             style = AsrType.Field.copy(fontSize = 15.sp),
             color = AsrColors.TextPrimary,
         )

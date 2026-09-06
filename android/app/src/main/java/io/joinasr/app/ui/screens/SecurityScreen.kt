@@ -20,7 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,12 +71,12 @@ fun SecurityScreen(
     notice: String?,
     modifier: Modifier = Modifier,
 ) {
-    var open by remember { mutableStateOf(false) }
-    var current by remember { mutableStateOf("") }
-    var next by remember { mutableStateOf("") }
-    var emailOpen by remember { mutableStateOf(false) }
-    var newEmail by remember { mutableStateOf("") }
-    var emailPassword by remember { mutableStateOf("") }
+    var open by rememberSaveable { mutableStateOf(false) }
+    var current by rememberSaveable { mutableStateOf("") }
+    var next by rememberSaveable { mutableStateOf("") }
+    var emailOpen by rememberSaveable { mutableStateOf(false) }
+    var newEmail by rememberSaveable { mutableStateOf("") }
+    var emailPassword by rememberSaveable { mutableStateOf("") }
 
     val ready = current.isNotBlank() && next.length >= MIN_PASSWORD && !busy
     val emailReady = newEmail.trim().let { it.contains("@") && !it.equals(email, ignoreCase = true) } &&

@@ -40,10 +40,24 @@ export function dayInZone(at: Date, zone: string): string {
   }).format(at);
 }
 
-// 1-based day number inside a pact, capped at its length.
-export function dayNumber(startsAt: Date, durationDays: number, now = new Date()): number {
-  const elapsed = Math.floor((now.getTime() - startsAt.getTime()) / DAY_MS) + 1;
+/**
+ * 1-based day number inside a pact, capped at its length.
+ *
+ * Calendar days in the pact's zone, not 24-hour steps. The phone counts the
+ * day a person crosses off (somebody who starts at 23:30 is on day two the
+ * next morning), and the server's own completion rule already counts the
+ * same way. Counted in elapsed periods, a witness read "Day 1 · 6 days
+ * left" all of the owner's second day, and "Day 6" on the morning the
+ * challenge was about to complete.
+ */
+export function dayNumber(startsAt: Date, durationDays: number, timezone: string, now = new Date()): number {
+  const elapsed = daysBetween(dayInZone(startsAt, timezone), dayInZone(now, timezone)) + 1;
   return Math.max(1, Math.min(durationDays, elapsed));
+}
+
+/** Whole calendar days from one YYYY-MM-DD to another; negative when `to` is the earlier one. */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
 }
 
 /**

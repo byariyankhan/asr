@@ -37,6 +37,8 @@ import io.joinasr.app.enforcement.Breach
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.enforcement.PactOutcome
 import io.joinasr.app.enforcement.PactResult
+import io.joinasr.app.enforcement.WitnessTold
+import io.joinasr.app.witness.Pronouns
 import io.joinasr.app.ui.components.AsrAppIcon
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
@@ -126,7 +128,12 @@ fun ChallengeEndedScreen(
         }
 
         Spacer(Modifier.height(18.dp))
-        WitnessCard(count = outcome.witnesses, reported = outcome.reported, failed = failed)
+        WitnessCard(
+            count = outcome.witnesses,
+            reported = outcome.reported,
+            failed = failed,
+            told = outcome.witnessesTold,
+        )
 
         Spacer(Modifier.height(18.dp))
         RecordCard(failed = failed)
@@ -346,9 +353,14 @@ private fun KeptCard(apps: List<PactApp>, days: Int) {
  * not left the phone is exactly the kind of lie this app cannot afford.
  */
 @Composable
-private fun WitnessCard(count: Int, reported: Boolean, failed: Boolean) {
+private fun WitnessCard(count: Int, reported: Boolean, failed: Boolean, told: List<WitnessTold>) {
     val shape = RoundedCornerShape(20.dp)
     val sent = reported && count > 0
+    // One person is named and takes their own pronoun; two or more are
+    // "they". Outcomes written before the names were kept have only the
+    // count, and read as they did.
+    val one = told.singleOrNull()?.takeIf { count == 1 }
+    val their = one?.let { Pronouns.of(it.gender).their.replaceFirstChar { c -> c.uppercase() } }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -360,6 +372,8 @@ private fun WitnessCard(count: Int, reported: Boolean, failed: Boolean) {
             Text(
                 when {
                     count == 0 -> "No witnesses"
+                    one != null && sent -> "${one.label} notified"
+                    one != null -> "${one.label} to notify"
                     sent -> "$count ${plural(count)} notified"
                     else -> "$count ${plural(count)} to notify"
                 },
@@ -381,6 +395,9 @@ private fun WitnessCard(count: Int, reported: Boolean, failed: Boolean) {
                 count == 0 && failed ->
                     "Nobody was watching this one. A challenge with witnesses is harder to walk away from."
                 count == 0 -> "Nobody was watching this one."
+                one != null && sent ->
+                    "${one.label} was told as soon as it happened. $their reaction appears on Witnesses."
+                one != null -> "${one.label} will be told as soon as this phone is back online."
                 sent -> "They were told as soon as it happened. Their reactions appear on Witnesses."
                 else -> "They will be told as soon as this phone is back online."
             },

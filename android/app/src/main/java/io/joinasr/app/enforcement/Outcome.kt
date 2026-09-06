@@ -57,4 +57,25 @@ data class PactOutcome(
     val witnesses: Int = 0,
     /** Whether the server has been told. False means it is still queued. */
     val reported: Boolean = false,
+    /**
+     * Who those witnesses were, in the words the ending screen uses about
+     * them. Empty on outcomes written before this was kept, which is why
+     * [witnesses] stays: the count is still right on those.
+     */
+    val witnessesTold: List<WitnessTold> = emptyList(),
+)
+
+/** One person who was told how a challenge ended: what to call them, and their pronoun's source. */
+@Serializable
+data class WitnessTold(val label: String, val gender: String? = null)
+
+/**
+ * A finished challenge, back in the shape the sync layer needs to address
+ * it. Only ever used to find or create the server's copy of something that
+ * has already ended, which is why nothing enforces it.
+ */
+fun PactOutcome.asPact() = Pact(
+    apps = apps,
+    startedAtMillis = startedAtMillis,
+    durationDays = durationDays,
 )

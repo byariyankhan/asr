@@ -2,8 +2,6 @@ import { db } from "./db/client";
 import { sql } from "kysely";
 import { dayInZone, dayNumber, previousDay } from "@/lib/time";
 
-const DAY_MS = 86_400_000;
-
 /**
  * Everything the Progress tab and a witness's "View progress" show, derived
  * from the ledger. No raw usage is involved: "within limits" comes from the
@@ -35,18 +33,18 @@ export async function progressFor(userId: string, witnessTo?: string) {
   const completed = witnessTo ? 0 : pacts.filter((p) => p.status === "completed").length;
   const broken = witnessTo ? 0 : pacts.filter((p) => p.status === "broken").length;
 
+  // Whole days kept before the challenge ended or reached today: the day
+  // number less one, on the same calendar the day number is counted on.
   const survivedDays = (p: (typeof pacts)[number]) => {
     if (p.status === "completed") return p.duration_days;
-    if (p.status === "broken" && p.ended_at) {
-      return Math.min(p.duration_days, Math.max(0, Math.floor((p.ended_at.getTime() - p.starts_at.getTime()) / DAY_MS)));
-    }
-    return dayNumber(p.starts_at, p.duration_days, now) - 1;
+    if (p.status === "broken" && p.ended_at) return dayNumber(p.starts_at, p.duration_days, p.timezone, p.ended_at) - 1;
+    return dayNumber(p.starts_at, p.duration_days, p.timezone, now) - 1;
   };
   const longest = witnessTo ? 0 : pacts.reduce((m, p) => Math.max(m, survivedDays(p)), 0);
 
   let currentView = null;
   if (current) {
-    const day = dayNumber(current.starts_at, current.duration_days, now);
+    const day = dayNumber(current.starts_at, current.duration_days, current.timezone, now);
     const today = dayInZone(now, current.timezone);
     const summary = await db
       .selectFrom("daily_summary")

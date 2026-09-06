@@ -32,9 +32,9 @@ import io.joinasr.app.data.InboxItem
 import io.joinasr.app.ui.components.AsrBackChevron
 import io.joinasr.app.ui.components.AsrProfilePhoto
 import io.joinasr.app.ui.theme.AsrColors
+import io.joinasr.app.usage.Day
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
-import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
 import androidx.compose.runtime.getValue
@@ -78,8 +78,10 @@ fun NotificationsScreen(
         canNotify = Permissions.alertsEnabled(context, AsrMessagingService.CHANNEL_ID)
         onPauseOrDispose {}
     }
-    val now = Instant.now()
-    val today = items.filter { withinHours(it.createdAt, 24, now) }
+    // Today is the date on the phone's calendar, not the last twenty-four
+    // hours: a message from eight last night is not "today" at ten.
+    val now = System.currentTimeMillis()
+    val today = items.filter { onSameDay(it.createdAt, now) }
     val earlier = items - today.toSet()
 
     Column(
@@ -335,9 +337,9 @@ private fun glyphFor(kind: String): String = when (kind) {
     else -> "✓"
 }
 
-private fun withinHours(isoTimestamp: String?, hours: Long, now: Instant): Boolean {
+private fun onSameDay(isoTimestamp: String?, nowMillis: Long): Boolean {
     val at = parseInstant(isoTimestamp) ?: return false
-    return Duration.between(at, now).toHours() < hours
+    return Day.isSameDay(at.toEpochMilli(), nowMillis)
 }
 
 internal fun parseInstant(isoTimestamp: String?): Instant? {

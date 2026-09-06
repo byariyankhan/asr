@@ -30,6 +30,12 @@ data class Witness(
     val image: String? = null,
     /** What they have reacted with, newest first. At most three. */
     val reactions: List<String> = emptyList(),
+    /**
+     * Their gender from their own profile, once they have accepted. It is
+     * what every sentence about them takes its pronoun from; null is
+     * they/them, as it is everywhere else.
+     */
+    val gender: String? = null,
 ) {
     /**
      * What to call them. Their name once there is one, and the relationship
@@ -48,6 +54,13 @@ data class Witness(
      * missing.
      */
     val relationshipLabel: String get() = Relationships.labelFor(relationship)
+
+    /**
+     * How a sentence refers to them: their name once there is one, and
+     * "your mother" until then. Not the bare relationship -- "Mother will
+     * be told" is a headline, "your mother will be told" is a sentence.
+     */
+    val mention: String get() = name?.takeIf { it.isNotBlank() } ?: Relationships.mentionFor(relationship)
 }
 
 /**
@@ -101,6 +114,12 @@ object Relationships {
 
     fun labelFor(value: String): String =
         all.firstOrNull { it.value == value }?.label ?: legacy[value] ?: "Witness"
+
+    /** "your mother", "your friend" -- and "your witness" for a value with no word of its own. */
+    fun mentionFor(value: String): String {
+        val word = all.firstOrNull { it.value == value }?.label ?: legacy[value]
+        return if (word == null || value == "other") "your witness" else "your ${word.lowercase()}"
+    }
 
     /**
      * How many witnesses a challenge needs before it can start.

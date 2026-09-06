@@ -74,7 +74,7 @@ fun ColumnScope.WitnessesBody(
     val joined = witnesses.filter { it.accepted }
 
     Spacer(Modifier.height(20.dp))
-    SummaryCard(count = joined.size)
+    SummaryCard(joined = joined)
 
     Spacer(Modifier.height(26.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -118,7 +118,8 @@ fun ColumnScope.WitnessesBody(
 }
 
 @Composable
-private fun SummaryCard(count: Int) {
+private fun SummaryCard(joined: List<Witness>) {
+    val count = joined.size
     val shape = RoundedCornerShape(20.dp)
     Column(
         modifier = Modifier
@@ -140,10 +141,10 @@ private fun SummaryCard(count: Int) {
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            if (count > 0) {
-                "They'll be notified if you break the pact."
-            } else {
-                "Nobody is watching this challenge yet."
+            when (count) {
+                0 -> "Nobody is watching this challenge yet."
+                1 -> "${joined.single().mention.replaceFirstChar { it.uppercase() }} will be told if you break the pact."
+                else -> "They'll be told if you break the pact."
             },
             style = AsrType.Field.copy(fontSize = 14.sp),
             color = AsrColors.TextSecondary,
