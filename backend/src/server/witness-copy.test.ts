@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   RELATIONSHIPS_WITH_COPY,
+  inviteLead,
+  relationshipPhrase,
   witnessLabel,
   relationshipCopy,
   type CopyVars,
@@ -280,5 +282,56 @@ describe("witnessLabel", () => {
     expect(witnessLabel("other")).toBe("Your witness");
     expect(witnessLabel(null)).toBe("Your witness");
     expect(witnessLabel("nonsense")).toBe("Your witness");
+  });
+});
+
+/**
+ * The invitation page's one sentence, which said "asked you, as their
+ * brother, to be his witness" on a real invitation. The relationship half
+ * came from a map with "their" written into it and the rest from the
+ * pronoun table. These read the whole sentence, so a hedge cannot creep back
+ * into one half of it.
+ */
+describe("inviteLead", () => {
+  it("says his throughout for a man, her for a woman, their for anybody else", () => {
+    expect(inviteLead({ relationship: "brother", gender: "male", days: 14 })).toBe(
+      "asked you, as his brother, to be his witness for a 14-day challenge.",
+    );
+    expect(inviteLead({ relationship: "brother", gender: "female", days: 14 })).toBe(
+      "asked you, as her brother, to be her witness for a 14-day challenge.",
+    );
+    expect(inviteLead({ relationship: "brother", gender: null, days: 14 })).toBe(
+      "asked you, as their brother, to be their witness for a 14-day challenge.",
+    );
+  });
+
+  it("never mixes one person's pronouns, whatever the relationship", () => {
+    const relationships: (string | null)[] = [
+      ...RELATIONSHIPS_WITH_COPY, "parent", "sibling", "spouse", "other", "nonsense", null,
+    ];
+    for (const relationship of relationships) {
+      expect(inviteLead({ relationship, gender: "male", days: 7 })).not.toMatch(
+        /\b(their|them|they|her|she)\b/,
+      );
+      expect(inviteLead({ relationship, gender: "female", days: 7 })).not.toMatch(
+        /\b(their|them|they|his|him|he)\b/,
+      );
+      for (const gender of [null, "other", "prefer_not_to_say"] as const) {
+        expect(inviteLead({ relationship, gender, days: 7 })).not.toMatch(/\b(his|him|he|her|she)\b/);
+      }
+    }
+  });
+
+  it("a relationship it cannot name is someone close to him, never 'their other'", () => {
+    expect(relationshipPhrase("other", "male")).toBe("someone close to him");
+    expect(relationshipPhrase(null, "female")).toBe("someone close to her");
+    expect(relationshipPhrase("nonsense", null)).toBe("someone close to them");
+    expect(relationshipPhrase("sibling", "female")).toBe("her brother or sister");
+  });
+
+  it("leaves the duration out when there is none", () => {
+    expect(inviteLead({ relationship: "friend", gender: "male", days: null })).toBe(
+      "asked you, as his friend, to be his witness.",
+    );
   });
 });

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { peekInvite } from "@/server/witnesses";
-import { pronounsFor } from "@/server/witness-copy";
+import { inviteLead, pronounsFor } from "@/server/witness-copy";
 
 /**
  * The page a witness invitation actually opens.
@@ -40,22 +41,28 @@ function playUrl(code: string): string {
   return `https://play.google.com/store/apps/details?id=${pkg}&referrer=${referrer}`;
 }
 
-const RELATIONSHIP_LABEL: Record<string, string> = {
-  mother: "their mother",
-  father: "their father",
-  brother: "their brother",
-  sister: "their sister",
-  husband: "their husband",
-  wife: "their wife",
-  friend: "their friend",
-  mentor: "their mentor",
-  colleague: "their colleague",
-  parent: "their parent",
-  sibling: "their sibling",
-  spouse: "their spouse",
-  partner: "their partner",
-  other: "someone they trust",
-};
+/**
+ * The same invitation, asked of the app by name.
+ *
+ * This page was written on the assumption that a phone with Asr on it never
+ * gets here: the manifest claims joinasr.io/w/ as an App Link and Android
+ * opens the app. That holds only when the app was installed after
+ * /.well-known/assetlinks.json listed the certificate it is signed with, and
+ * only on Android 12 and newer. A sideloaded build signed with a key the
+ * file does not name, an install from before the file existed, and a phone
+ * that once picked "browser" in the older chooser all land here with the
+ * app sitting right there, and "Install Asr" is the wrong thing to tell
+ * them. An intent: URL is how a page asks for one package explicitly:
+ * Chrome, Samsung Internet and Firefox on Android open it if it is
+ * installed and go to browser_fallback_url if it is not, so the fallback is
+ * the listing, with the code riding along as before. The code is safe to
+ * splice in: peekInvite has already refused anything that is not a code.
+ */
+function appUrl(code: string, fallback: string): string {
+  const pkg = process.env.PLAY_PACKAGE_NAME || "io.joinasr.app";
+  const host = SITE().replace(/^https?:\/\//, "");
+  return `intent://${host}/w/${code}#Intent;scheme=https;package=${pkg};S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+}
 
 type Invite = Awaited<ReturnType<typeof peekInvite>>;
 
@@ -125,11 +132,11 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
   if (!invite) notFound();
 
   const them = pronounsFor(invite.gender);
-  const relationship = invite.relationship
-    ? RELATIONSHIP_LABEL[invite.relationship] ?? "someone they trust"
-    : "someone they trust";
   const initial = invite.inviter_name.trim().slice(0, 1).toUpperCase() || "?";
   const play = playUrl(code);
+  // Only Android knows what to do with an intent: URL. Everything else gets
+  // the page as it was.
+  const android = /android/i.test((await headers()).get("user-agent") ?? "");
 
   return (
     <main style={S.page}>
@@ -147,10 +154,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
         )}
 
         <h1 style={S.name}>{invite.inviter_name}</h1>
-        <p style={S.lead}>
-          asked you, as {relationship}, to be {them.their} witness
-          {invite.days ? ` for a ${invite.days}-day challenge` : ""}.
-        </p>
+        <p style={S.lead}>{inviteLead(invite)}</p>
 
         <div style={S.what}>
           <p style={S.whatTitle}>What that means</p>
@@ -162,13 +166,21 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
         </div>
 
         <div style={S.accept}>
-          {/* You are reading this because the app is not on this phone: with
-              Asr installed the link opens it and never reaches here. So the
-              install is the only thing to offer, and the code rides along
-              with it. */}
+          {/* Most people reading this do not have the app, and the install
+              is the way to accept; the code rides along with it. The line
+              under it is for the phone that has Asr and opened a browser
+              anyway (see appUrl). */}
           <a href={play} style={S.cta}>
             Install Asr to accept
           </a>
+          {android ? (
+            <p style={S.haveIt}>
+              Already have Asr?{" "}
+              <a href={appUrl(code, play)} style={S.haveItLink}>
+                Open the invitation in the app
+              </a>
+            </p>
+          ) : null}
           <p style={S.acceptBody}>
             Asr opens on this invitation once it is installed. Nothing is shared until you accept,
             and declining tells them nothing beyond that you said no.
@@ -253,6 +265,8 @@ const S: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     marginBottom: 14,
   },
+  haveIt: { margin: "0 0 14px", color: "#9A9F9C", fontSize: 13, lineHeight: 1.6, textAlign: "center" },
+  haveItLink: { color: "#12B886", fontWeight: 600, textDecoration: "none" },
   acceptBody: { margin: 0, color: "#9A9F9C", fontSize: 13, lineHeight: 1.6, textAlign: "center" },
 
 };
