@@ -38,6 +38,7 @@ who hold you to it.
 8. [`docs/DESIGN.md`](docs/DESIGN.md): the colours, type and measures, read out of
    Figma. Anything that needs a colour uses these and invents nothing.
 9. [`docs/FIGMA_SCREENS.md`](docs/FIGMA_SCREENS.md): every screen's node id, in build order.
+10. [`docs/PLAY.md`](docs/PLAY.md): publishing to Google Play: the upload key, what CI builds, and every form in the Console with the answers.
 
 ## The three rules
 
