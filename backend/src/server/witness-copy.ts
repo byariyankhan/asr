@@ -392,3 +392,59 @@ const WITNESS_LABEL: Record<string, string> = {
 export function witnessLabel(relationship?: string | null): string {
   return (relationship && WITNESS_LABEL[relationship]) || "Your witness";
 }
+
+/**
+ * Who the reader is to the person asking, said from that person's side:
+ * "his brother", "her mentor", "their friend".
+ *
+ * For the invitation page, where the same sentence goes on to say "to be
+ * his witness". The two halves have to agree, and they did not: the first
+ * came from a map with "their" written into every entry and the second
+ * from the pronoun table, which put "asked you, as their brother, to be
+ * his witness" on a real invitation. Both halves come from the table now.
+ *
+ * "other", the lumped values older rows still carry, and null all read as
+ * "someone close to him". What the relationship list could not say is not
+ * a reason to say something odd.
+ */
+const RELATIONSHIP_NOUN: Record<string, string> = {
+  mother: "mother",
+  father: "father",
+  brother: "brother",
+  sister: "sister",
+  husband: "husband",
+  wife: "wife",
+  partner: "partner",
+  friend: "friend",
+  mentor: "mentor",
+  colleague: "colleague",
+  // Written by builds before the specific list, and still on rows.
+  parent: "parent",
+  sibling: "brother or sister",
+  spouse: "husband or wife",
+};
+
+export function relationshipPhrase(
+  relationship: string | null | undefined,
+  gender?: Gender | null,
+): string {
+  const p = pronounsFor(gender);
+  const noun = relationship ? RELATIONSHIP_NOUN[relationship] : undefined;
+  return noun ? `${p.their} ${noun}` : `someone close to ${p.them}`;
+}
+
+/**
+ * The line under the name on the invitation page: "asked you, as his
+ * brother, to be his witness for a 14-day challenge." One function, so the
+ * test can read the whole sentence and check that every pronoun in it is
+ * the same person's.
+ */
+export function inviteLead(invite: {
+  relationship?: string | null;
+  gender?: Gender | null;
+  days?: number | null;
+}): string {
+  const p = pronounsFor(invite.gender);
+  const days = invite.days ? ` for a ${invite.days}-day challenge` : "";
+  return `asked you, as ${relationshipPhrase(invite.relationship, invite.gender)}, to be ${p.their} witness${days}.`;
+}
