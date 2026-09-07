@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.ui.components.AsrBackChevron
@@ -62,12 +63,25 @@ fun ProtectionScreen(
     onBackgroundActivity: () -> Unit,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * False when this is the profile's own permissions screen rather than
+     * step six of setup. The rows are the same -- they are facts about the
+     * phone either way -- but there is no step to number, nothing to
+     * continue to, and one thing worth offering only here: the way to put
+     * the protection notification out of sight. During setup that would be
+     * an invitation to hide the app before it has done anything.
+     */
+    inSetup: Boolean = true,
 ) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(PermissionState.read(context)) }
+    var noticeShown by remember {
+        mutableStateOf(Permissions.alertsEnabled(context, EnforcementService.CHANNEL_ID))
+    }
 
     LifecycleResumeEffect(Unit) {
         state = PermissionState.read(context)
+        noticeShown = Permissions.alertsEnabled(context, EnforcementService.CHANNEL_ID)
         onPauseOrDispose {}
     }
 
@@ -86,9 +100,17 @@ fun ProtectionScreen(
         AsrBackChevron(onBack)
 
         Spacer(Modifier.height(22.dp))
-        Text("SETUP 6 OF 6", style = AsrType.Eyebrow, color = AsrColors.Accent)
+        Text(
+            if (inSetup) "SETUP 6 OF 6" else "APP PERMISSIONS",
+            style = AsrType.Eyebrow,
+            color = AsrColors.Accent,
+        )
         Spacer(Modifier.height(14.dp))
-        Text("Enable protection.", style = AsrType.display(38), color = AsrColors.TextPrimary)
+        Text(
+            if (inSetup) "Enable protection." else "Permissions.",
+            style = AsrType.display(38),
+            color = AsrColors.TextPrimary,
+        )
         Spacer(Modifier.height(12.dp))
         Text(
             "Two permissions power the challenge. The other two keep it running.",
@@ -166,16 +188,82 @@ fun ProtectionScreen(
             )
         }
 
-        Spacer(Modifier.height(24.dp))
-        AsrPrimaryButton(
-            text = if (state.requiredGranted) "Continue" else "Enable required access",
-            onClick = onContinue,
-            // Disabled until both required grants are real. The design draws
-            // it that way, and it is the honest state: continuing without them
-            // reaches a dashboard that cannot enforce anything.
-            enabled = state.requiredGranted,
-        )
+        if (!inSetup) {
+            Spacer(Modifier.height(26.dp))
+            Text("The Asr notification", style = AsrType.display(20), color = AsrColors.TextPrimary)
+            Spacer(Modifier.height(12.dp))
+            NotificationRow(
+                shown = noticeShown,
+                onOpen = {
+                    runCatching {
+                        context.startActivity(
+                            Permissions.notificationChannelSettingsIntent(
+                                context,
+                                EnforcementService.CHANNEL_ID,
+                            ),
+                        )
+                    }.onFailure { context.toastNoSettingsScreen() }
+                },
+            )
+        }
+
+        if (inSetup) {
+            Spacer(Modifier.height(24.dp))
+            AsrPrimaryButton(
+                text = if (state.requiredGranted) "Continue" else "Enable required access",
+                onClick = onContinue,
+                // Disabled until both required grants are real. The design
+                // draws it that way, and it is the honest state: continuing
+                // without them reaches a dashboard that cannot enforce
+                // anything.
+                enabled = state.requiredGranted,
+            )
+        }
         Spacer(Modifier.height(32.dp))
+    }
+}
+
+/**
+ * The one notification this app cannot switch off for you.
+ *
+ * Android will not keep a foreground service running without one, and
+ * without that service the limits stop being enforced the moment the phone
+ * decides to sleep -- so it is not a setting we can offer. What we can do is
+ * stop making people hunt for Android's own switch, and say plainly what
+ * turning it off costs, which is nothing: the loop, the block screen and
+ * every witness carry on exactly as before. It is already the quietest a
+ * notification is allowed to be -- no sound, no badge, nothing in the status
+ * bar -- and it comes back after a swipe because the phone restarted the
+ * service, which is the service doing its job.
+ */
+@Composable
+private fun NotificationRow(shown: Boolean, onOpen: () -> Unit) {
+    AsrCard(background = AsrColors.Field) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Protection is on", style = AsrType.RowTitle, color = AsrColors.TextPrimary)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (shown) {
+                        "Android requires it while a challenge runs. Hiding it changes nothing " +
+                            "else: your limits, the block screen and your witnesses are untouched."
+                    } else {
+                        "Hidden. Your limits, the block screen and your witnesses are unchanged."
+                    },
+                    style = AsrType.Label,
+                    color = AsrColors.TextSecondary,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable(role = Role.Button, onClick = onOpen)
+                    .padding(2.dp),
+            ) {
+                AsrPill(if (shown) "HIDE" else "SHOW")
+            }
+        }
     }
 }
 

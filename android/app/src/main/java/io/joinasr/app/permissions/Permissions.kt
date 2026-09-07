@@ -155,6 +155,21 @@ object Permissions {
     fun appNotificationSettingsIntent(context: Context): Intent =
         Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+
+    /**
+     * One channel's own settings page, which is where a notification this app
+     * is not allowed to hide can be switched off by the person it belongs to.
+     *
+     * Android will not run a foreground service without a notification, and
+     * nothing in this app can suppress one. The channel switch is the only
+     * lever that exists, and it is Android's, not ours -- so this opens it
+     * rather than pretending to be it. Aimed at a single channel on purpose:
+     * the app's own page would turn off the witness alerts in the same tap.
+     */
+    fun notificationChannelSettingsIntent(context: Context, channelId: String): Intent =
+        Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
 }
 
 /** What the three rows on the protection screen show. */
