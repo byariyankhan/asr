@@ -71,6 +71,7 @@ class Sync(context: Context) {
             // reach -- the watchdog marks their notifications unregistered
             // and drops them.
             fcmToken = Push.token(app),
+            timezone = ZoneId.systemDefault().id,
         )
         val result = Api.devices.register(token, registration)
         return when (result) {
@@ -100,6 +101,10 @@ class Sync(context: Context) {
             protectionEnabled = Permissions.protectionOn(app),
             appVersion = BuildConfig.VERSION_NAME,
             fcmToken = pushToken,
+            // The zone rides along: the server computes the challenge's
+            // "today" in it, so a person who has travelled is judged on the
+            // calendar they are living in, not the one they left.
+            timezone = ZoneId.systemDefault().id,
         )
         if (sent is ApiResult.Ok) store.savePushToken(pushToken)
     }
@@ -468,6 +473,10 @@ class Sync(context: Context) {
             protectionEnabled = protectionEnabled,
             appVersion = BuildConfig.VERSION_NAME,
             fcmToken = pushToken,
+            // The zone rides along: the server computes the challenge's
+            // "today" in it, so a person who has travelled is judged on the
+            // calendar they are living in, not the one they left.
+            timezone = ZoneId.systemDefault().id,
         )
         if (sent is ApiResult.Ok && pushToken != null) store.savePushToken(pushToken)
     }
@@ -508,17 +517,49 @@ class Sync(context: Context) {
         return Api.pacts.postSummary(
             token = token,
             pactId = pactId,
-            body = SummaryCreate(day = LocalDate.now(ZoneId.systemDefault()).toString(), apps = apps),
+            body = SummaryCreate(
+                day = LocalDate.now(ZoneId.systemDefault()).toString(),
+                apps = apps,
+                timezone = ZoneId.systemDefault().id,
+            ),
         ) is ApiResult.Ok
     }
 
+    /** What the server said about an activity this phone has just begun. */
+    sealed interface StartResult {
+        /** It is on the ledger. */
+        data object Started : StartResult
+
+        /**
+         * The server refused this activity itself and will refuse it again:
+         * the day's bonus for that app is already spent. A settled answer,
+         * so the phone stands the activity down rather than awarding
+         * minutes nothing will ever record.
+         */
+        data class Refused(val message: String) : StartResult
+
+        /**
+         * No answer, or one worth retrying: no signal, no session, a server
+         * having a bad minute. The activity stands.
+         */
+        data object Unknown : StartResult
+    }
+
     /**
-     * Tells the server an activity has begun. Best-effort, like everything
-     * else here: the walk counts on the phone whether or not this lands.
+     * Tells the server an activity has begun.
+     *
+     * Best-effort about the network and exact about a refusal, which are
+     * different things. A walk taken on a train is still a walk, and this
+     * app has never made somebody's reward depend on their reception. But
+     * the server counts activities still pending as well as finished ones,
+     * so it can know the day's bonus for an app is spent when this phone
+     * does not -- an attempt abandoned with no signal, say. Awarding the
+     * minutes over that put them on the allowance with nothing on the
+     * ledger and nothing said to the witnesses.
      */
-    suspend fun startActivity(pact: Pact, activity: EarnActivity): Boolean {
-        val token = tokens.current() ?: return false
-        val pactId = remotePactId(pact) ?: return false
+    suspend fun startActivity(pact: Pact, activity: EarnActivity): StartResult {
+        val token = tokens.current() ?: return StartResult.Unknown
+        val pactId = remotePactId(pact) ?: return StartResult.Unknown
         val result = Api.activities.start(
             token = token,
             pactId = pactId,
@@ -530,7 +571,15 @@ class Sync(context: Context) {
                 appPackage = activity.packageName,
             ),
         )
-        return result is ApiResult.Ok
+        return when {
+            result is ApiResult.Ok -> StartResult.Started
+            // The same line [OutboxPolicy] draws, for the same reason: whose
+            // fault it is. Anything that says "not now" leaves the activity
+            // running; a refusal of the activity itself is final.
+            result is ApiResult.Failure && !OutboxPolicy.keepAfter(result.code) ->
+                StartResult.Refused(result.message)
+            else -> StartResult.Unknown
+        }
     }
 
     /**

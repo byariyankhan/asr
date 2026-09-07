@@ -95,6 +95,8 @@ data class SummaryCreate(
     /** The local day these figures belong to, as YYYY-MM-DD. */
     val day: String,
     val apps: List<SummaryApp>,
+    /** The zone [day] was stamped in, so the server reads it on the same calendar. */
+    val timezone: String? = null,
 )
 
 /** One app's minutes so far today, as the phone that measured them reported. */
