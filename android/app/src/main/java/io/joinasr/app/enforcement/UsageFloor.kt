@@ -55,17 +55,17 @@ class UsageFloor(context: Context) {
      */
     suspend fun keep(day: String, measured: Map<String, Int>): Map<String, Int> {
         val stored = forDay(day)
-        val highest = highest(stored, measured)
-        if (highest == stored) return highest
+        val raised = highest(stored, measured)
+        if (raised == stored) return raised
         store.edit { preferences ->
             // Re-read inside the edit: the dashboard polls its own reader
             // beside the loop, and the later write must not undo the higher
             // figure the earlier one put down.
             val days = decode(preferences[DAYS]).toMutableMap()
-            days[day] = highest(days[day].orEmpty(), highest)
+            days[day] = highest(days[day].orEmpty(), raised)
             preferences[DAYS] = json.encodeToString(prune(days))
         }
-        return highest
+        return raised
     }
 
     /** What [day] is known to have held, without taking a new reading. */
@@ -92,8 +92,11 @@ class UsageFloor(context: Context) {
      * The newest days, and no more. Days are `YYYY-MM-DD`, which sorts by
      * date as a string, so this needs no calendar.
      */
-    private fun prune(days: Map<String, Map<String, Int>>): Map<String, Map<String, Int>> =
-        if (days.size <= DAYS_KEPT) days else days.toSortedMap().entries.takeLast(DAYS_KEPT).associate { it.toPair() }
+    private fun prune(days: Map<String, Map<String, Int>>): Map<String, Map<String, Int>> {
+        if (days.size <= DAYS_KEPT) return days
+        val newest = days.keys.sorted().takeLast(DAYS_KEPT).toSet()
+        return days.filterKeys { it in newest }
+    }
 
     companion object {
 
