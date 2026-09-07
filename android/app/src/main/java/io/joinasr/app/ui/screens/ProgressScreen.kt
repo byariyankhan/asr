@@ -35,6 +35,7 @@ import io.joinasr.app.challenge.DayOutcome
 import io.joinasr.app.challenge.WeeklyProgress
 import io.joinasr.app.enforcement.CarriedUsage
 import io.joinasr.app.enforcement.Pact
+import io.joinasr.app.enforcement.UsageFloor
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.formatMinutes
 import io.joinasr.app.usage.Day
@@ -83,12 +84,17 @@ fun ProgressScreen(
     // week of queries is not something to repeat every few seconds.
     val days by produceState(initialValue = emptyList<DayOutcome>(), pact) {
         val measured = UsageHistory.lastDays(context, days = 7)
-        // Today is the whole day, wherever it was spent: the minutes a
+        // Every day is at least what was written down while it was
+        // happening. Android forgets an app's events when it is uninstalled,
+        // and without this the week quietly turned green behind it.
+        val kept = runCatching { UsageFloor(context).days() }.getOrDefault(emptyMap())
+        // Today is also the whole day wherever it was spent: the minutes a
         // challenge brought with it from another phone belong to today's
         // bar, as they do to the dashboard and the block screen.
         val elsewhere = CarriedUsage(context).forDay(CarriedUsage.today())
         val history = measured.mapIndexed { index, day ->
-            if (index == measured.lastIndex) day.plus(elsewhere) else day
+            val whole = day.atLeast(kept[CarriedUsage.today(day.dayStartMillis)].orEmpty())
+            if (index == measured.lastIndex) whole.plus(elsewhere) else whole
         }
         // Judged only from the day the challenge began: the days before it
         // are drawn for comparison, not counted as breaches of limits that

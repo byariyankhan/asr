@@ -25,6 +25,21 @@ data class DayUsage(
         }
         return copy(minutesByPackage = merged)
     }
+
+    /**
+     * This day, never below what was written down while it was happening.
+     * Android forgets an app's events when it is uninstalled, and a week
+     * that quietly loses a day is a week nobody can be judged on. See
+     * [io.joinasr.app.enforcement.UsageFloor].
+     */
+    fun atLeast(kept: Map<String, Int>): DayUsage {
+        if (kept.isEmpty()) return this
+        val merged = minutesByPackage.toMutableMap()
+        for ((packageName, minutes) in kept) {
+            merged[packageName] = maxOf(merged[packageName] ?: 0, minutes)
+        }
+        return copy(minutesByPackage = merged)
+    }
 }
 
 /**

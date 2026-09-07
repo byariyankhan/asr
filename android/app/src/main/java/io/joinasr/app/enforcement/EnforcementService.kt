@@ -70,6 +70,7 @@ class EnforcementService : Service() {
     private lateinit var reader: UsageReader
     private lateinit var store: PactStore
     private lateinit var carried: CarriedUsage
+    private lateinit var floor: UsageFloor
     private lateinit var status: ProtectionStatusStore
     private lateinit var outcomes: OutcomeStore
     private lateinit var witnesses: WitnessStore
@@ -193,6 +194,7 @@ class EnforcementService : Service() {
         reader = usageReader(this)
         store = PactStore(this)
         carried = CarriedUsage(this)
+        floor = UsageFloor(this)
         status = ProtectionStatusStore(this)
         outcomes = OutcomeStore(this)
         witnesses = WitnessStore(this)
@@ -336,10 +338,17 @@ class EnforcementService : Service() {
         }
 
         val measured = reader.poll()
-        // What this phone can see, plus what the day already held when the
-        // challenge arrived here. Everything below decides against the whole
-        // day; nothing below needs to know the difference.
-        val snapshot = measured.plus(carriedToday(now, measured.minutesByPackage))
+        // What this phone can see -- or has ever seen today, which is not the
+        // same thing. Android forgets an app's events when it is uninstalled,
+        // so a reinstall reads back an empty day and hands the whole
+        // allowance out again; [UsageFloor] is where the day is kept instead.
+        val today = CarriedUsage.today(now)
+        val ownToday = runCatching { floor.keep(today, measured.minutesByPackage) }
+            .getOrDefault(measured.minutesByPackage)
+        // Plus what the day already held when the challenge arrived here.
+        // Everything below decides against the whole day; nothing below needs
+        // to know the difference.
+        val snapshot = measured.atLeast(ownToday).plus(carriedToday(now, ownToday))
         val progress = ChallengeProgress.of(current.startedAtMillis, current.durationDays, now)
         // Bonus minutes raise today's allowance. Read on every pass rather
         // than cached, because a walk finishing while an app is open should

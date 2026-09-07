@@ -4,6 +4,7 @@ import android.content.Context
 import io.joinasr.app.enforcement.CarriedUsage
 import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.enforcement.PactStore
+import io.joinasr.app.enforcement.UsageFloor
 import io.joinasr.app.sync.SyncStore
 import io.joinasr.app.witness.WitnessStore
 
@@ -27,6 +28,7 @@ object LocalSignOut {
         val app = context.applicationContext
         PactStore(app).clear()
         CarriedUsage(app).clear()
+        UsageFloor(app).clear()
         WitnessStore(app).clear()
         SyncStore(app).clearDevice()
         Api.tokens(app).clear()

@@ -124,13 +124,38 @@ describe.skipIf(!DATABASE_URL)("activities and daily summary", async () => {
     let progress = await progressFor(userId);
     expect(progress.current?.apps_within_limits_today).toEqual({ within: 1, total: 2 });
 
-    // Re-sending the day updates in place.
+    // Re-sending the day updates in place, as the day goes on.
     await upsertDailySummary(userId, pactId, {
       day: today,
-      apps: [{ package: "com.instagram.android", minutes_used: 39, limit_min: 30, earned_min: 10 }],
+      apps: [{ package: "com.google.android.youtube", minutes_used: 50, limit_min: 45, earned_min: 0 }],
     });
     progress = await progressFor(userId);
-    expect(progress.current?.apps_within_limits_today).toEqual({ within: 2, total: 2 });
+    expect(progress.current?.apps_within_limits_today).toEqual({ within: 0, total: 2 });
+
+    // But it never lowers one. Foreground time is not spent backwards, so a
+    // smaller figure is a day that lost its memory -- an app uninstalled and
+    // installed again wipes its usage events on Android -- or a client
+    // asking for a clean slate. Either way the minutes stand.
+    await upsertDailySummary(userId, pactId, {
+      day: today,
+      apps: [
+        { package: "com.instagram.android", minutes_used: 0, limit_min: 30, earned_min: 10 },
+        { package: "com.google.android.youtube", minutes_used: 3, limit_min: 45, earned_min: 0 },
+      ],
+    });
+    const kept = await db
+      .selectFrom("daily_summary")
+      .select(["app_package", "minutes_used"])
+      .where("pact_id", "=", pactId)
+      .where("day", "=", today)
+      .orderBy("app_package")
+      .execute();
+    expect(kept).toEqual([
+      { app_package: "com.google.android.youtube", minutes_used: 50 },
+      { app_package: "com.instagram.android", minutes_used: 42 },
+    ]);
+    progress = await progressFor(userId);
+    expect(progress.current?.apps_within_limits_today).toEqual({ within: 0, total: 2 });
 
     await expect(
       upsertDailySummary(userId, pactId, { day: "2020-01-01", apps: [{ package: "com.instagram.android", minutes_used: 1, limit_min: 30, earned_min: 0 }] }),

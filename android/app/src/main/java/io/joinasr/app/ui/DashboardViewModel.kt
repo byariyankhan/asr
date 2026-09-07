@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.joinasr.app.enforcement.CarriedUsage
 import io.joinasr.app.enforcement.ProtectionStatusStore
+import io.joinasr.app.enforcement.UsageFloor
 import io.joinasr.app.usage.usageReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -50,6 +51,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val reader = usageReader(application)
     private val protection = ProtectionStatusStore(application)
     private val carried = CarriedUsage(application)
+    private val floor = UsageFloor(application)
     private val openedAt = System.currentTimeMillis()
 
     // The same whole-day figure the loop decides on: what this phone can
@@ -60,8 +62,12 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val readings = flow {
         while (true) {
             val now = System.currentTimeMillis()
-            val elsewhere = carried.forDay(CarriedUsage.today(now))
-            emit(reader.poll().plus(elsewhere).minutesByPackage to now)
+            val day = CarriedUsage.today(now)
+            // Read, never written: the loop is the one writer, and it is
+            // running whenever there is a challenge to draw rows for.
+            val kept = runCatching { floor.forDay(day) }.getOrDefault(emptyMap())
+            val elsewhere = carried.forDay(day)
+            emit(reader.poll().atLeast(kept).plus(elsewhere).minutesByPackage to now)
             delay(POLL_MILLIS)
         }
     }.flowOn(Dispatchers.Default)
