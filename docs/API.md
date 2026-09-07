@@ -162,12 +162,15 @@ Register this install — which is what signing in on a phone means, and it
 signs the account out everywhere else.
 
 ```json
-{ "install_id": "…", "model": "Pixel 8", "os_version": "15", "app_version": "1.0.0", "fcm_token": "…" }
+{ "install_id": "…", "model": "Pixel 8", "os_version": "15", "app_version": "1.0.0", "fcm_token": "…",
+  "timezone": "Asia/Dhaka" }
 ```
 
 Returns the `device` row. Idempotent on `(user, install_id)`, so an app start
-on the phone that is already registered changes nothing. From a phone that is
-not, in one request:
+on the phone that is already registered changes nothing. `timezone` (an IANA
+name, optional) becomes the active pact's `phone_timezone`: the calendar
+every "today" is computed on from then on -- see `GET /pacts/current`. From
+a phone that is not registered yet, in one request:
 
 1. Pushes `kind=signed_out` to every other device of this account, while
    their tokens still work — a phone that finds out by getting a 401 finds
@@ -185,13 +188,17 @@ nothing else's; two phones enforcing the same thirty minutes is an hour. See
 ### `POST /devices/{id}/heartbeat`
 
 ```json
-{ "protection_enabled": true, "app_version": "1.0.0", "fcm_token": "…" }
+{ "protection_enabled": true, "app_version": "1.0.0", "fcm_token": "…", "timezone": "Asia/Dhaka" }
 ```
 
 `204`. Updates `last_heartbeat_at`, `protection_enabled`, and the token if it
 changed. Also clears `removal_suspected_at`, and — when `protection_enabled`
 is true — `protection_pending_since` on this device's active pact: a
-heartbeat is the app saying it is here and working.
+heartbeat is the app saying it is here and working. `timezone`, when it
+differs from what the pact last heard, moves the pact's `phone_timezone`:
+this is how a person who has landed in another country has their
+challenge's calendar follow them within the half hour, whether or not they
+open a limited app.
 
 When `protection_enabled` is **false** and this device holds an active pact,
 `protection_pending_since` is set if it was not already: the two-hour clock
@@ -232,18 +239,30 @@ challenge needs to run it:
 ```json
 {
   "id": "…", "device_id": "…", "device_model": "Galaxy A54",
-  "duration_days": 30, "timezone": "Asia/Dhaka", "starts_at": "…",
+  "duration_days": 30, "timezone": "Asia/Dhaka", "phone_timezone": "Europe/London", "starts_at": "…",
   "status": "active", "protection_pending_since": null,
   "snapshot": { "apps": [...], "reset_time": "00:00", "activities": {...} },
   "today": { "day": "2026-09-05", "apps": [{ "package": "…", "minutes_used": 22 }] }
 }
 ```
 
-`today` is the day as the last phone reported it, in the pact's timezone.
+`today` is the day as the last phone reported it, on the phone's calendar.
 Without it, changing phones handed back a fresh allowance: the new phone can
 only measure its own screen, so it opens on zero. The phone adds these
 minutes to what it can see, less its own share of them — a reinstall on the
 same handset would otherwise count its own morning twice.
+
+Two zones, on purpose. `timezone` is the zone the challenge was locked in
+and never moves; completion is judged in it (below), so a phone cannot bring
+the end of a challenge forward by claiming a zone further east.
+`phone_timezone` is the zone the phone last reported -- with `POST /devices`,
+the heartbeat, or the daily summary -- and is `null` until it has. Every
+"today" is computed in `phone_timezone`, falling back to `timezone`: which
+summary rows are today's, the day number a witness sees, the day an added
+app counts from, the day an activity's cap belongs to, the days a summary
+is accepted for. The phone keys all of those to the zone it is living in,
+and judged on the zone it left, a person five hours ahead of it was refused
+every summary before five in the morning and a witness read a blank day.
 
 ### `POST /pacts/{id}/apps`
 
@@ -255,7 +274,7 @@ One more app under a limit, on a challenge that is running.
 
 `200` with the pact exactly as `GET /pacts/current` returns it, so the phone
 can take the whole thing as its new copy. The app is appended to
-`snapshot.apps` with `added_on`, today in the pact's timezone; nothing else
+`snapshot.apps` with `added_on`, today on the phone's calendar; nothing else
 in the snapshot changes. This is the one edit a locked snapshot accepts, and
 only in this direction: an app can be added, never removed, and no limit
 moves. Adding tightens the promise, so witnesses are not notified; their
@@ -297,7 +316,7 @@ pact and triggers witness notifications. Anything else on a closed
 pact returns `409 pact_closed`.
 
 A `completed` event is checked against the server's own calendar: it is
-refused with `409 pact_not_elapsed` until today, in the pact's timezone, is
+refused with `409 pact_not_elapsed` until today, in the zone the challenge was locked in (`timezone`, never the phone's), is
 on or after the day following the pact's last day (the phone's own rule,
 plus two hours of grace for a clock that runs ahead). The date is the
 easiest thing on a phone to change, and without this a month moved forward
@@ -315,12 +334,17 @@ Shortcut for a deliberate early exit from the app's own UI. Body
 Daily aggregate, sent once per day per app while active.
 
 ```json
-{ "day": "2026-09-03", "apps": [ { "package": "…", "minutes_used": 27, "limit_min": 30, "earned_min": 10 } ] }
+{ "day": "2026-09-03", "timezone": "Asia/Dhaka",
+  "apps": [ { "package": "…", "minutes_used": 27, "limit_min": 30, "earned_min": 10 } ] }
 ```
 
-`204`. Upserts `daily_summary`. `409 day_out_of_range` outside the pact's
-days (in its timezone), `409 app_not_in_pact` for a package not in the
-snapshot.
+`204`. Upserts `daily_summary`. `timezone` (optional) is the zone `day` was
+stamped in; it moves the pact's `phone_timezone` first, so the day is judged
+on the calendar it came from. `409 day_out_of_range` outside the pact's days
+on that calendar, `409 app_not_in_pact` for a package not in the snapshot.
+`earned_min` is the bonus the phone has awarded that app today; the server
+caps it at the pact's own rules and it is what makes a day within limits at
+35 of a 30-minute limit after a walk.
 
 ## Activities (earn your time)
 
@@ -333,10 +357,17 @@ snapshot.
 `201` with the activity. Target and reward minutes come from the pact
 snapshot's activity rules, never from the request. `409
 activity_not_allowed` if the pact has no rule for that type, `409
-daily_cap_reached` if pending plus completed activities of that type already
-reach the day's cap (in the pact's timezone), `409 deadline_too_far` if the
-deadline is more than 24 h after the start. `200` with the existing row when
-the id was seen before.
+daily_cap_reached` if pending plus completed activities for that
+`app_package` today -- of either kind -- already reach the rule's daily cap
+(the day on the phone's calendar), `409 deadline_too_far` if the deadline
+is more than 24 h after the start. `200` with the existing row when the id
+was seen before.
+
+The cap is per app, across both kinds of activity: "the most bonus time
+Instagram can have today", which is the rule the phone enforces and the
+one the daily summary holds each app's `earned_min` to. It used to be per
+kind across all apps, and with two apps the phone had awarded a third walk
+the server refused.
 
 ### `GET /pacts/{id}/activities`
 
@@ -622,8 +653,9 @@ changes one function and no data.
 ```
 
 `current` is `null` with no active pact. `day` is the 1-based calendar day
-of the challenge in the pact's timezone -- the same day the phone shows,
-so somebody who started at 23:30 is on day 2 the next morning, not
+of the challenge on the phone's calendar (`phone_timezone`, or the zone it
+was locked in until the phone has reported one) -- the same day the phone
+shows, so somebody who started at 23:30 is on day 2 the next morning, not
 twenty-four hours later. `streak_days` is how many days in a row, ending
 yesterday, every limit held: today never counts, and a day with no summary
 breaks it. `longest_streak_days` is the most whole days any pact survived.

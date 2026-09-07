@@ -4,7 +4,7 @@ import { queueWitnessNotifications } from "./notifications";
 import { requireOwnedPact } from "./pacts";
 import { conflict, notFound } from "@/lib/http";
 import type { ActivityComplete, ActivityCreate, Snapshot } from "@/lib/schemas";
-import { addDays } from "@/lib/time";
+import { addDays, phoneZone } from "@/lib/time";
 import { isUuidLike } from "@/lib/uuid";
 
 export const activityColumns = [
@@ -52,6 +52,14 @@ function targetOf(rule: Rule): number {
 // never from the request, and the day's cap counts pending as well as
 // completed activities so a burst of starts cannot exceed it. The id is
 // device-generated, so a retry returns the existing row.
+//
+// The cap is per app, per day, across both kinds of activity -- the rule
+// the phone enforces and the one every screen states ("the most bonus time
+// Instagram can have today"), and the one the daily summary already holds
+// each app's earned minutes to. It used to be per kind across all apps,
+// which refused the third walk of a day with two apps while the phone,
+// counting per app, had already awarded it: minutes on the phone with
+// nothing on the ledger and nothing said to the witnesses.
 export async function createActivity(userId: string, pactId: string, input: ActivityCreate) {
   const pact = await requireOwnedPact(userId, pactId);
 
@@ -70,16 +78,18 @@ export async function createActivity(userId: string, pactId: string, input: Acti
   const latest = addDays(startedAt, 1);
   if (deadlineAt > latest) throw conflict("deadline_too_far", "An activity must end within 24 hours of starting.");
 
+  const zone = phoneZone(pact);
+  const appPackage = input.app_package ?? null;
   const { used } = await db
     .selectFrom("activity")
     .select((eb) => eb.fn.coalesce(eb.fn.sum<number>("reward_min"), sql<number>`0`).as("used"))
     .where("pact_id", "=", pactId)
-    .where("type", "=", input.type)
+    .where((eb) => (appPackage === null ? eb("app_package", "is", null) : eb("app_package", "=", appPackage)))
     .where("status", "in", ["pending", "completed"])
-    .where(sql<boolean>`(started_at at time zone ${pact.timezone})::date = (${startedAt} at time zone ${pact.timezone})::date`)
+    .where(sql<boolean>`(started_at at time zone ${zone})::date = (${startedAt} at time zone ${zone})::date`)
     .executeTakeFirstOrThrow();
   if (Number(used) + rule.reward_min > rule.daily_cap_min) {
-    throw conflict("daily_cap_reached", "You have earned today's maximum for this activity.");
+    throw conflict("daily_cap_reached", `You have earned all the bonus time ${appLabel(pact.snapshot, appPackage)} can have today.`);
   }
 
   try {

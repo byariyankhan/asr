@@ -1,4 +1,5 @@
 import { db } from "./db/client";
+import { followPhoneZone } from "./phone-zone";
 import { notFound } from "@/lib/http";
 import type { DeviceRegister, Heartbeat } from "@/lib/schemas";
 import { newId } from "@/lib/uuid";
@@ -85,6 +86,9 @@ export async function recordHeartbeat(userId: string, deviceId: string, input: H
     .where("user_id", "=", userId)
     .executeTakeFirst();
   if (result.numUpdatedRows === 0n) throw notFound("Device");
+
+  // The calendar the phone is on, for the challenge it holds. See phone-zone.ts.
+  await followPhoneZone({ userId, deviceId }, input.timezone, now);
 
   // A heartbeat that says protection is on is the only proof there is that a
   // phone which just took a challenge over can actually enforce it: usage

@@ -41,6 +41,21 @@ export function dayInZone(at: Date, zone: string): string {
 }
 
 /**
+ * The calendar a pact's "today" is on: the zone the phone last reported, or
+ * the zone the challenge was locked in until it has reported one.
+ *
+ * The phone keys every day it stamps -- summaries, the carried-over day, an
+ * added app's first day -- to the zone it is living in, and re-derives the
+ * challenge's day number in that zone too. Comparing those to days computed
+ * in the zone at the start was a mismatch for hours every day once the
+ * person had travelled: a witness read "limits not reported today" against
+ * a phone reporting every five minutes.
+ */
+export function phoneZone(pact: { timezone: string; phone_timezone?: string | null }): string {
+  return pact.phone_timezone ?? pact.timezone;
+}
+
+/**
  * 1-based day number inside a pact, capped at its length.
  *
  * Calendar days in the pact's zone, not 24-hour steps. The phone counts the

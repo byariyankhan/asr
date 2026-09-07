@@ -87,7 +87,8 @@ create table pact (
   user_id       text not null references "user"(id) on delete cascade,
   device_id     uuid references device(id) on delete set null,
   duration_days integer not null check (duration_days between 1 and 90),  -- presets are a UI concern
-  timezone      text not null,                -- copied from user at lock time
+  timezone      text not null,                -- the zone it was locked in; completion is judged in it
+  phone_timezone text,                        -- 0012: the zone the phone last reported; every "today" is computed in it
   starts_at     timestamptz not null default now(),
   ends_at       timestamptz not null,         -- set by the server: starts_at + duration_days days
   status        text not null default 'active'
@@ -107,7 +108,7 @@ create unique index pact_one_active_idx on pact (user_id) where status = 'active
 `snapshot` is the locked configuration; witnesses and the reinstall flow
 read from it. It takes one edit after the start, and only in the direction
 that keeps the lock meaning something: `POST /pacts/{id}/apps` appends an
-app, stamped with `added_on` (the day it came in, in the pact's timezone).
+app, stamped with `added_on` (the day it came in, on the phone's calendar).
 No app is ever removed and no limit ever moves. Apps the challenge started
 with have no `added_on`.
 
@@ -305,7 +306,7 @@ minutes per day.
 ```sql
 create table daily_summary (
   pact_id    uuid not null references pact(id) on delete cascade,
-  day              date not null,               -- in the pact's timezone
+  day              date not null,               -- the phone's day, in the zone it reported
   app_package      text not null,
   minutes_used     integer not null,
   limit_min        integer not null,

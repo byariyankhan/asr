@@ -1,8 +1,9 @@
 import { db } from "./db/client";
 import { requireOwnedPact } from "./pacts";
+import { followPhoneZone } from "./phone-zone";
 import { conflict } from "@/lib/http";
 import type { SummaryCreate } from "@/lib/schemas";
-import { dayInZone } from "@/lib/time";
+import { dayInZone, phoneZone } from "@/lib/time";
 
 // The one per-app number the server keeps: minutes per day for apps under
 // the pact, so a witness can see "2 of 3 within limits". Upsert, so the
@@ -10,9 +11,15 @@ import { dayInZone } from "@/lib/time";
 export async function upsertDailySummary(userId: string, pactId: string, input: SummaryCreate): Promise<void> {
   const pact = await requireOwnedPact(userId, pactId);
 
-  const firstDay = dayInZone(pact.starts_at, pact.timezone);
+  // The day is the phone's day, in the zone the phone is in -- which it
+  // says with the figures. Judged against the zone the challenge started
+  // in, a phone five hours ahead of it was refused every summary it sent
+  // before five in the morning, and the witness read a blank day.
+  await followPhoneZone({ userId, pactId }, input.timezone);
+  const zone = input.timezone ?? phoneZone(pact);
+  const firstDay = dayInZone(pact.starts_at, zone);
   const lastInstant = pact.ended_at && pact.ended_at < pact.ends_at ? pact.ended_at : pact.ends_at;
-  const lastDay = dayInZone(new Date(Math.min(lastInstant.getTime(), Date.now())), pact.timezone);
+  const lastDay = dayInZone(new Date(Math.min(lastInstant.getTime(), Date.now())), zone);
   if (input.day < firstDay || input.day > lastDay) {
     throw conflict("day_out_of_range", `Summaries are accepted for ${firstDay} to ${lastDay}.`);
   }

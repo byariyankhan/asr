@@ -34,6 +34,7 @@ describe.skipIf(!DATABASE_URL)("activities and daily summary", async () => {
         reset_time: "04:00",
         activities: {
           walk_steps: { target: 3000, reward_min: 10, daily_cap_min: 20 },
+          focus_session: { target_min: 20, reward_min: 10, daily_cap_min: 20 },
         },
       },
     });
@@ -62,7 +63,7 @@ describe.skipIf(!DATABASE_URL)("activities and daily summary", async () => {
   it("refuses activity types the pact did not include", async () => {
     const start = new Date();
     await expect(
-      createActivity(userId, pactId, { id: newId(), type: "focus_session", started_at: iso(start), deadline_at: iso(new Date(start.getTime() + 60_000)) }),
+      createActivity(userId, pactId, { id: newId(), type: "waiting_period", started_at: iso(start), deadline_at: iso(new Date(start.getTime() + 60_000)) }),
     ).rejects.toMatchObject({ code: "activity_not_allowed" });
   });
 
@@ -137,5 +138,30 @@ describe.skipIf(!DATABASE_URL)("activities and daily summary", async () => {
     await expect(
       upsertDailySummary(userId, pactId, { day: today, apps: [{ package: "com.reddit.frontpage", minutes_used: 1, limit_min: 30, earned_min: 0 }] }),
     ).rejects.toMatchObject({ code: "app_not_in_pact" });
+  });
+
+  it("the cap is per app, across both kinds of activity", async () => {
+    // The rule the phone enforces and every screen states: the most bonus
+    // time one app can have in a day. A walk and a focus session for
+    // Instagram fill its cap of 20; a third activity for Instagram is
+    // refused whichever kind it is, and YouTube still has its own.
+    const start = new Date();
+    const activity = (type: "walk_steps" | "focus_session", app: string) =>
+      createActivity(userId, pactId, {
+        id: newId(),
+        type,
+        started_at: iso(start),
+        deadline_at: iso(new Date(start.getTime() + 3_600_000)),
+        app_package: app,
+      });
+
+    expect((await activity("walk_steps", "com.instagram.android")).created).toBe(true);
+    expect((await activity("focus_session", "com.instagram.android")).created).toBe(true);
+    await expect(activity("walk_steps", "com.instagram.android")).rejects.toMatchObject({ code: "daily_cap_reached" });
+    await expect(activity("focus_session", "com.instagram.android")).rejects.toMatchObject({
+      code: "daily_cap_reached",
+      message: "You have earned all the bonus time Instagram can have today.",
+    });
+    expect((await activity("walk_steps", "com.google.android.youtube")).created).toBe(true);
   });
 });

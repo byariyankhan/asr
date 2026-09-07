@@ -22,6 +22,8 @@ export const deviceRegister = z.object({
   os_version: z.string().max(32).optional(),
   app_version: z.string().min(1).max(32),
   fcm_token: z.string().min(1).max(4096).optional(),
+  /** The zone the phone is in. Moves the active pact's calendar; see phone-zone.ts. */
+  timezone: timeZone.optional(),
 });
 export type DeviceRegister = z.infer<typeof deviceRegister>;
 
@@ -29,6 +31,7 @@ export const heartbeat = z.object({
   protection_enabled: z.boolean(),
   app_version: z.string().min(1).max(32),
   fcm_token: z.string().min(1).max(4096).optional(),
+  timezone: timeZone.optional(),
 });
 export type Heartbeat = z.infer<typeof heartbeat>;
 
@@ -241,6 +244,8 @@ export type ActivityComplete = z.infer<typeof activityComplete>;
 // --- daily summary ---
 export const summaryCreate = z.object({
   day,
+  /** The zone `day` was stamped in: the phone's. */
+  timezone: timeZone.optional(),
   apps: z
     .array(
       z.object({
