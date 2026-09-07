@@ -308,7 +308,7 @@ create table daily_summary (
   pact_id    uuid not null references pact(id) on delete cascade,
   day              date not null,               -- the phone's day, in the zone it reported
   app_package      text not null,
-  minutes_used     integer not null,
+  minutes_used     integer not null,           -- raised by an upsert, never lowered
   limit_min        integer not null,
   earned_min       integer not null default 0,
   received_at      timestamptz not null default now(),

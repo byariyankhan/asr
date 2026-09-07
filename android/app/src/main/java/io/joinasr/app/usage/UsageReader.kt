@@ -32,6 +32,23 @@ data class UsageSnapshot(
         }
         return copy(minutesByPackage = merged)
     }
+
+    /**
+     * The same day, never below what this phone already knows it held.
+     *
+     * Not a sum: [kept] and this reading are two accounts of the same
+     * minutes. Android forgets a package's events when that package is
+     * uninstalled, so a reading can fall to zero for a day somebody spent
+     * an hour in -- see [io.joinasr.app.enforcement.UsageFloor].
+     */
+    fun atLeast(kept: Map<String, Int>): UsageSnapshot {
+        if (kept.isEmpty()) return this
+        val merged = minutesByPackage.toMutableMap()
+        for ((packageName, minutes) in kept) {
+            merged[packageName] = maxOf(merged[packageName] ?: 0, minutes)
+        }
+        return copy(minutesByPackage = merged)
+    }
 }
 
 /**

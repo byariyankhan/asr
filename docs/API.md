@@ -338,9 +338,13 @@ Daily aggregate, sent once per day per app while active.
   "apps": [ { "package": "…", "minutes_used": 27, "limit_min": 30, "earned_min": 10 } ] }
 ```
 
-`204`. Upserts `daily_summary`. `timezone` (optional) is the zone `day` was
-stamped in; it moves the pact's `phone_timezone` first, so the day is judged
-on the calendar it came from. `409 day_out_of_range` outside the pact's days
+`204`. Upserts `daily_summary`, and **a day's `minutes_used` only ever goes
+up**: time in front of an app is not spent backwards, so a lower figure is a
+day that lost its memory (Android wipes a package's usage events when it is
+uninstalled) or a client asking for a clean slate. The higher of the two is
+kept, per app. `timezone` (optional) is the zone `day` was stamped in; it
+moves the pact's `phone_timezone` first, so the day is judged on the calendar
+it came from. `409 day_out_of_range` outside the pact's days
 on that calendar, `409 app_not_in_pact` for a package not in the snapshot.
 `earned_min` is the bonus the phone has awarded that app today; the server
 caps it at the pact's own rules and it is what makes a day within limits at

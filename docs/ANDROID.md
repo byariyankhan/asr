@@ -368,6 +368,7 @@ the other side of it.
 | `asr_pact` | the pact, as one JSON value. Written once when it is committed; read at service start. Half a pact is a state the loop must never see, so it is one atomic write |
 | `asr_sync` | install id, the server's device id, push token, the server's pact id keyed to the pact's start time, and the outbox |
 | `asr_carried` | minutes spent today on a phone this one is not, until the day rolls over |
+| `asr_usage_floor` | the highest reading each limited app has had, per day, for the last eight -- so a day cannot be emptied by uninstalling the app that spent it |
 | `asr_witness` | the witness list, so the circle screen is drawn before the first request answers |
 | `asr_outcome` | how the last challenge ended, until the person has been shown |
 | `asr_auth` | the session token |

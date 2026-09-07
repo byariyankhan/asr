@@ -136,6 +136,27 @@ through a screen-off costs nothing: the screen going off arrives as an
 interruption that closes the open app at the moment it happened, and the
 first poll after the screen returns reads it back with its real timestamp.
 
+**A day's minutes never come down.** Android throws a package's usage events
+away when that package is uninstalled, and every figure here is read from
+those events -- so uninstalling Instagram and installing it again emptied its
+day. "30 of 30 min" became "0 of 30 min", the block screen came down, and the
+whole allowance was there to spend again, in the two minutes it takes, as
+often as somebody liked, with the witnesses told nothing because as far as
+this phone could see nothing had been used.
+
+So each day's highest reading per app is written to this app's own storage
+(`UsageFloor`, `asr_usage_floor`), which an uninstall of *another* app cannot
+reach, and every reading afterwards is taken as at least that -- a maximum,
+never a sum, because the two are the same minutes counted twice. The
+dashboard, the week view and the block screen all read the same figure. It
+repairs the neighbouring cases for free: usage access revoked and granted
+again, the system trimming its event log, a process restart on a phone whose
+events have been cleared.
+
+The server holds the same line from its own side: a daily summary may raise a
+day's minutes and never lower them, so a client asking for a clean slate does
+not get one on the screen a witness is reading.
+
 ## What goes to the server, and when
 
 Nothing here is on the path of a limit being applied. A person with no signal
@@ -231,6 +252,8 @@ uninstall is noticed a little later.
 ## Things that must not come back
 
 - A limit that fails a challenge.
+- A day's minutes going down -- on the phone or on the server -- because
+  something forgot them.
 - A challenge that lives only on one install, so uninstalling is a quiet way
   out.
 - Two phones enforcing the same day.

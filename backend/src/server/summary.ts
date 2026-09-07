@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import { db } from "./db/client";
 import { requireOwnedPact } from "./pacts";
 import { followPhoneZone } from "./phone-zone";
@@ -30,6 +31,8 @@ export async function upsertDailySummary(userId: string, pactId: string, input: 
   // sent, so a modified client with `limit_min: 1440` had a perfect streak
   // beside the real limits shown on the same screen. Earned minutes are
   // capped at what the pact's own rules allow in a day, for the same reason.
+  //
+  // And a day's minutes never come down; see the upsert below.
   const limits = new Map(pact.snapshot.apps.map((a) => [a.package, a.daily_limit_min]));
   const unknown = input.apps.find((a) => !limits.has(a.package));
   if (unknown) throw conflict("app_not_in_pact", `${unknown.package} is not part of this pact.`);
@@ -52,9 +55,20 @@ export async function upsertDailySummary(userId: string, pactId: string, input: 
         received_at: now,
       })),
     )
+    // A day's minutes only ever go up.
+    //
+    // Time in front of an app accumulates; it is never spent backwards, so a
+    // figure lower than the one already recorded is not a correction, it is
+    // a day that lost its memory -- or a client asking for one. Android
+    // throws a package's usage events away when the package is uninstalled,
+    // so uninstalling Instagram and installing it again read back an empty
+    // day on the phone; the phone keeps its own copy now (`UsageFloor`), and
+    // this is the same guarantee on the side the witnesses actually read.
+    // It is the rule `limit_min` above already follows: nothing a phone
+    // sends may make a day look better than it was.
     .onConflict((oc) =>
       oc.columns(["pact_id", "day", "app_package"]).doUpdateSet((eb) => ({
-        minutes_used: eb.ref("excluded.minutes_used"),
+        minutes_used: sql<number>`greatest(${eb.ref("daily_summary.minutes_used")}, ${eb.ref("excluded.minutes_used")})`,
         limit_min: eb.ref("excluded.limit_min"),
         earned_min: eb.ref("excluded.earned_min"),
         received_at: now,
