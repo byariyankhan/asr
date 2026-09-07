@@ -103,7 +103,7 @@ class EnforcementService : Service() {
     private var ending = false
 
     /** What the foreground notification currently says, so it is not re-posted to say it again. */
-    private var showingApps = -1
+    private var showingApps: Int? = null
     private var foregrounded = false
 
     /**
@@ -220,7 +220,11 @@ class EnforcementService : Service() {
         )
 
         createChannel()
-        startInForeground(apps = 0)
+        // No count yet: the pact is read from disk a moment later, and
+        // Android wants a notification inside five seconds. Without a number
+        // rather than with a wrong one -- this used to say "0 apps limited
+        // today" for the instant before the real figure arrived.
+        startInForeground(apps = null)
 
         store.pact.onEach { current ->
             pact = current
@@ -756,7 +760,7 @@ class EnforcementService : Service() {
         getSystemService<NotificationManager>()?.createNotificationChannel(channel)
     }
 
-    private fun startInForeground(apps: Int) {
+    private fun startInForeground(apps: Int?) {
         // Only when the sentence changes.
         //
         // The pact store re-emits on every write to it, and each emission
@@ -780,14 +784,14 @@ class EnforcementService : Service() {
         }
     }
 
-    private fun buildNotification(apps: Int): Notification {
+    private fun buildNotification(apps: Int?): Notification {
         val open = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val text = resources.getQuantityString(R.plurals.protection_apps_limited, apps, apps)
+        val text = apps?.let { resources.getQuantityString(R.plurals.protection_apps_limited, it, it) }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_protection)
             .setContentTitle(getString(R.string.protection_running))
@@ -805,7 +809,8 @@ class EnforcementService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "protection-quiet"
+        /** Public so the profile can send somebody to this one channel's settings. */
+        const val CHANNEL_ID = "protection-quiet"
 
         /** The IMPORTANCE_LOW channel this replaced. See [createChannel]. */
         private const val LEGACY_CHANNEL_ID = "protection"

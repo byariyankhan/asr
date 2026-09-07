@@ -369,6 +369,30 @@ the other side of it.
 | `asr_sync` | install id, the server's device id, push token, the server's pact id keyed to the pact's start time, and the outbox |
 | `asr_carried` | minutes spent today on a phone this one is not, until the day rolls over |
 | `asr_usage_floor` | the highest reading each limited app has had, per day, for the last eight -- so a day cannot be emptied by uninstalling the app that spent it |
+
+### The foreground-service notification
+
+Not a choice. Android has refused to run a foreground service without one
+since API 26, and nothing in the app can suppress its own. It is already the
+quietest a notification is allowed to be: its own `IMPORTANCE_MIN` channel
+(`protection-quiet`), silent, no badge, nothing in the status bar, no
+timestamp, and re-posted only when its sentence changes -- the pact store
+re-emits on every write, and each emission used to reset the timestamp so the
+shade read "Asr · 2m" as though something had just happened.
+
+Swiping it away (Android 13+ allows that) stops nothing and does not stop it
+returning: every fresh `startForeground` posts it again, which happens
+whenever the service is created -- a reboot, the FCM ping that revives a
+service the phone killed, a system restart under `START_STICKY`. So a
+notification that keeps coming back is a phone that keeps killing the loop,
+and the answer to it is Background activity, not the swipe.
+
+The only switch that hides it is Android's own, on that one channel, and
+Profile → App permissions opens it directly (`ACTION_CHANNEL_NOTIFICATION_SETTINGS`)
+rather than the app's whole notification page, which would take the witness
+alerts with it. Nothing else changes when it is off: `Permissions.protectionOn`
+is usage access and the overlay grant, so the heartbeat still reports true and
+no witness is told anything.
 | `asr_witness` | the witness list, so the circle screen is drawn before the first request answers |
 | `asr_outcome` | how the last challenge ended, until the person has been shown |
 | `asr_auth` | the session token |

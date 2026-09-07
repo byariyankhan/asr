@@ -189,6 +189,7 @@ private enum class SetupStep {
 private val ProfileRoutes = setOf(
     ProfileDestination.PersonalDetails,
     ProfileDestination.EmailAndPassword,
+    ProfileDestination.Permissions,
     ProfileDestination.HelpAndSupport,
     ProfileDestination.PrivacyPolicy,
     ProfileDestination.TermsOfService,
@@ -1456,6 +1457,33 @@ fun AsrApp(
                                 )
 
                                 // Figma 35.
+                                // The same rows as setup step six, because
+                                // they are facts about the phone either way --
+                                // and the one thing that belongs only here:
+                                // Android's switch for the notification this
+                                // app is not allowed to hide.
+                                ProfileDestination.Permissions -> ProtectionScreen(
+                                    onBack = { profileRoute = null },
+                                    onReviewBlocking = {
+                                        runCatching {
+                                            context.startActivity(Permissions.overlayIntent(context))
+                                        }
+                                    },
+                                    // Straight to Android's own switch. The
+                                    // guided screen behind it belongs to the
+                                    // dashboard's warning, where it is opened
+                                    // because the loop has actually stopped;
+                                    // it is drawn inside the Home tab and
+                                    // would be a dead button from here.
+                                    onBackgroundActivity = {
+                                        runCatching {
+                                            context.startActivity(Permissions.batteryOptimizationIntent())
+                                        }
+                                    },
+                                    onContinue = { profileRoute = null },
+                                    inSetup = false,
+                                )
+
                                 ProfileDestination.HelpAndSupport -> HelpAndSupportScreen(
                                     onBack = { profileRoute = null },
                                     accountEmail = current.me.email,

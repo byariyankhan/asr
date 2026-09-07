@@ -28,7 +28,18 @@ object SupportTexts {
                 "without a notification. So the notification is the price of the limits working " +
                 "while your phone is asleep. It is set to the quietest level Android allows: no " +
                 "sound, no status bar icon, and no place in your notification list except the " +
-                "silent section at the bottom.",
+                "silent section at the bottom. You can hide it altogether from Profile → App " +
+                "permissions; your limits, the block screen and your witnesses are unaffected.",
+        ),
+        SupportAnswer(
+            "Why does the Asr notification come back after I swipe it away?",
+            "Because your phone stopped Asr and Asr started again. Swiping it away does not " +
+                "stop anything — the notification and the protection are the same thing to " +
+                "Android — so it stays gone until something restarts the service, which is " +
+                "usually your phone killing it to save battery. Seeing it reappear often means " +
+                "your limits are being switched off often. The fix is Background activity, under " +
+                "Profile → App permissions. To be rid of the notification itself, hide it there " +
+                "instead of swiping.",
         ),
         SupportAnswer(
             "Why does Asr need Usage access and Display over other apps?",
