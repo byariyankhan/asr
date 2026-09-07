@@ -42,6 +42,11 @@ export const COMPLETION_GRACE_MS = 2 * 60 * 60 * 1000;
  * own.
  */
 export function hasRunItsCourse(
+  // The zone the challenge was locked in, on purpose -- not the one the
+  // phone reports. Everything else about "today" follows the phone, but a
+  // zone is as easy to change in Settings as the date, and following it
+  // here would let a challenge be finished up to a day early by claiming
+  // a zone further east.
   pact: { starts_at: Date; duration_days: number; timezone: string },
   now: Date,
 ): boolean {

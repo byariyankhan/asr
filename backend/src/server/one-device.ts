@@ -2,6 +2,7 @@ import { db } from "./db/client";
 import { registerDevice } from "./devices";
 import { sendPush, type PushSender } from "./fcm";
 import { movePactToDevice } from "./pacts";
+import { followPhoneZone } from "./phone-zone";
 import type { DeviceRegister } from "@/lib/schemas";
 
 /**
@@ -80,6 +81,9 @@ export async function takeOverOnPhone(
   if (pact && pact.device_id !== device.id) {
     await db.transaction().execute((trx) => movePactToDevice(trx, pact.id, userId, device, now));
   }
+  // And the challenge's "today" is this phone's today from here on -- before
+  // it asks what the day already holds, which it does next.
+  await followPhoneZone({ userId, deviceId: device.id }, input.timezone, now);
 
   return device;
 }

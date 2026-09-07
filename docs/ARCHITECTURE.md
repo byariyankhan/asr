@@ -203,7 +203,8 @@ dashboard until it can actually enforce anything.
 ### Activities
 
 1. Activity rules (which types, reward minutes, daily cap) are part of the
-   pact snapshot, so they cannot be changed mid-pact.
+   pact snapshot, so they cannot be changed mid-pact. The cap is per app per
+   day across both kinds of activity, on the phone and on the server alike.
 2. The phone runs the activity and reports `completed` with the earned
    minutes, or the server marks `failed` when the deadline passes with no
    completion event (same 15-minute job).
@@ -263,8 +264,12 @@ Android choices are in `ANDROID.md`.
 
 - Every timestamp column is `timestamptz`.
 - The user's IANA timezone is stored on `user` and copied into every
-  pact so daily reset and "day N of 7" are computed the way the user
-  experiences them, DST included.
+  pact (`pact.timezone`) at lock time; completion is judged in that zone
+  and it never moves. Every "today" -- which summary rows are today's,
+  "day N of 7", the day an added app counts from, an activity's cap day --
+  is computed in `pact.phone_timezone`, the zone the phone last reported
+  with its registration, heartbeat or daily summary, so a person who has
+  travelled is judged on the calendar they are living in, DST included.
 - Device clocks are untrusted. The server stores `received_at` alongside any
   device-supplied `occurred_at` and uses server time for deadlines.
 

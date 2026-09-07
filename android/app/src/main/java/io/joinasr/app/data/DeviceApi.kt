@@ -22,6 +22,13 @@ data class DeviceRegistration(
     @SerialName("os_version") val osVersion: String? = null,
     @SerialName("app_version") val appVersion: String,
     @SerialName("fcm_token") val fcmToken: String? = null,
+    /**
+     * The zone this phone is in, as an IANA name. The server computes
+     * every "today" of the challenge this phone holds in it -- which
+     * summary rows are today's, the day number a witness sees -- so a
+     * person who has travelled is not judged on the calendar they left.
+     */
+    val timezone: String? = null,
 )
 
 @Serializable
@@ -30,6 +37,7 @@ private data class Heartbeat(
     @SerialName("app_version") val appVersion: String,
     /** Omitted rather than sent as null: the server leaves it alone when absent. */
     @SerialName("fcm_token") val fcmToken: String? = null,
+    val timezone: String? = null,
 )
 
 /**
@@ -86,12 +94,13 @@ class DeviceApi(
         protectionEnabled: Boolean,
         appVersion: String,
         fcmToken: String? = null,
+        timezone: String? = null,
     ): ApiResult<Unit> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$baseUrl/v1/devices/$deviceId/heartbeat")
             .header("Authorization", "Bearer $token")
             .post(
-                ApiJson.encodeToString(Heartbeat(protectionEnabled, appVersion, fcmToken))
+                ApiJson.encodeToString(Heartbeat(protectionEnabled, appVersion, fcmToken, timezone))
                     .toRequestBody(JSON_MEDIA),
             )
             .build()

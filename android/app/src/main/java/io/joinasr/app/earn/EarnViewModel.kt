@@ -78,7 +78,15 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
                 deadlineAtMillis = now + EarnRules.DEADLINE_HOURS * 60 * 60 * 1000,
             )
             store.start(activity)
-            runCatching { sync.startActivity(pact, activity) }
+            // Stood down only on a settled refusal -- the day's bonus for
+            // this app already spent, which the server can know before this
+            // phone does. Silence and every other failure leave it running.
+            val answer = runCatching { sync.startActivity(pact, activity) }
+                .getOrDefault(Sync.StartResult.Unknown)
+            if (answer is Sync.StartResult.Refused) {
+                store.clearActive()
+                _error.value = answer.message
+            }
         }
     }
 

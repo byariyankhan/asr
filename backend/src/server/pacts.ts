@@ -6,7 +6,7 @@ import { queueWitnessNotifications } from "./notifications";
 import { canViewPact } from "./witnesses";
 import { conflict, notFound } from "@/lib/http";
 import { MAX_SNAPSHOT_APPS, type PactAppAdd, type PactCreate, type Snapshot } from "@/lib/schemas";
-import { addDays, dayInZone } from "@/lib/time";
+import { addDays, dayInZone, phoneZone } from "@/lib/time";
 import { isUuidLike, newId } from "@/lib/uuid";
 
 export const pactColumns = [
@@ -15,6 +15,7 @@ export const pactColumns = [
   "device_id",
   "duration_days",
   "timezone",
+  "phone_timezone",
   "starts_at",
   "ends_at",
   "status",
@@ -114,7 +115,7 @@ async function withToday(pact: PactRow) {
   // minutes of Instagram becomes sixty by signing in somewhere else. The day
   // belongs to the person, not to the handset, and this is the only place
   // that knows the whole of it.
-  const day = dayInZone(new Date(), pact.timezone);
+  const day = dayInZone(new Date(), phoneZone(pact));
   const today = await db
     .selectFrom("daily_summary")
     .select(["app_package", "minutes_used"])
@@ -154,7 +155,7 @@ export async function addAppToPact(userId: string, pactId: string, app: PactAppA
   const updated = await db.transaction().execute(async (trx) => {
     const pact = await trx
       .selectFrom("pact")
-      .select(["status", "timezone", "snapshot"])
+      .select(["status", "timezone", "phone_timezone", "snapshot"])
       .where("id", "=", pactId)
       .forUpdate()
       .executeTakeFirstOrThrow();
@@ -172,7 +173,7 @@ export async function addAppToPact(userId: string, pactId: string, app: PactAppA
     const now = new Date();
     const snapshot: Snapshot = {
       ...pact.snapshot,
-      apps: [...apps, { ...app, added_on: dayInZone(now, pact.timezone) }],
+      apps: [...apps, { ...app, added_on: dayInZone(now, phoneZone(pact)) }],
     };
     return trx
       .updateTable("pact")

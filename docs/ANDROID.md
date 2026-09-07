@@ -450,7 +450,11 @@ missed.
 
 Reward minutes are applied locally the instant the activity completes and
 reported to the server with the `activity_completed` event. The daily cap
-is enforced locally and re-checked by the server.
+-- the most bonus time one app can have in a day, across both kinds of
+activity -- is enforced locally and re-checked by the server on the same
+rule. The phone also sends its IANA zone with its registration, every
+heartbeat and every summary; the server computes the challenge's "today"
+in it, so days stamped here and days judged there are on one calendar.
 
 ## Witness invite (App Links)
 

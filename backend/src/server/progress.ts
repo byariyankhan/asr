@@ -1,6 +1,6 @@
 import { db } from "./db/client";
 import { sql } from "kysely";
-import { dayInZone, dayNumber, previousDay } from "@/lib/time";
+import { dayInZone, dayNumber, phoneZone, previousDay } from "@/lib/time";
 
 /**
  * Everything the Progress tab and a witness's "View progress" show, derived
@@ -19,7 +19,7 @@ export async function progressFor(userId: string, witnessTo?: string) {
 
   const pacts = await db
     .selectFrom("pact")
-    .select(["id", "duration_days", "timezone", "starts_at", "ends_at", "status", "ended_at", "snapshot"])
+    .select(["id", "duration_days", "timezone", "phone_timezone", "starts_at", "ends_at", "status", "ended_at", "snapshot"])
     .where("user_id", "=", userId)
     .orderBy("created_at", "desc")
     .execute();
@@ -37,15 +37,18 @@ export async function progressFor(userId: string, witnessTo?: string) {
   // number less one, on the same calendar the day number is counted on.
   const survivedDays = (p: (typeof pacts)[number]) => {
     if (p.status === "completed") return p.duration_days;
-    if (p.status === "broken" && p.ended_at) return dayNumber(p.starts_at, p.duration_days, p.timezone, p.ended_at) - 1;
-    return dayNumber(p.starts_at, p.duration_days, p.timezone, now) - 1;
+    if (p.status === "broken" && p.ended_at) return dayNumber(p.starts_at, p.duration_days, phoneZone(p), p.ended_at) - 1;
+    return dayNumber(p.starts_at, p.duration_days, phoneZone(p), now) - 1;
   };
   const longest = witnessTo ? 0 : pacts.reduce((m, p) => Math.max(m, survivedDays(p)), 0);
 
   let currentView = null;
   if (current) {
-    const day = dayNumber(current.starts_at, current.duration_days, current.timezone, now);
-    const today = dayInZone(now, current.timezone);
+    // Everything here is on the phone's calendar: the day it shows, the day
+    // its summary was stamped with, the day a limit was reached on.
+    const zone = phoneZone(current);
+    const day = dayNumber(current.starts_at, current.duration_days, zone, now);
+    const today = dayInZone(now, zone);
     const summary = await db
       .selectFrom("daily_summary")
       .select(["app_package", "minutes_used", "limit_min", "earned_min"])
@@ -70,7 +73,7 @@ export async function progressFor(userId: string, witnessTo?: string) {
         .select("app_package")
         .where("pact_id", "=", current.id)
         .where("type", "=", "limit_hit")
-        .where(sql<boolean>`(occurred_at at time zone ${sql.lit(current.timezone)})::date = ${sql.lit(today)}::date`)
+        .where(sql<boolean>`(occurred_at at time zone ${sql.lit(zone)})::date = ${sql.lit(today)}::date`)
         .execute();
       const hit = new Set(hits.map((h) => h.app_package));
       within = apps.filter((a) => !hit.has(a.package)).length;
@@ -144,7 +147,7 @@ export async function progressFor(userId: string, witnessTo?: string) {
  * the alternative is a number nobody should trust.
  */
 async function streakDays(
-  pact: { id: string; timezone: string; starts_at: Date; duration_days: number },
+  pact: { id: string; timezone: string; phone_timezone: string | null; starts_at: Date; duration_days: number },
   now: Date,
 ): Promise<number> {
   const rows = await db
@@ -162,13 +165,14 @@ async function streakDays(
     if (row.minutes_used > row.limit_min + row.earned_min) over.add(day);
   }
 
-  const firstDay = dayInZone(pact.starts_at, pact.timezone);
+  const zone = phoneZone(pact);
+  const firstDay = dayInZone(pact.starts_at, zone);
   let streak = 0;
   // Back from yesterday by calendar days, stopping at the first that was not
   // kept, was not reported, or is before the challenge began. Calendar days
   // rather than 24-hour steps, so the two days a year a zone shifts offset
   // do not skip a date or visit one twice.
-  let day = previousDay(dayInZone(now, pact.timezone));
+  let day = previousDay(dayInZone(now, zone));
   for (let counted = 0; counted < pact.duration_days; counted++) {
     if (day < firstDay) break;
     if (!seen.has(day) || over.has(day)) break;

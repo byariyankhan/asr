@@ -93,7 +93,10 @@ export interface PactTable {
   user_id: string;
   device_id: string | null;
   duration_days: number;
+  /** The zone the challenge was locked in. Completion is judged in it. */
   timezone: string;
+  /** The zone the phone last reported (0012); "today" is computed in it. Null: not reported yet. */
+  phone_timezone: string | null;
   starts_at: GeneratedTimestamp;
   ends_at: Timestamp;
   status: Generated<PactStatus>;

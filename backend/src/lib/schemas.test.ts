@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pactAppAdd, pactCreate, eventCreate, snapshot } from "./schemas";
+import { deviceRegister, heartbeat, pactAppAdd, pactCreate, eventCreate, snapshot, summaryCreate } from "./schemas";
 
 const goodSnapshot = {
   apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }],
@@ -127,5 +127,20 @@ describe("snapshot apps added later", () => {
     expect(() =>
       snapshot.parse({ apps: [{ ...added, added_on: "6 Sep 2026" }], reset_time: "00:00" }),
     ).toThrow();
+  });
+});
+
+describe("the phone's zone on its requests", () => {
+  it("is optional, and must be a real zone when given", () => {
+    expect(heartbeat.parse({ protection_enabled: true, app_version: "1.0.0" }).timezone).toBeUndefined();
+    expect(heartbeat.parse({ protection_enabled: true, app_version: "1.0.0", timezone: "Europe/London" }).timezone).toBe("Europe/London");
+    expect(() => heartbeat.parse({ protection_enabled: true, app_version: "1.0.0", timezone: "Mars/Olympus" })).toThrow();
+    expect(deviceRegister.parse({ install_id: "12345678", app_version: "1.0.0", timezone: "Asia/Dhaka" }).timezone).toBe("Asia/Dhaka");
+    const summary = summaryCreate.parse({
+      day: "2026-09-06",
+      timezone: "Asia/Dhaka",
+      apps: [{ package: "com.instagram.android", minutes_used: 1, limit_min: 30 }],
+    });
+    expect(summary.timezone).toBe("Asia/Dhaka");
   });
 });
