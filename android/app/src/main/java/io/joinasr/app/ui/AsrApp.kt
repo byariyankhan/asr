@@ -498,20 +498,12 @@ fun AsrApp(
     // screen is up loses nothing, and the difference from the baseline is
     // still right when somebody comes back.
     //
-    // A focus session is the clock. It cannot be beaten by leaving this
-    // screen: the enforcement loop cancels the session the moment a
-    // controlled app comes to the front, which is the only place on the
-    // phone that can see it happen.
+    // Phone-free focus sessions are owned by EnforcementService, even when
+    // this UI is stopped or destroyed. Compose must never award focus time.
     LaunchedEffect(activeActivity?.id) {
         val running = activeActivity ?: return@LaunchedEffect
         if (running.isWalk) {
             earnViewModel.steps.readings().collect { earnViewModel.onSteps(it) }
-        } else {
-            while (true) {
-                val elapsed = System.currentTimeMillis() - running.startedAtMillis
-                earnViewModel.onFocusMinutes((elapsed / 60_000L).toInt())
-                delay(1_000)
-            }
         }
     }
 

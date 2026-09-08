@@ -1,5 +1,9 @@
 package io.joinasr.app.ui.screens
 
+import android.os.SystemClock
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -117,9 +121,9 @@ fun ChooseActivityScreen(
         Spacer(Modifier.height(14.dp))
         ActivityCard(
             glyph = "◎",
-            title = "Focus for ${EarnRules.FOCUS_MINUTES} min",
-            subtitle = "In-app focus timer",
-            detail = "Stay off controlled apps until the timer ends.",
+            title = "Put your phone down for ${EarnRules.FOCUS_MINUTES} minutes.",
+            subtitle = "Phone-free session",
+            detail = "Keep your phone locked and spend some time in the real world.",
             reward = "Earn +${EarnRules.REWARD_MINUTES}m for ${app.label}",
             badge = null,
             enabled = !capped,
@@ -276,9 +280,8 @@ fun ActivityTrackingScreen(
  * Figma 23 — Earn Time / Activity Progress — Walk (node 133:2).
  *
  * The same screen serves a focus session, because the design of the two is
- * the same shape and the only differences are the unit and the promise about
- * leaving the screen. A focus session cannot say "you can leave": leaving
- * for a controlled app is what ends it.
+ * the same shape. Focus progress is display-only; the foreground service
+ * measures the locked interval and applies the reward.
  */
 @Composable
 fun ActivityProgressScreen(
@@ -288,7 +291,24 @@ fun ActivityProgressScreen(
     modifier: Modifier = Modifier,
 ) {
     val walk = activity.isWalk
-    val percent = (activity.fraction * 100).toInt()
+    // Display only. No UI clock can complete an activity or award minutes.
+    val focusRemaining by produceState(
+        initialValue = activity.target * 60,
+        key1 = activity.id,
+        key2 = activity.focusLockedSinceElapsed,
+    ) {
+        while (!walk) {
+            val elapsed = activity.focusLockedSinceElapsed?.let {
+                (SystemClock.elapsedRealtime() - it).coerceAtLeast(0L)
+            } ?: 0L
+            value = ((activity.target * 60_000L - elapsed).coerceAtLeast(0L) + 999L)
+                .div(1_000L).toInt()
+            delay(250)
+        }
+    }
+    val fraction = if (walk) activity.fraction else
+        (1f - focusRemaining.toFloat() / (activity.target * 60).coerceAtLeast(1)).coerceIn(0f, 1f)
+    val percent = (fraction * 100).toInt()
 
     Column(
         modifier = modifier
@@ -304,7 +324,7 @@ fun ActivityProgressScreen(
         Text("EARN TIME", style = AsrType.Eyebrow, color = AsrColors.Accent)
         Spacer(Modifier.height(14.dp))
         Text(
-            if (walk) "Keep walking." else "Stay focused.",
+            if (walk) "Keep walking." else "Put your phone down for ${activity.target} minutes.",
             style = AsrType.display(36),
             color = AsrColors.TextPrimary,
         )
@@ -314,8 +334,7 @@ fun ActivityProgressScreen(
                 "Reach ${"%.0f".format(Locale.US, EarnRules.kilometresFor(activity.target))} km " +
                     "to earn ${activity.rewardMinutes} more minutes for ${activity.appLabel}."
             } else {
-                "Stay off your controlled apps for ${activity.target} minutes to earn " +
-                    "${activity.rewardMinutes} more for ${activity.appLabel}."
+                "Keep your phone locked and spend some time in the real world."
             },
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
@@ -343,6 +362,8 @@ fun ActivityProgressScreen(
                     Text(
                         if (activity.baselineSteps < 0 && walk) {
                             "—"
+                        } else if (!walk) {
+                            String.format(Locale.US, "%02d:%02d", focusRemaining / 60, focusRemaining % 60)
                         } else {
                             format(activity.progress)
                         },
@@ -354,7 +375,11 @@ fun ActivityProgressScreen(
                         if (walk) {
                             "of ${format(activity.target)} steps"
                         } else {
-                            "of ${activity.target} minutes"
+                            if (activity.focusLockedSinceElapsed == null) {
+                                "Lock your phone to start the timer."
+                            } else {
+                                "remaining with your phone locked"
+                            }
                         },
                         style = AsrType.Label.copy(fontSize = 14.sp),
                         color = AsrColors.TextSecondary,
@@ -373,7 +398,7 @@ fun ActivityProgressScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(activity.fraction)
+                        .fillMaxWidth(fraction)
                         .height(10.dp)
                         .clip(RoundedCornerShape(5.dp))
                         .background(AsrColors.Accent),
@@ -412,7 +437,7 @@ fun ActivityProgressScreen(
             title = if (walk) {
                 "${format(activity.remaining)} steps to go"
             } else {
-                "${activity.remaining} minutes to go"
+                "If you unlock your phone before the ${activity.target} minutes are complete, the timer will reset."
             },
             body = "Finish and ${activity.appLabel} gets +${activity.rewardMinutes} minutes today.",
         )
@@ -482,7 +507,7 @@ fun EarnedScreen(
                 "Your walk is complete. ${activity.appLabel} now has " +
                     "${activity.rewardMinutes} extra minutes available today."
             } else {
-                "You stayed off them. ${activity.appLabel} now has " +
+                "Your phone-free session is complete. ${activity.appLabel} now has " +
                     "${activity.rewardMinutes} extra minutes available today."
             },
             style = AsrType.Field,
@@ -652,7 +677,7 @@ private fun TrackingStatus(walk: Boolean) {
         Spacer(Modifier.width(12.dp))
         Column {
             Text(
-                if (walk) "Counted by your phone" else "Watched by protection",
+                if (walk) "Counted by your phone" else "Time for the real world",
                 style = AsrType.Field.copy(fontSize = 16.sp),
                 color = AsrColors.TextPrimary,
             )
@@ -664,8 +689,8 @@ private fun TrackingStatus(walk: Boolean) {
                     // app is running, so nothing is lost by leaving.
                     "You can lock your phone or leave this screen. Steps keep counting."
                 } else {
-                    // Equally true, and the opposite advice.
-                    "Opening one of your controlled apps ends this session."
+                    "Incoming calls and notifications won’t affect your session. " +
+                        "We’ll notify you when your ${EarnRules.FOCUS_MINUTES} minutes are complete."
                 },
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,

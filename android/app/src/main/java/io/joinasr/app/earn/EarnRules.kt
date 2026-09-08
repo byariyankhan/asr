@@ -15,7 +15,7 @@ object EarnRules {
     /** Figma 21: "Walk 2 km · ≈ 2,500 steps". */
     const val WALK_STEPS = 2_500
 
-    /** Figma 21: "Focus for 20 min". */
+    /** Phone-free session: twenty uninterrupted minutes with the keyguard showing. */
     const val FOCUS_MINUTES = 20
 
     /** What either one is worth. Figma 21 and 24: "+10 minutes". */

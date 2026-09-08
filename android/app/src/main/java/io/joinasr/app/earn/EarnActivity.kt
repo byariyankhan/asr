@@ -33,6 +33,8 @@ data class EarnActivity(
     val baselineSteps: Int = -1,
     /** Steps taken, or whole minutes focused. Never above [target] on screen. */
     val progress: Int = 0,
+    /** Local display hint only. The service never restores trust from this timestamp. */
+    val focusLockedSinceElapsed: Long? = null,
 ) {
     val isWalk: Boolean get() = type == EarnRules.WALK
 
