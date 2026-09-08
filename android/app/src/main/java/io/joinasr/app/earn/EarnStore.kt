@@ -28,21 +28,29 @@ private val Context.earnStore: DataStore<Preferences> by preferencesDataStore(na
  * earned minutes on every pass, which is the only reason this file exists:
  * time that is earned and not applied is a reward nobody receives.
  *
- * Earned minutes are stamped with the local date and read back through
- * [earnedToday], which returns nothing once the date has moved on. Bonus
- * time is for the day it was earned; carrying it forward would turn a walk
- * into a bank balance.
+ * Earned minutes and completion receipts are stamped with the local date.
+ * Once that date moves on, neither is exposed as today's state.
  */
-class EarnStore internal constructor(private val store: DataStore<Preferences>) {
+class EarnStore internal constructor(
+    private val store: DataStore<Preferences>,
+    private val todayProvider: () -> String = { LocalDate.now(ZoneId.systemDefault()).toString() },
+) {
 
     constructor(context: Context) : this(context.applicationContext.earnStore)
 
     val active: Flow<EarnActivity?> = store.data.map { decodeActive(it[ACTIVE]) }
 
-    val completed: Flow<EarnActivity?> = store.data.map { decodeActive(it[COMPLETED]) }
+    val completed: Flow<EarnActivity?> = combine(store.data, midnights()) { preferences, _ ->
+        val receipt = decodeActive(preferences[COMPLETED])
+        val receiptDay = preferences[COMPLETED_DAY]
+        if (receipt != null && receiptDay == today()) receipt else null
+    }
 
     suspend fun acknowledgeCompleted() {
-        store.edit { it.remove(COMPLETED) }
+        store.edit {
+            it.remove(COMPLETED)
+            it.remove(COMPLETED_DAY)
+        }
     }
 
     suspend fun currentActive(): EarnActivity? = active.first()
@@ -51,6 +59,7 @@ class EarnStore internal constructor(private val store: DataStore<Preferences>) 
         store.edit {
             it[ACTIVE] = json.encodeToString(activity)
             it.remove(COMPLETED)
+            it.remove(COMPLETED_DAY)
         }
     }
 
@@ -65,6 +74,20 @@ class EarnStore internal constructor(private val store: DataStore<Preferences>) 
     suspend fun clearActive(id: String? = null) {
         store.edit {
             if (id == null || decodeActive(it[ACTIVE])?.id == id) it.remove(ACTIVE)
+        }
+    }
+
+    /**
+     * Clear every bit of account-specific earn state before another account
+     * can use this installation. Clearing ACTIVE first also makes any late
+     * completion callback fail its id check instead of recreating a receipt.
+     */
+    suspend fun clearForSignOut() {
+        store.edit {
+            it.remove(ACTIVE)
+            it.remove(COMPLETED)
+            it.remove(COMPLETED_DAY)
+            it.remove(EARNED)
         }
     }
 
@@ -110,13 +133,14 @@ class EarnStore internal constructor(private val store: DataStore<Preferences>) 
                 stored.copy(minutesByPackage = stored.minutesByPackage + (activity.packageName to capped)),
             )
             preferences[COMPLETED] = json.encodeToString(activity)
+            preferences[COMPLETED_DAY] = today
             preferences.remove(ACTIVE)
             awarded = true
         }
         return awarded
     }
 
-    private fun today(): String = LocalDate.now(ZoneId.systemDefault()).toString()
+    private fun today(): String = todayProvider()
 
     private fun decodeActive(stored: String?): EarnActivity? {
         if (stored.isNullOrBlank()) return null
@@ -131,6 +155,7 @@ class EarnStore internal constructor(private val store: DataStore<Preferences>) 
     private companion object {
         val ACTIVE = stringPreferencesKey("active")
         val COMPLETED = stringPreferencesKey("completed")
+        val COMPLETED_DAY = stringPreferencesKey("completed_day")
         val EARNED = stringPreferencesKey("earned")
 
         val json = Json {
