@@ -36,6 +36,49 @@ class EarnStoreTest {
         assertEquals(10, store.earnedToday().forPackage("selected.app"))
     }
 
+    @Test fun `completion receipt expires when the local day changes`() = runTest {
+        var day = "2026-09-08"
+        val store = EarnStore(
+            PreferenceDataStoreFactory.create(scope = backgroundScope) {
+                folder.newFile("receipt-day.preferences_pb")
+            },
+            todayProvider = { day },
+        )
+        val attempt = activity()
+        val finished = attempt.copy(progress = 20)
+        store.start(attempt)
+        assertTrue(store.complete(finished))
+        assertEquals(finished, store.completed.first())
+        assertEquals(10, store.earnedToday().forPackage("selected.app"))
+
+        day = "2026-09-09"
+
+        assertNull(store.completed.first())
+        assertEquals(0, store.earnedToday().forPackage("selected.app"))
+    }
+
+    @Test fun `sign-out clears active receipt and earned state and blocks late completion`() = runTest {
+        val store = EarnStore(PreferenceDataStoreFactory.create(scope = backgroundScope) {
+            folder.newFile("signout.preferences_pb")
+        })
+        val completedAttempt = activity("completed")
+        store.start(completedAttempt)
+        assertTrue(store.complete(completedAttempt.copy(progress = 20)))
+        assertNotNull(store.completed.first())
+        assertEquals(10, store.earnedToday().forPackage("selected.app"))
+
+        val lateAttempt = activity("late", "other.app")
+        store.start(lateAttempt)
+        store.clearForSignOut()
+
+        assertNull(store.currentActive())
+        assertNull(store.completed.first())
+        assertTrue(store.earnedToday().minutesByPackage.isEmpty())
+        assertFalse(store.complete(lateAttempt.copy(progress = 20)))
+        assertNull(store.completed.first())
+        assertTrue(store.earnedToday().minutesByPackage.isEmpty())
+    }
+
     @Test fun `cancelled or replaced attempts cannot be resurrected or rewarded`() = runTest {
         val store = EarnStore(PreferenceDataStoreFactory.create(scope = backgroundScope) {
             folder.newFile("cancel.preferences_pb")
