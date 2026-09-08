@@ -25,7 +25,7 @@ import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.data.LocalSignOut
 import io.joinasr.app.diagnostics.Crash
 import io.joinasr.app.analytics.Analytics
-import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.PhoneFreeMonitor
 import io.joinasr.app.earn.EarnStore
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.sync.PendingEvent
@@ -74,6 +74,7 @@ class EnforcementService : Service() {
     private lateinit var status: ProtectionStatusStore
     private lateinit var outcomes: OutcomeStore
     private lateinit var witnesses: WitnessStore
+    private lateinit var phoneFree: PhoneFreeMonitor
     private lateinit var earn: EarnStore
     private lateinit var sync: Sync
 
@@ -238,6 +239,8 @@ class EnforcementService : Service() {
             }
         }.launchIn(scope)
 
+        phoneFree = PhoneFreeMonitor(this)
+        phoneFree.start()
         scope.launch { loop() }
     }
 
@@ -249,6 +252,7 @@ class EnforcementService : Service() {
     }
 
     override fun onDestroy() {
+        if (::phoneFree.isInitialized) phoneFree.stop()
         runCatching { unregisterReceiver(screenWatcher) }
         // A window this service put up outlives nothing. onDestroy is on
         // the main thread, which is the thread the window belongs to.
@@ -360,7 +364,6 @@ class EnforcementService : Service() {
         // promise of earning time.
         val earned = earn.earnedToday().minutesByPackage
 
-        cancelFocusIfBroken(snapshot.foregroundPackage, current)
 
         // Checked before blocking: a pact that has run its course should not
         // be putting a block screen in front of anybody.
@@ -516,24 +519,6 @@ class EnforcementService : Service() {
         } finally {
             ending = false
         }
-    }
-
-    /**
-     * Ends a focus session the moment a controlled app is opened.
-     *
-     * This is the whole rule of a focus session: twenty minutes off the apps
-     * being limited. The loop already knows what is in front of the person
-     * every second, so it is the only thing on the phone that can enforce it
-     * -- and a timer that could be beaten by opening the app it is about
-     * would be a reward for nothing.
-     */
-    private suspend fun cancelFocusIfBroken(foreground: String?, pact: Pact) {
-        if (foreground == null) return
-        if (pact.appFor(foreground) == null) return
-        val running = earn.currentActive() ?: return
-        if (running.type != EarnRules.FOCUS) return
-        earn.clearActive()
-        runCatching { sync.cancelActivity(running) }
     }
 
     /**

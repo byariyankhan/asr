@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.enforcement.Pact
+import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.sync.Sync
 import io.joinasr.app.sync.Uuid7
@@ -41,8 +42,8 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EarnedToday(""))
 
     /** Set when an activity finishes, so Figma 24 is shown once. */
-    private val _justEarned = MutableStateFlow<EarnActivity?>(null)
-    val justEarned: StateFlow<EarnActivity?> = _justEarned.asStateFlow()
+    val justEarned: StateFlow<EarnActivity?> = store.completed
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -78,13 +79,14 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
                 deadlineAtMillis = now + EarnRules.DEADLINE_HOURS * 60 * 60 * 1000,
             )
             store.start(activity)
+            if (type == EarnRules.FOCUS) EnforcementService.start(getApplication())
             // Stood down only on a settled refusal -- the day's bonus for
             // this app already spent, which the server can know before this
             // phone does. Silence and every other failure leave it running.
             val answer = runCatching { sync.startActivity(pact, activity) }
                 .getOrDefault(Sync.StartResult.Unknown)
             if (answer is Sync.StartResult.Refused) {
-                store.clearActive()
+                store.clearActive(activity.id)
                 _error.value = answer.message
             }
         }
@@ -116,27 +118,16 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** A tick of the focus timer, in whole minutes elapsed. */
-    fun onFocusMinutes(minutes: Int) {
-        viewModelScope.launch {
-            val running = store.currentActive() ?: return@launch
-            if (running.isWalk) return@launch
-            if (minutes <= running.progress) return@launch
-            val updated = running.copy(progress = minutes)
-            if (updated.isComplete) finish(updated) else store.update(updated)
-        }
-    }
-
     fun cancel() {
         viewModelScope.launch {
             val running = store.currentActive() ?: return@launch
-            store.clearActive()
+            store.clearActive(running.id)
             runCatching { sync.cancelActivity(running) }
         }
     }
 
     fun acknowledgeEarned() {
-        _justEarned.value = null
+        viewModelScope.launch { store.acknowledgeCompleted() }
     }
 
     fun clearError() {
@@ -150,10 +141,8 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun finish(activity: EarnActivity) {
         val now = System.currentTimeMillis()
-        store.award(activity.packageName, activity.rewardMinutes)
+        if (!store.complete(activity)) return
         Analytics.log(Analytics.extraTimeEarned(activity.type))
-        store.clearActive()
-        _justEarned.value = activity
         runCatching { sync.completeActivity(activity, now) }
     }
 }

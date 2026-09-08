@@ -33,24 +33,39 @@ private val Context.earnStore: DataStore<Preferences> by preferencesDataStore(na
  * time is for the day it was earned; carrying it forward would turn a walk
  * into a bank balance.
  */
-class EarnStore(context: Context) {
+class EarnStore internal constructor(private val store: DataStore<Preferences>) {
 
-    private val store = context.applicationContext.earnStore
+    constructor(context: Context) : this(context.applicationContext.earnStore)
 
     val active: Flow<EarnActivity?> = store.data.map { decodeActive(it[ACTIVE]) }
+
+    val completed: Flow<EarnActivity?> = store.data.map { decodeActive(it[COMPLETED]) }
+
+    suspend fun acknowledgeCompleted() {
+        store.edit { it.remove(COMPLETED) }
+    }
 
     suspend fun currentActive(): EarnActivity? = active.first()
 
     suspend fun start(activity: EarnActivity) {
-        store.edit { it[ACTIVE] = json.encodeToString(activity) }
+        store.edit {
+            it[ACTIVE] = json.encodeToString(activity)
+            it.remove(COMPLETED)
+        }
     }
 
     suspend fun update(activity: EarnActivity) {
-        store.edit { it[ACTIVE] = json.encodeToString(activity) }
+        store.edit {
+            if (decodeActive(it[ACTIVE])?.id == activity.id) {
+                it[ACTIVE] = json.encodeToString(activity)
+            }
+        }
     }
 
-    suspend fun clearActive() {
-        store.edit { it.remove(ACTIVE) }
+    suspend fun clearActive(id: String? = null) {
+        store.edit {
+            if (id == null || decodeActive(it[ACTIVE])?.id == id) it.remove(ACTIVE)
+        }
     }
 
     /**
@@ -79,23 +94,26 @@ class EarnStore(context: Context) {
 
     suspend fun earnedToday(): EarnedToday = earned.first()
 
-    /**
-     * Adds a reward, capped. The cap is checked here as well as on the
-     * server: a phone that has been offline all afternoon still must not
-     * hand somebody an hour of TikTok for one walk.
-     */
-    suspend fun award(packageName: String, minutes: Int) {
+    /** Claim and reward together: cancellation or duplicate ticks cannot award twice. */
+    suspend fun complete(activity: EarnActivity): Boolean {
+        var awarded = false
         store.edit { preferences ->
+            if (decodeActive(preferences[ACTIVE])?.id != activity.id) return@edit
+            if (!activity.isComplete) return@edit
             val today = today()
             val stored = decodeEarned(preferences[EARNED])
                 ?.takeIf { it.day == today }
                 ?: EarnedToday(today)
-            val already = stored.forPackage(packageName)
-            val capped = (already + minutes).coerceAtMost(EarnRules.DAILY_CAP_MINUTES)
+            val already = stored.forPackage(activity.packageName)
+            val capped = (already + activity.rewardMinutes).coerceAtMost(EarnRules.DAILY_CAP_MINUTES)
             preferences[EARNED] = json.encodeToString(
-                stored.copy(minutesByPackage = stored.minutesByPackage + (packageName to capped)),
+                stored.copy(minutesByPackage = stored.minutesByPackage + (activity.packageName to capped)),
             )
+            preferences[COMPLETED] = json.encodeToString(activity)
+            preferences.remove(ACTIVE)
+            awarded = true
         }
+        return awarded
     }
 
     private fun today(): String = LocalDate.now(ZoneId.systemDefault()).toString()
@@ -112,6 +130,7 @@ class EarnStore(context: Context) {
 
     private companion object {
         val ACTIVE = stringPreferencesKey("active")
+        val COMPLETED = stringPreferencesKey("completed")
         val EARNED = stringPreferencesKey("earned")
 
         val json = Json {
