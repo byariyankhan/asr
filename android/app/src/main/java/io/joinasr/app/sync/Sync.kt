@@ -345,6 +345,11 @@ class Sync(context: Context) {
                         dailyCapMinutes = EarnRules.DAILY_CAP_MINUTES,
                         targetMinutes = EarnRules.FOCUS_MINUTES,
                     ),
+                    pushUps = ActivityRule(
+                        rewardMinutes = EarnRules.REWARD_MINUTES,
+                        dailyCapMinutes = EarnRules.DAILY_CAP_MINUTES,
+                        target = EarnRules.PUSHUP_REPS,
+                    ),
                 ),
             ),
         )

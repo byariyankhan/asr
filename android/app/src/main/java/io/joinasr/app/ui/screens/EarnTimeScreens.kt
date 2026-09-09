@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +25,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.joinasr.app.earn.EarnActivity
 import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.PushUpCameraView
+import io.joinasr.app.earn.PushUpCounter
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.ui.components.AsrAppIcon
 import io.joinasr.app.ui.components.AsrBackChevron
@@ -61,9 +67,11 @@ fun ChooseActivityScreen(
     app: PactApp,
     earnedSoFar: Int,
     stepsAvailable: Boolean,
+    cameraAvailable: Boolean,
     onBack: () -> Unit,
     onWalk: () -> Unit,
     onFocus: () -> Unit,
+    onPushUps: () -> Unit,
     errorMessage: String?,
     modifier: Modifier = Modifier,
 ) {
@@ -128,6 +136,24 @@ fun ChooseActivityScreen(
             badge = null,
             enabled = !capped,
             onClick = onFocus,
+        )
+
+        // Not in Figma: added after 21-24 were built, laid out from the
+        // same card. Offered only where there is a camera to count with.
+        Spacer(Modifier.height(14.dp))
+        ActivityCard(
+            glyph = "⇅",
+            title = "Do ${EarnRules.PUSHUP_REPS} push-ups",
+            subtitle = "Counted by your camera",
+            detail = if (cameraAvailable) {
+                "Prop your phone up sideways and do them on camera. Nothing is recorded."
+            } else {
+                "This phone has no camera, so push-ups cannot be counted."
+            },
+            reward = "Earn +${EarnRules.REWARD_MINUTES}m for ${app.label}",
+            badge = null,
+            enabled = cameraAvailable && !capped,
+            onClick = onPushUps,
         )
 
         errorMessage?.let {
@@ -260,6 +286,127 @@ fun ActivityTrackingScreen(
 
         Spacer(Modifier.height(26.dp))
         AsrPrimaryButton(text = "Allow activity tracking", onClick = onAllow)
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "Not now",
+            style = AsrType.Label.copy(fontSize = 14.sp),
+            color = AsrColors.TextSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(role = Role.Button, onClick = onSkip)
+                .padding(vertical = 10.dp),
+        )
+        Spacer(Modifier.height(28.dp))
+    }
+}
+
+/**
+ * The camera's counterpart to Figma 22, in its layout.
+ *
+ * Asked the first time somebody chooses push-ups and never at launch. The
+ * promises on it are the ones enforced in earn/PoseCamera.kt: frames go to
+ * a model on the phone and are dropped, nothing is written, nothing is
+ * sent, and the camera is released with the screen.
+ */
+@Composable
+fun CameraAccessScreen(
+    onBack: () -> Unit,
+    onAllow: () -> Unit,
+    onSkip: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(AsrColors.Background)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp),
+    ) {
+        Spacer(Modifier.height(20.dp))
+        AsrBackChevron(onBack)
+
+        Spacer(Modifier.height(18.dp))
+        Text("EARN TIME", style = AsrType.Eyebrow, color = AsrColors.Accent)
+        Spacer(Modifier.height(14.dp))
+        Text("Count your push-ups.", style = AsrType.display(38), color = AsrColors.TextPrimary)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Only requested when you choose push-ups to earn extra app time.",
+            style = AsrType.Field,
+            color = AsrColors.TextSecondary,
+        )
+
+        Spacer(Modifier.height(24.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(AsrColors.SurfaceRaised, RoundedCornerShape(22.dp))
+                .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(22.dp))
+                .padding(17.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    "${EarnRules.PUSHUP_REPS}",
+                    style = AsrType.display(38),
+                    color = AsrColors.Accent,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "PUSH-UPS",
+                    style = AsrType.Eyebrow.copy(fontSize = 11.sp),
+                    color = AsrColors.Accent,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Counted from a side view, shoulders to hips",
+                style = AsrType.Label.copy(fontSize = 14.sp),
+                color = AsrColors.TextPrimary,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Your phone finds the shape of your body in each frame and counts " +
+                    "each time your arms bend and straighten. The frame is then dropped.",
+                style = AsrType.Legal.copy(fontSize = 12.sp),
+                color = AsrColors.TextSecondary,
+            )
+        }
+
+        Spacer(Modifier.height(18.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(AsrColors.Field, RoundedCornerShape(20.dp))
+                .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(20.dp))
+                .padding(17.dp),
+        ) {
+            Text("Camera access", style = AsrType.RowTitle, color = AsrColors.TextPrimary)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Used only while the push-up screen is open. The camera switches " +
+                    "off the moment you leave it.",
+                style = AsrType.Label.copy(fontSize = 13.sp),
+                color = AsrColors.TextSecondary,
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "✓  No photo or video is ever saved",
+                style = AsrType.Label.copy(fontSize = 13.sp),
+                color = AsrColors.Accent,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "✓  Nothing from the camera leaves your phone",
+                style = AsrType.Label.copy(fontSize = 13.sp),
+                color = AsrColors.Accent,
+            )
+        }
+
+        Spacer(Modifier.height(26.dp))
+        AsrPrimaryButton(text = "Allow camera access", onClick = onAllow)
         Spacer(Modifier.height(18.dp))
         Text(
             "Not now",
@@ -463,6 +610,201 @@ fun ActivityProgressScreen(
     }
 }
 
+/**
+ * Push-ups in progress: Figma 23's parts around a camera.
+ *
+ * The counter belongs to this screen and starts from nothing each time it
+ * opens; the activity carries the number, through [onPushUp], so stepping
+ * away and coming back resumes at the same count. Compose never awards the
+ * minutes: the view model does, on the seventh, the same way a walk ends.
+ */
+@Composable
+fun PushUpProgressScreen(
+    activity: EarnActivity,
+    onBack: () -> Unit,
+    onEnd: () -> Unit,
+    onPushUp: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val counter = remember(activity.id) { PushUpCounter() }
+    var phase by remember(activity.id) { mutableStateOf(PushUpCounter.Phase.NO_BODY) }
+    var cameraProblem by remember(activity.id) { mutableStateOf<String?>(null) }
+    val percent = (activity.fraction * 100).toInt()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(AsrColors.Background)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp),
+    ) {
+        Spacer(Modifier.height(20.dp))
+        AsrBackChevron(onBack)
+
+        Spacer(Modifier.height(18.dp))
+        Text("EARN TIME", style = AsrType.Eyebrow, color = AsrColors.Accent)
+        Spacer(Modifier.height(14.dp))
+        Text("Keep going.", style = AsrType.display(36), color = AsrColors.TextPrimary)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Do ${activity.target} push-ups on camera to earn ${activity.rewardMinutes} " +
+                "more minutes for ${activity.appLabel}.",
+            style = AsrType.Field,
+            color = AsrColors.TextSecondary,
+        )
+
+        Spacer(Modifier.height(22.dp))
+        RewardContext(activity)
+
+        Spacer(Modifier.height(18.dp))
+        val frame = RoundedCornerShape(22.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(4f / 3f)
+                .clip(frame)
+                .background(AsrColors.Surface)
+                .border(1.dp, AsrColors.FieldBorder, frame),
+        ) {
+            val problem = cameraProblem
+            if (problem == null) {
+                PushUpCameraView(
+                    onPose = { pose, at ->
+                        if (counter.observe(pose, at)) onPushUp()
+                        phase = counter.phase
+                    },
+                    onError = { cameraProblem = it },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(
+                    problem,
+                    style = AsrType.Field,
+                    color = AsrColors.TextSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(24.dp),
+                )
+            }
+            Box(modifier = Modifier.align(Alignment.TopStart).padding(14.dp)) {
+                SmallPill("${activity.progress} / ${activity.target}", AsrColors.Accent, AsrColors.AccentMuted)
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(AsrColors.Surface, RoundedCornerShape(22.dp))
+                .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(22.dp))
+                .padding(17.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "LIVE PROGRESS",
+                        style = AsrType.Eyebrow.copy(fontSize = 10.sp),
+                        color = AsrColors.Accent,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "${activity.progress}",
+                        style = AsrType.display(48),
+                        color = AsrColors.TextPrimary,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "of ${activity.target} push-ups",
+                        style = AsrType.Label.copy(fontSize = 14.sp),
+                        color = AsrColors.TextSecondary,
+                    )
+                }
+                SmallPill("$percent%", AsrColors.Accent, AsrColors.AccentMuted)
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(AsrColors.Track),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(activity.fraction)
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(AsrColors.Accent),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+        PushUpCoaching(phase)
+
+        Spacer(Modifier.height(16.dp))
+        RewardNote(
+            title = "${activity.remaining} to go",
+            body = "Finish and ${activity.appLabel} gets +${activity.rewardMinutes} minutes today.",
+        )
+
+        Spacer(Modifier.height(22.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(AsrColors.SurfaceSunken)
+                .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(24.dp))
+                .clickable(role = Role.Button, onClick = onEnd),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "End activity",
+                style = AsrType.Label.copy(fontSize = 14.sp),
+                color = AsrColors.TextSecondary,
+            )
+        }
+        Spacer(Modifier.height(28.dp))
+    }
+}
+
+/** What the counter can see, said as the next thing to do. */
+@Composable
+private fun PushUpCoaching(phase: PushUpCounter.Phase) {
+    val (title, body) = when (phase) {
+        PushUpCounter.Phase.NO_BODY ->
+            "Get your whole body in view" to
+                "Prop your phone on its side a few steps away, so it sees you from the side, " +
+                "shoulders to hips."
+        PushUpCounter.Phase.NOT_IN_POSITION ->
+            "Get into a plank" to "Hands under your shoulders, body straight, facing the phone side-on."
+        PushUpCounter.Phase.UP ->
+            "Now go down" to "Bend your elbows until your chest is near the floor."
+        PushUpCounter.Phase.DOWN ->
+            "Push up" to "Straighten your arms all the way. That is one."
+    }
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AsrColors.SurfaceSunken, shape)
+            .border(1.dp, AsrColors.FieldBorder, shape)
+            .padding(15.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text("●", style = AsrType.Field.copy(fontSize = 16.sp), color = AsrColors.Accent)
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(title, style = AsrType.Field.copy(fontSize = 16.sp), color = AsrColors.TextPrimary)
+            Spacer(Modifier.height(7.dp))
+            Text(body, style = AsrType.Label.copy(fontSize = 13.sp), color = AsrColors.TextSecondary)
+        }
+    }
+}
+
 /** Figma 24 — Earn Time / Completed (node 135:2). */
 @Composable
 fun EarnedScreen(
@@ -503,12 +845,16 @@ fun EarnedScreen(
         )
         Spacer(Modifier.height(14.dp))
         Text(
-            if (activity.isWalk) {
-                "Your walk is complete. ${activity.appLabel} now has " +
-                    "${activity.rewardMinutes} extra minutes available today."
-            } else {
-                "Your phone-free session is complete. ${activity.appLabel} now has " +
-                    "${activity.rewardMinutes} extra minutes available today."
+            when {
+                activity.isWalk ->
+                    "Your walk is complete. ${activity.appLabel} now has " +
+                        "${activity.rewardMinutes} extra minutes available today."
+                activity.isPushUps ->
+                    "Your push-ups are done. ${activity.appLabel} now has " +
+                        "${activity.rewardMinutes} extra minutes available today."
+                else ->
+                    "Your phone-free session is complete. ${activity.appLabel} now has " +
+                        "${activity.rewardMinutes} extra minutes available today."
             },
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
@@ -810,9 +1156,11 @@ private fun ChooseActivityPreview() {
             app = PactApp("com.zhiliaoapp.musically", "TikTok", 20),
             earnedSoFar = 0,
             stepsAvailable = true,
+            cameraAvailable = true,
             onBack = {},
             onWalk = {},
             onFocus = {},
+            onPushUps = {},
             errorMessage = null,
         )
     }
