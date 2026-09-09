@@ -92,7 +92,12 @@ class PoseTracker(
                         .build(),
                 )
             }.getOrElse { e ->
-                fail("Pose detection could not start on this phone.", e)
+                // The screen says what the library said: a message with a
+                // cause in it is the difference between a fix and a guess.
+                // Shown, not sent: whether this failure should reach
+                // Crashlytics is a "what leaves the phone" decision
+                // (AGENTS.md) that has not been put to the founder.
+                fail("Pose detection could not start on this phone. ${e.message.orEmpty().take(160)}", e)
                 null
             }
         }
