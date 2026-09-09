@@ -115,6 +115,12 @@ android {
         compose = true
         buildConfig = true
     }
+    // The pose model is an asset (earn/PoseCamera.kt). Left uncompressed so
+    // MediaPipe can map it straight out of the APK instead of inflating
+    // 5.8 MB into memory every time the push-up screen opens.
+    androidResources {
+        noCompress.add("task")
+    }
 }
 
 dependencies {

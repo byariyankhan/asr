@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import io.joinasr.app.diagnostics.Crash
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
@@ -92,7 +93,12 @@ class PoseTracker(
                         .build(),
                 )
             }.getOrElse { e ->
-                fail("Pose detection could not start on this phone.", e)
+                // The one failure a person can do nothing about, so it is
+                // reported (a device or build this has not met) and the
+                // screen says what the library said: a message with a
+                // cause in it is the difference between a fix and a guess.
+                Crash.report(context, e, "pose landmarker")
+                fail("Pose detection could not start on this phone. ${e.message.orEmpty().take(160)}", e)
                 null
             }
         }
