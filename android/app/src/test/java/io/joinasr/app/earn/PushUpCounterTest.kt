@@ -37,9 +37,31 @@ class PushUpCounterTest {
             leftVisibility,
         )
         val ghost = Landmark(0.5f, 0.5f, rightVisibility)
+        // A face in profile: eyes nearly in line, nose well past them. It
+        // must not pull a side view over to the front rule.
+        val eye = Landmark(0.2f, 0.45f, 0.9f)
         return PushUpPose(
+            nose = Landmark(0.15f, 0.47f, 0.9f),
+            leftEye = eye, rightEye = eye.copy(x = 0.22f),
             leftShoulder = shoulder, leftElbow = elbow, leftWrist = wrist, leftHip = hip,
             rightShoulder = ghost, rightElbow = ghost, rightWrist = ghost, rightHip = ghost,
+        )
+    }
+
+    /**
+     * The phone on the floor looking up: a face whose eyes are [eyeGap]
+     * apart in the picture, shoulders half-visible, no hips at all.
+     */
+    private fun face(eyeGap: Float, eyeVisibility: Float = 0.95f): PushUpPose {
+        val left = Landmark(0.5f - eyeGap / 2, 0.4f, eyeVisibility)
+        val right = Landmark(0.5f + eyeGap / 2, 0.4f, eyeVisibility)
+        val shoulder = Landmark(0.5f, 0.9f, 0.6f)
+        val gone = Landmark(0.5f, 1.2f, 0.05f)
+        return PushUpPose(
+            nose = Landmark(0.5f, 0.5f, eyeVisibility),
+            leftEye = left, rightEye = right,
+            leftShoulder = shoulder, leftElbow = gone, leftWrist = gone, leftHip = gone,
+            rightShoulder = shoulder, rightElbow = gone, rightWrist = gone, rightHip = gone,
         )
     }
 
@@ -166,11 +188,139 @@ class PushUpCounterTest {
         assertEquals(PushUpCounter.Phase.NO_BODY, counter.phase)
     }
 
+    @Test fun `from the floor, the face coming close and going back is one push-up`() {
+        val counter = PushUpCounter()
+        assertEquals(0, counter.hold(face(0.10f), 0))
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        assertEquals(0, counter.hold(face(0.18f), 1_000))
+        assertEquals(PushUpCounter.Phase.DOWN, counter.phase)
+        assertEquals(1, counter.hold(face(0.10f), 2_000))
+        assertEquals(1, counter.reps)
+    }
+
+    @Test fun `from the floor, seven push-ups count seven wherever the phone lies`() {
+        val counter = PushUpCounter()
+        var at = 0L
+        counter.hold(face(0.07f), at)
+        repeat(7) {
+            at += 1_000
+            counter.hold(face(0.14f), at)
+            at += 1_000
+            counter.hold(face(0.07f), at)
+        }
+        assertEquals(7, counter.reps)
+    }
+
+    @Test fun `a nod towards the phone is not a push-up`() {
+        val counter = PushUpCounter()
+        counter.hold(face(0.10f), 0)
+        counter.hold(face(0.12f), 1_000)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        assertEquals(0, counter.hold(face(0.10f), 2_000))
+    }
+
+    @Test fun `from the floor, starting at the bottom counts from the next rep`() {
+        val counter = PushUpCounter()
+        counter.hold(face(0.18f), 0)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        // Rising: the baseline follows the face away, nothing is owed.
+        assertEquals(0, counter.hold(face(0.10f), 1_000))
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        counter.hold(face(0.18f), 2_000)
+        assertEquals(PushUpCounter.Phase.DOWN, counter.phase)
+        assertEquals(1, counter.hold(face(0.10f), 3_000))
+    }
+
+    @Test fun `holding the bottom for seconds means the phone moved, and rebaselines`() {
+        val counter = PushUpCounter()
+        counter.hold(face(0.10f), 0)
+        counter.hold(face(0.18f), 1_000)
+        assertEquals(PushUpCounter.Phase.DOWN, counter.phase)
+        // Still "down" five seconds later: this is the new up, uncounted.
+        assertEquals(0, counter.hold(face(0.18f), 6_000))
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        assertEquals(0, counter.reps)
+        // And the set continues from there.
+        counter.hold(face(0.30f), 7_000)
+        assertEquals(1, counter.hold(face(0.18f), 8_000))
+    }
+
+    @Test fun `switching views mid-rep drops the rep`() {
+        val counter = PushUpCounter()
+        counter.hold(pose(175.0), 0)
+        counter.hold(pose(80.0), 1_000)
+        assertEquals(PushUpCounter.View.SIDE, counter.view)
+        counter.hold(face(0.18f), 2_000)
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        assertEquals(0, counter.hold(face(0.10f), 3_000))
+        assertEquals(0, counter.reps)
+    }
+
+    @Test fun `a face in profile with no hips in view is nobody, not a front view`() {
+        val counter = PushUpCounter()
+        val profile = face(0.10f).copy(nose = Landmark(0.2f, 0.5f, 0.9f))
+        counter.hold(profile, 0)
+        assertEquals(PushUpCounter.View.NONE, counter.view)
+    }
+
+    @Test fun `a face on its side, the phone laid the other way, is still a face`() {
+        val counter = PushUpCounter()
+        fun sideways(gap: Float) = face(gap).let {
+            it.copy(
+                leftEye = Landmark(0.5f, 0.4f - gap / 2, 0.95f),
+                rightEye = Landmark(0.5f, 0.4f + gap / 2, 0.95f),
+                nose = Landmark(0.6f, 0.4f, 0.95f),
+            )
+        }
+        counter.hold(sideways(0.10f), 0)
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        counter.hold(sideways(0.18f), 1_000)
+        assertEquals(1, counter.hold(sideways(0.10f), 2_000))
+    }
+
+    @Test fun `a face looking into the lens is the floor view even if the model guesses an arm and a hip`() {
+        val counter = PushUpCounter()
+        // From the floor the body is foreshortened into something the
+        // model may still call an arm and a torso, standing upright.
+        val guessed = face(0.10f).let {
+            val point = Landmark(0.5f, 0.9f, 0.7f)
+            it.copy(
+                leftShoulder = point, leftElbow = point.copy(y = 1.0f), leftWrist = point.copy(y = 1.1f),
+                leftHip = point.copy(y = 1.3f),
+            )
+        }
+        counter.hold(guessed, 0)
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+    }
+
+    @Test fun `re-propping the phone between reps arms the new view`() {
+        val counter = PushUpCounter()
+        counter.hold(pose(175.0), 0)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        // Same "up", other view: the first rep in the new view must count.
+        counter.hold(face(0.10f), 1_000)
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        counter.hold(face(0.18f), 2_000)
+        assertEquals(1, counter.hold(face(0.10f), 3_000))
+    }
+
+    @Test fun `a face the model is unsure of is nobody`() {
+        val counter = PushUpCounter()
+        counter.hold(face(0.10f, eyeVisibility = 0.2f), 0)
+        assertEquals(PushUpCounter.View.NONE, counter.view)
+        assertEquals(PushUpCounter.Phase.NO_BODY, counter.phase)
+    }
+
     @Test fun `normalised points are stretched back to the picture's aspect ratio`() {
         // A straight arm pointing down in a 4:3 frame: in normalised
         // space the vertical run is scaled by 3/4 relative to horizontal,
         // which an angle check must undo before it can call it straight.
         val points = MutableList(PushUpPose.LANDMARK_COUNT) { Landmark(0f, 0f, 0f) }
+        points[PushUpPose.NOSE] = Landmark(0.30f, 0.32f, 1f)
+        points[PushUpPose.LEFT_EYE] = Landmark(0.28f, 0.30f, 1f)
+        points[PushUpPose.RIGHT_EYE] = Landmark(0.32f, 0.30f, 1f)
         points[PushUpPose.LEFT_SHOULDER] = Landmark(0.30f, 0.40f, 1f)
         points[PushUpPose.LEFT_ELBOW] = Landmark(0.30f, 0.55f, 1f)
         points[PushUpPose.LEFT_WRIST] = Landmark(0.36f, 0.70f, 1f)
@@ -179,6 +329,7 @@ class PushUpCounterTest {
         assertEquals(0.40f, pose.leftShoulder.x, 1e-6f)
         assertEquals(0.40f, pose.leftShoulder.y, 1e-6f)
         assertEquals(0.80f, pose.leftHip.x, 1e-6f)
+        assertEquals(0.28f * 4f / 3f, pose.leftEye.x, 1e-6f)
         assertNull(PushUpPose.fromNormalised(points.take(10), 1f))
     }
 }

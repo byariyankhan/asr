@@ -14,11 +14,17 @@ import kotlin.math.hypot
 data class Landmark(val x: Float, val y: Float, val visibility: Float)
 
 /**
- * The joints a push-up is judged by. Both sides are carried because from a
+ * The points a push-up is judged by. Both sides are carried because from a
  * side view the model reports the far arm through the torso at a low
- * visibility, and the counter picks whichever it can see better.
+ * visibility, and the counter picks whichever it can see better. The eyes
+ * are for the other view, the phone on the floor looking up: how far
+ * apart they are in the picture is how close the face is, and the nose
+ * between them is what says the face is looking at the lens at all.
  */
 data class PushUpPose(
+    val nose: Landmark,
+    val leftEye: Landmark,
+    val rightEye: Landmark,
     val leftShoulder: Landmark,
     val leftElbow: Landmark,
     val leftWrist: Landmark,
@@ -32,6 +38,9 @@ data class PushUpPose(
         // MediaPipe Pose Landmarker's fixed 33-point order. The eight used
         // here are the only ones this feature reads; the face, the hands
         // and the feet are discarded on the way in.
+        const val NOSE = 0
+        const val LEFT_EYE = 2
+        const val RIGHT_EYE = 5
         const val LEFT_SHOULDER = 11
         const val RIGHT_SHOULDER = 12
         const val LEFT_ELBOW = 13
@@ -55,6 +64,9 @@ data class PushUpPose(
             if (points.size < LANDMARK_COUNT) return null
             fun at(index: Int) = points[index].let { it.copy(x = it.x * aspectRatio) }
             return PushUpPose(
+                nose = at(NOSE),
+                leftEye = at(LEFT_EYE),
+                rightEye = at(RIGHT_EYE),
                 leftShoulder = at(LEFT_SHOULDER),
                 leftElbow = at(LEFT_ELBOW),
                 leftWrist = at(LEFT_WRIST),
@@ -71,12 +83,23 @@ data class PushUpPose(
 /**
  * Counts push-ups from a stream of poses, one frame at a time.
  *
- * The rule is the one every camera counter in the references uses, written
- * down so it can be tested without a camera: a push-up is the elbow going
- * from straight (above [upAboveDegrees]) to bent (below [downBelowDegrees])
- * and back to straight, while the body is in a plank. The gap between the
- * two thresholds is deliberate; an arm hovering at 120° flickers between
- * "up" and "down" on every frame without it.
+ * Two views, chosen frame by frame from what the model can see, written
+ * down so both can be tested without a camera.
+ *
+ * **From the side** (the phone propped up across the room): a push-up is
+ * the elbow going from straight (above [upAboveDegrees]) to bent (below
+ * [downBelowDegrees]) and back to straight, while the body is in a plank.
+ * The gap between the two thresholds is deliberate; an arm hovering at
+ * 120° flickers between "up" and "down" on every frame without it.
+ *
+ * **From the floor** (the phone flat, screen up, just ahead of the hands,
+ * which is where people actually put it): the face comes down towards the
+ * lens and goes back up. Distance is read from how far apart the eyes are
+ * in the picture, against the farthest they have been while up: down is
+ * [frontDownRatio] times closer, up is back within [frontUpRatio]. The
+ * baseline is whatever "up" the person has, so the phone can be anywhere
+ * on the floor and a set started from the bottom simply begins on the
+ * next rep.
  *
  * What it refuses, and why:
  *
@@ -106,7 +129,22 @@ class PushUpCounter(
     private val maxTorsoTiltDegrees: Float = 45f,
     private val minRepMillis: Long = 600L,
     private val settleFrames: Int = 2,
+    private val frontDownRatio: Float = 1.35f,
+    private val frontUpRatio: Float = 1.12f,
+    /** Nobody holds the bottom of a push-up this long: the phone moved. */
+    private val frontHeldDownMillis: Long = 4_000L,
 ) {
+    enum class View {
+        /** Nothing the model is sure of. */
+        NONE,
+
+        /** Shoulders, an arm and a hip in view: elbow angles. */
+        SIDE,
+
+        /** A face looking down at the lens: distance. */
+        FRONT,
+    }
+
     enum class Phase {
         /** No body the model is sure of, or not the parts that matter. */
         NO_BODY,
@@ -127,8 +165,16 @@ class PushUpCounter(
     var phase: Phase = Phase.NO_BODY
         private set
 
+    var view: View = View.NONE
+        private set
+
     /** True once the arms have been straight in a plank: the start of a rep. */
     private var armed = false
+    private var topScale: Float? = null
+    private var smoothedScale: Float? = null
+    private var downSince: Long? = null
+    private var candidateView: View? = null
+    private var candidateViewFrames = 0
     private var lastRepAt: Long? = null
     private var candidate: Phase? = null
     private var candidateFrames = 0
@@ -140,20 +186,99 @@ class PushUpCounter(
     fun observe(pose: PushUpPose?, nowMillis: Long): Boolean {
         val arm = pose?.let(::bestArm)
         val torso = pose?.let(::torsoTilt)
-        if (arm == null || torso == null) return settle(Phase.NO_BODY, nowMillis)
+        // A face looking into the lens decides before anything else: from
+        // the floor the model often guesses an arm and a hip out of the
+        // foreshortened body, and judged as a side view they read as
+        // "not in a plank". A real side view shows a profile.
+        val seen = when {
+            pose != null && facingLens(pose) -> View.FRONT
+            arm != null && torso != null -> View.SIDE
+            else -> View.NONE
+        }
+        if (seen != view) {
+            // Believed only once it holds, like a phase: one frame in which
+            // the model lost the hips is not a change of view, and a rep
+            // in flight survives it.
+            if (seen == candidateView) candidateViewFrames++ else {
+                candidateView = seen
+                candidateViewFrames = 1
+            }
+            if (candidateViewFrames < settleFrames) return false
+            // A different way of looking is a different ruler: a rep in
+            // flight is lost, and the front view's baseline starts over.
+            // The phase starts over too, so the new view's first "up" is a
+            // transition that arms the counter rather than a repeat of the
+            // old view's "up" that settle() would ignore.
+            view = seen
+            phase = Phase.NO_BODY
+            armed = false
+            topScale = null
+            smoothedScale = null
+            downSince = null
+            candidate = null
+            candidateFrames = 0
+        }
+        candidateView = null
+        candidateViewFrames = 0
+        return when (seen) {
+            View.NONE -> settle(Phase.NO_BODY, nowMillis)
+            View.SIDE -> side(arm!!, torso!!, nowMillis)
+            View.FRONT -> front(pose!!, nowMillis)
+        }
+    }
+
+    private fun side(arm: Arm, torso: Float, nowMillis: Long): Boolean {
         if (torso > maxTorsoTiltDegrees) return settle(Phase.NOT_IN_POSITION, nowMillis)
         val angle = angleAt(arm.elbow, arm.shoulder, arm.wrist)
         return when {
             angle >= upAboveDegrees -> settle(Phase.UP, nowMillis)
             angle <= downBelowDegrees -> settle(Phase.DOWN, nowMillis)
-            // Between the thresholds: the arm is on its way somewhere. The
-            // last settled phase stands until it arrives.
-            else -> {
-                candidate = null
-                candidateFrames = 0
-                false
-            }
+            else -> between()
         }
+    }
+
+    private fun front(pose: PushUpPose, nowMillis: Long): Boolean {
+        val raw = hypot(pose.leftEye.x - pose.rightEye.x, pose.leftEye.y - pose.rightEye.y)
+        if (raw <= 0f) return settle(Phase.NO_BODY, nowMillis)
+        // Light smoothing: the model's points shiver by a percent or two
+        // frame to frame, and a threshold should not; heavier than this
+        // and the count lags a fast set by half a rep.
+        val scale = smoothedScale?.let { it * 0.3f + raw * 0.7f } ?: raw
+        smoothedScale = scale
+        // The farthest the face has been while up is "up". It only ever
+        // moves further away, so a set begun from the floor finds its top
+        // on the first rise and counts from the next rep.
+        val top = topScale?.let { if (phase != Phase.DOWN) minOf(it, scale) else it } ?: scale
+        topScale = top
+        val ratio = scale / top
+        return when {
+            ratio >= frontDownRatio -> {
+                val since = downSince ?: nowMillis.also { downSince = it }
+                if (nowMillis - since >= frontHeldDownMillis) {
+                    // Held "down" far longer than a push-up takes: the phone
+                    // was moved closer. Where the face is now is the new up,
+                    // and nothing is owed for getting there.
+                    topScale = scale
+                    downSince = null
+                    armed = false
+                    settle(Phase.UP, nowMillis)
+                } else {
+                    settle(Phase.DOWN, nowMillis)
+                }
+            }
+            ratio <= frontUpRatio -> {
+                downSince = null
+                settle(Phase.UP, nowMillis)
+            }
+            else -> between()
+        }
+    }
+
+    /** Between the thresholds: on the way somewhere. The last settled phase stands. */
+    private fun between(): Boolean {
+        candidate = null
+        candidateFrames = 0
+        return false
     }
 
     private fun settle(seen: Phase, nowMillis: Long): Boolean {
@@ -185,6 +310,29 @@ class PushUpCounter(
                 counted
             }
         }
+    }
+
+    /**
+     * Both eyes seen, and the nose between them: a face turned to the lens.
+     * From the side the nose sits well outside the eye pair, and a profile
+     * must not be judged by how close it looks.
+     *
+     * "Between" is measured along the line through the eyes, whichever
+     * way that line runs in the picture: a phone laid with its long edge
+     * towards the person shows the face on its side, and a face on its
+     * side is still a face looking at the lens.
+     */
+    private fun facingLens(pose: PushUpPose): Boolean {
+        if (pose.leftEye.visibility < minVisibility || pose.rightEye.visibility < minVisibility) return false
+        if (pose.nose.visibility < minVisibility) return false
+        val axisX = pose.rightEye.x - pose.leftEye.x
+        val axisY = pose.rightEye.y - pose.leftEye.y
+        val gap = hypot(axisX, axisY)
+        if (gap <= 0f) return false
+        val middleX = (pose.leftEye.x + pose.rightEye.x) / 2f
+        val middleY = (pose.leftEye.y + pose.rightEye.y) / 2f
+        val along = ((pose.nose.x - middleX) * axisX + (pose.nose.y - middleY) * axisY) / gap
+        return abs(along) <= gap * 0.6f
     }
 
     private class Arm(val shoulder: Landmark, val elbow: Landmark, val wrist: Landmark) {
