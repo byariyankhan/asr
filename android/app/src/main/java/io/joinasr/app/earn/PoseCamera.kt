@@ -92,12 +92,15 @@ class PoseTracker(
                         .build(),
                 )
             }.getOrElse { e ->
-                // The screen says what the library said: a message with a
-                // cause in it is the difference between a fix and a guess.
-                // Shown, not sent: whether this failure should reach
-                // Crashlytics is a "what leaves the phone" decision
-                // (AGENTS.md) that has not been put to the founder.
-                fail("Pose detection could not start on this phone. ${e.message.orEmpty().take(160)}", e)
+                // The screen says what the library said, the whole chain
+                // of it: a message with a cause in it is the difference
+                // between a fix and a guess, and the first failure of a
+                // static initialiser is the only one that carries the
+                // cause -- every later touch of the class is a bare
+                // NoClassDefFoundError naming it. Shown, not sent: whether
+                // this should reach Crashlytics is a "what leaves the
+                // phone" decision (AGENTS.md) not yet put to the founder.
+                fail("Pose detection could not start on this phone. ${describe(e)}", e)
                 null
             }
         }
@@ -142,6 +145,13 @@ class PoseTracker(
         val at = result.timestampMs()
         mainExecutor.execute { if (!closed) onPose(pose, at) }
     }
+
+    /** Every link of the cause chain, class and message, short enough for a screen. */
+    private fun describe(error: Throwable): String =
+        generateSequence(error) { it.cause?.takeIf { cause -> cause !== it } }
+            .take(4)
+            .joinToString(" ← ") { "${it.javaClass.simpleName}: ${it.message.orEmpty()}" }
+            .take(400)
 
     private fun fail(message: String, cause: Throwable) {
         Log.w(TAG, message, cause)

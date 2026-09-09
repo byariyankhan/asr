@@ -39,3 +39,11 @@
 -keep class com.google.mediapipe.** { *; }
 -keep class com.google.protobuf.** { *; }
 -dontwarn com.google.mediapipe.**
+# Flogger, MediaPipe's logger, is the first thing Graph's static initialiser
+# touches, and it finds its backend by Class.forName on a name held in a
+# string array, which R8 cannot follow. Renamed, it throws "No logging
+# platform found", Graph's initialiser fails, and every later touch of
+# Graph is a NoClassDefFoundError naming the class and nothing else --
+# which is exactly the message the phone showed.
+-keep class com.google.common.flogger.** { *; }
+-dontwarn com.google.common.flogger.**
