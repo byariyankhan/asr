@@ -18,7 +18,25 @@ model answers with 33 body points; the eight a push-up is judged by
 (shoulders, elbows, wrists, hips) are kept and the frame is dropped.
 
 `earn/PushUpCounter.kt` is the rule, in pure Kotlin so it can be tested
-without a camera (`PushUpCounterTest`):
+without a camera (`PushUpCounterTest`). Two views, picked frame by frame
+from what the model can see:
+
+**From the floor** (the phone flat, screen up, just ahead of the hands:
+where the first person to try it put the phone, and the default the
+screen now teaches):
+
+- The face has to be looking at the lens: both eyes seen and the nose
+  between them. A profile is never judged by how close it looks.
+- Distance is read from how far apart the eyes are in the picture, against
+  the farthest they have been while up. Down is 1.35× closer, up is back
+  within 1.12×. The baseline is whatever "up" the person has, so the phone
+  can lie anywhere and a set begun from the bottom counts from the next
+  rep. A nod towards the phone (about 1.2×) is between the two and counts
+  for nothing.
+- "Down" held for four seconds is a phone that was moved, not a push-up:
+  where the face is now becomes the new up, uncounted.
+
+**From the side** (the phone propped up across the room):
 
 - A rep is the elbow angle going above 150° (straight), below 95° (bent),
   and above 150° again, in that order, after a straight start. The gap
@@ -26,13 +44,15 @@ without a camera (`PushUpCounterTest`):
 - The shoulder-to-hip line has to be within 45° of horizontal, so the hips
   have to be in the picture and the body has to be in a plank. Standing
   up and bending the arms earns nothing.
-- Half push-ups earn nothing; two reps closer than 600 ms are one rep; a
-  phase has to hold for two frames in a row before it is believed.
 - The arm the model is less sure of is ignored: from a side view the far
   arm is guessed through the torso.
-- The model's normalised coordinates are stretched back by the frame's
-  aspect ratio before any angle is measured. In a 4:3 frame a straight arm
-  reads as bent otherwise.
+
+Both views: half push-ups earn nothing; two reps closer than 600 ms are
+one rep; a phase has to hold for two frames in a row before it is
+believed; switching views mid-rep drops that rep. The model's normalised
+coordinates are stretched back by the frame's aspect ratio before any
+distance or angle is measured; in a 4:3 frame a straight arm reads as
+bent otherwise.
 
 The counter lives with the screen and starts from zero every time it is
 opened; the activity carries the count (`EarnViewModel.onPushUp`), so
@@ -109,9 +129,10 @@ These need a phone; JVM tests prove the rule, not the camera.
    shows, "Allow" opens the system dialog, a grant starts the activity
    without a second tap, a denial returns to the chooser. On a phone with
    no camera the row is present and disabled.
-2. Prop the phone up on its side, front camera facing you, whole body in
-   view from the side. Do seven push-ups at a normal pace: the count
-   reaches seven, the reward screen appears, the selected app has +10.
+2. Put the phone on the floor, screen up, just ahead of your hands. Do
+   seven push-ups at a normal pace: the count reaches seven, the reward
+   screen appears, the selected app has +10. Repeat with the phone propped
+   on its side a few steps away, whole body in view from the side.
 3. Do push-ups standing against a wall, kneeling, or seated: nothing
    counts and the coaching line says why.
 4. Bounce the arms quickly from the down position; do half push-ups; hover

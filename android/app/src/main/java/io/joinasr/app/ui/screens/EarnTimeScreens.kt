@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
@@ -146,7 +147,7 @@ fun ChooseActivityScreen(
             title = "Do ${EarnRules.PUSHUP_REPS} push-ups",
             subtitle = "Counted by your camera",
             detail = if (cameraAvailable) {
-                "Prop your phone up sideways and do them on camera. Nothing is recorded."
+                "Put your phone on the floor in front of you and do them on camera. Nothing is recorded."
             } else {
                 "This phone has no camera, so push-ups cannot be counted."
             },
@@ -362,14 +363,14 @@ fun CameraAccessScreen(
             }
             Spacer(Modifier.height(12.dp))
             Text(
-                "Counted from a side view, shoulders to hips",
+                "Phone on the floor, camera looking up at you",
                 style = AsrType.Label.copy(fontSize = 14.sp),
                 color = AsrColors.TextPrimary,
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Your phone finds the shape of your body in each frame and counts " +
-                    "each time your arms bend and straighten. The frame is then dropped.",
+                "Your phone finds your face and shoulders in each frame and counts " +
+                    "each time you come down to it and back up. The frame is then dropped.",
                 style = AsrType.Legal.copy(fontSize = 12.sp),
                 color = AsrColors.TextSecondary,
             )
@@ -628,6 +629,8 @@ fun PushUpProgressScreen(
 ) {
     val counter = remember(activity.id) { PushUpCounter() }
     var phase by remember(activity.id) { mutableStateOf(PushUpCounter.Phase.NO_BODY) }
+    var view by remember(activity.id) { mutableStateOf(PushUpCounter.View.NONE) }
+    val coaching = coachingFor(view, phase)
     var cameraProblem by remember(activity.id) { mutableStateOf<String?>(null) }
     val percent = (activity.fraction * 100).toInt()
 
@@ -657,6 +660,9 @@ fun PushUpProgressScreen(
         RewardContext(activity)
 
         Spacer(Modifier.height(18.dp))
+        PhonePlacement()
+
+        Spacer(Modifier.height(14.dp))
         val frame = RoundedCornerShape(22.dp)
         Box(
             modifier = Modifier
@@ -672,6 +678,7 @@ fun PushUpProgressScreen(
                     onPose = { pose, at ->
                         if (counter.observe(pose, at)) onPushUp()
                         phase = counter.phase
+                        view = counter.view
                     },
                     onError = { cameraProblem = it },
                     modifier = Modifier.fillMaxSize(),
@@ -690,7 +697,30 @@ fun PushUpProgressScreen(
             Box(modifier = Modifier.align(Alignment.TopStart).padding(14.dp)) {
                 SmallPill("${activity.progress} / ${activity.target}", AsrColors.Accent, AsrColors.AccentMuted)
             }
+            // The next thing to do, on the picture itself: the card below
+            // is off the screen while somebody is on the floor looking up.
+            if (problem == null) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("●", style = AsrType.Field.copy(fontSize = 14.sp), color = AsrColors.Accent)
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        coaching.first,
+                        style = AsrType.RowTitle,
+                        color = AsrColors.TextPrimary,
+                    )
+                }
+            }
         }
+
+        Spacer(Modifier.height(14.dp))
+        PushUpCoaching(coaching)
 
         Spacer(Modifier.height(18.dp))
         Column(
@@ -741,9 +771,6 @@ fun PushUpProgressScreen(
             }
         }
 
-        Spacer(Modifier.height(18.dp))
-        PushUpCoaching(phase)
-
         Spacer(Modifier.height(16.dp))
         RewardNote(
             title = "${activity.remaining} to go",
@@ -771,21 +798,84 @@ fun PushUpProgressScreen(
     }
 }
 
-/** What the counter can see, said as the next thing to do. */
-@Composable
-private fun PushUpCoaching(phase: PushUpCounter.Phase) {
-    val (title, body) = when (phase) {
-        PushUpCounter.Phase.NO_BODY ->
-            "Get your whole body in view" to
-                "Prop your phone on its side a few steps away, so it sees you from the side, " +
-                "shoulders to hips."
-        PushUpCounter.Phase.NOT_IN_POSITION ->
-            "Get into a plank" to "Hands under your shoulders, body straight, facing the phone side-on."
-        PushUpCounter.Phase.UP ->
+/** What the counter can see, said as the next thing to do: a title and a line under it. */
+private fun coachingFor(view: PushUpCounter.View, phase: PushUpCounter.Phase): Pair<String, String> =
+    when {
+        phase == PushUpCounter.Phase.NO_BODY ->
+            "Looking for you" to
+                "Put the phone on the floor just ahead of your hands, face towards it, " +
+                "and get into position."
+        view == PushUpCounter.View.FRONT && phase == PushUpCounter.Phase.UP ->
+            "Go down" to "Bring your chest down towards the phone."
+        view == PushUpCounter.View.FRONT ->
+            "Push up" to "All the way back up. That is one."
+        phase == PushUpCounter.Phase.NOT_IN_POSITION ->
+            "Get into a plank" to "Hands under your shoulders, body straight."
+        phase == PushUpCounter.Phase.UP ->
             "Now go down" to "Bend your elbows until your chest is near the floor."
-        PushUpCounter.Phase.DOWN ->
+        else ->
             "Push up" to "Straighten your arms all the way. That is one."
     }
+
+/**
+ * Where the phone goes, said before the camera rather than after it. The
+ * first person to try this put the phone on the floor under their face,
+ * which is the natural place and the one the counter now expects; the
+ * side view is the alternative for anybody with somewhere to prop it.
+ */
+@Composable
+private fun PhonePlacement() {
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AsrColors.SurfaceRaised, shape)
+            .border(1.dp, AsrColors.FieldBorder, shape)
+            .padding(15.dp),
+    ) {
+        Text(
+            "WHERE TO PUT YOUR PHONE",
+            style = AsrType.Eyebrow.copy(fontSize = 10.sp),
+            color = AsrColors.Accent,
+        )
+        Spacer(Modifier.height(10.dp))
+        PlacementStep("1", "On the floor, screen up, a hand's width in front of your hands. The camera looks up at you.")
+        Spacer(Modifier.height(8.dp))
+        PlacementStep("2", "Keep your face in the picture. Each time your chest comes down to the phone and back up counts one.")
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Prefer a side view? Prop it on its side a few steps away with your whole body in frame.",
+            style = AsrType.Legal.copy(fontSize = 12.sp),
+            color = AsrColors.TextTertiary,
+        )
+    }
+}
+
+@Composable
+private fun PlacementStep(number: String, text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(AsrColors.AccentMuted),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(number, style = AsrType.Label.copy(fontSize = 12.sp), color = AsrColors.Accent)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text,
+            style = AsrType.Label.copy(fontSize = 13.sp),
+            color = AsrColors.TextSecondary,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun PushUpCoaching(coaching: Pair<String, String>) {
+    val (title, body) = coaching
     val shape = RoundedCornerShape(18.dp)
     Row(
         modifier = Modifier
