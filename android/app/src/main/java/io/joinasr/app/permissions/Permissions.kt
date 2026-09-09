@@ -127,6 +127,24 @@ object Permissions {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    /**
+     * The camera, for counting push-ups. An ordinary runtime permission on
+     * every API this app supports, asked for the first time somebody picks
+     * the push-up activity and never at launch, for the same reason as
+     * steps: it is not needed to run a challenge.
+     */
+    fun hasCamera(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Whether there is a camera to ask about. The manifest declares one as
+     * optional so a phone without any still installs; this is what keeps
+     * the push-up row off that phone's screen.
+     */
+    fun hasCameraHardware(context: Context): Boolean =
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+
     fun hasNotifications(context: Context): Boolean {
         val manager = context.getSystemService<NotificationManager>() ?: return false
         return manager.areNotificationsEnabled()

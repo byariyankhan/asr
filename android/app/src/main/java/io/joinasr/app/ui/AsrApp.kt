@@ -53,6 +53,8 @@ import io.joinasr.app.ui.screens.ChallengeStartedScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ActivityProgressScreen
 import io.joinasr.app.ui.screens.ActivityTrackingScreen
+import io.joinasr.app.ui.screens.CameraAccessScreen
+import io.joinasr.app.ui.screens.PushUpProgressScreen
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.ui.screens.ChallengeEndedScreen
 import io.joinasr.app.ui.screens.GiveUpScreen
@@ -304,6 +306,15 @@ fun AsrApp(
         askingForSteps = false
         walkOnceGranted = granted
     }
+    // The same pair for the camera, between choosing push-ups and the grant.
+    var askingForCamera by remember { mutableStateOf(false) }
+    var pushUpsOnceGranted by remember { mutableStateOf(false) }
+    val askForCamera = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        askingForCamera = false
+        pushUpsOnceGranted = granted
+    }
 
     // Notifications, asked of a witness rather than of everybody at launch.
     // Somebody who has just agreed to be told when a friend breaks a pact
@@ -490,6 +501,13 @@ fun AsrApp(
         val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
         earnViewModel.start(pact, app, EarnRules.WALK)
     }
+    LaunchedEffect(pushUpsOnceGranted, earningFor, pactState) {
+        if (!pushUpsOnceGranted) return@LaunchedEffect
+        pushUpsOnceGranted = false
+        val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
+        val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
+        earnViewModel.start(pact, app, EarnRules.PUSHUPS)
+    }
 
     // What actually drives an activity forward.
     //
@@ -497,6 +515,9 @@ fun AsrApp(
     // keeps whether or not this app is alive -- so listening only while the
     // screen is up loses nothing, and the difference from the baseline is
     // still right when somebody comes back.
+    //
+    // Push-ups are counted by the camera on the push-up screen itself
+    // (PushUpProgressScreen), which is the only place the camera is open.
     //
     // Phone-free focus sessions are owned by EnforcementService, even when
     // this UI is stopped or destroyed. Compose must never award focus time.
@@ -706,6 +727,7 @@ fun AsrApp(
             earningFor = null
         })
         tab == AsrTab.Home && askingForSteps -> ({ askingForSteps = false })
+        tab == AsrTab.Home && askingForCamera -> ({ askingForCamera = false })
         tab == AsrTab.Home && earnAppNow != null -> ({
             earningFor = null
             earnViewModel.clearError()
@@ -1061,6 +1083,8 @@ fun AsrApp(
                     pactViewModel.clearAddAppError()
                     askingForSteps = false
                     walkOnceGranted = false
+                    askingForCamera = false
+                    pushUpsOnceGranted = false
                     showingNotifications = false
                     showingProtectionLost = false
                     fixingProtection = false
@@ -1114,6 +1138,30 @@ fun AsrApp(
                                             earningFor = null
                                         },
                                     )
+                                } else if (running != null && !activityMinimised && running.isPushUps &&
+                                    !Permissions.hasCamera(context)
+                                ) {
+                                    // Revoked in Settings mid-set. Ask again
+                                    // rather than open a camera that will
+                                    // refuse; the activity and its count wait.
+                                    CameraAccessScreen(
+                                        onBack = { activityMinimised = true },
+                                        onAllow = { askForCamera.launch(Manifest.permission.CAMERA) },
+                                        onSkip = { activityMinimised = true },
+                                    )
+                                } else if (running != null && !activityMinimised && running.isPushUps) {
+                                    PushUpProgressScreen(
+                                        activity = running,
+                                        onBack = {
+                                            activityMinimised = true
+                                            earningFor = null
+                                        },
+                                        onEnd = {
+                                            earnViewModel.cancel()
+                                            earningFor = null
+                                        },
+                                        onPushUp = earnViewModel::onPushUp,
+                                    )
                                 } else if (running != null && !activityMinimised) {
                                     // Figma 23.
                                     ActivityProgressScreen(
@@ -1126,6 +1174,12 @@ fun AsrApp(
                                             earnViewModel.cancel()
                                             earningFor = null
                                         },
+                                    )
+                                } else if (earnApp != null && askingForCamera) {
+                                    CameraAccessScreen(
+                                        onBack = { askingForCamera = false },
+                                        onAllow = { askForCamera.launch(Manifest.permission.CAMERA) },
+                                        onSkip = { askingForCamera = false },
                                     )
                                 } else if (earnApp != null && askingForSteps) {
                                     // Figma 22.
@@ -1144,6 +1198,7 @@ fun AsrApp(
                                         app = earnApp,
                                         earnedSoFar = earnedToday.forPackage(earnApp.packageName),
                                         stepsAvailable = earnViewModel.steps.available,
+                                        cameraAvailable = Permissions.hasCameraHardware(context),
                                         onBack = {
                                             earningFor = null
                                             earnViewModel.clearError()
@@ -1161,6 +1216,16 @@ fun AsrApp(
                                         onFocus = {
                                             activePact?.let {
                                                 earnViewModel.start(it, earnApp, EarnRules.FOCUS)
+                                            }
+                                        },
+                                        onPushUps = {
+                                            val pact = activePact
+                                            if (pact == null) {
+                                                earningFor = null
+                                            } else if (Permissions.hasCamera(context)) {
+                                                earnViewModel.start(pact, earnApp, EarnRules.PUSHUPS)
+                                            } else {
+                                                askingForCamera = true
                                             }
                                         },
                                         errorMessage = earnError,

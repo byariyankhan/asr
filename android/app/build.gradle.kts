@@ -136,6 +136,16 @@ dependencies {
     // they were doing and have to go and find the message again.
     implementation(libs.installreferrer)
     implementation(libs.okhttp)
+    // Push-ups (earn/PoseCamera.kt). CameraX for the frames and the preview;
+    // MediaPipe's Pose Landmarker to turn each frame into 33 points on the
+    // phone, from the model bundled at app/src/main/assets. Nothing in
+    // either has a server to talk to. The native library adds about 11 MB
+    // to the arm64 install; Play delivers one ABI per phone.
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.mediapipe.tasks.vision)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.activity.compose)

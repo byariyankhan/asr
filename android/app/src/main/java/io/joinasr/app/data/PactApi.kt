@@ -41,7 +41,7 @@ data class PactAppAdd(
 data class ActivityRule(
     @SerialName("reward_min") val rewardMinutes: Int,
     @SerialName("daily_cap_min") val dailyCapMinutes: Int,
-    /** Steps, for a walk. */
+    /** Steps, for a walk; reps, for push-ups. */
     val target: Int? = null,
     /** Minutes, for a focus session. */
     @SerialName("target_min") val targetMinutes: Int? = null,
@@ -59,6 +59,13 @@ data class ActivityRule(
 data class ActivityRules(
     @SerialName("walk_steps") val walkSteps: ActivityRule? = null,
     @SerialName("focus_session") val focusSession: ActivityRule? = null,
+    /**
+     * Push-ups. Until the server knows the type it drops this key from the
+     * snapshot on the way in and refuses to start a push-up activity, which
+     * the phone treats as a settled refusal (Sync.StartResult.Refused):
+     * nothing is awarded that the ledger will not carry. docs/API.md.
+     */
+    @SerialName("push_ups") val pushUps: ActivityRule? = null,
 )
 
 @Serializable

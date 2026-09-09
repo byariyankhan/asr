@@ -77,6 +77,8 @@ export const snapshot = z.object({
     .object({
       walk_steps: activityRule.extend({ target: z.number().int().min(100).max(50_000) }).optional(),
       focus_session: activityRule.extend({ target_min: z.number().int().min(5).max(180) }).optional(),
+      // Reps, counted by the phone's camera (android/PUSH_UPS.md).
+      push_ups: activityRule.extend({ target: z.number().int().min(1).max(500) }).optional(),
       waiting_period: activityRule.extend({ wait_min: z.number().int().min(1).max(60) }).optional(),
     })
     .default({}),
@@ -219,7 +221,7 @@ export const reactionCreate = z.object({ event_id: uuid, emoji: z.enum(EMOJIS) }
 export const reactionDelete = z.object({ event_id: uuid });
 
 // --- activities (earn your time) ---
-export const ACTIVITY_TYPES = ["walk_steps", "focus_session", "waiting_period"] as const;
+export const ACTIVITY_TYPES = ["walk_steps", "focus_session", "push_ups", "waiting_period"] as const;
 
 export const activityCreate = z
   .object({

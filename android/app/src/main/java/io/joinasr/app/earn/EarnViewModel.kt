@@ -69,11 +69,7 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
                 type = type,
                 packageName = app.packageName,
                 appLabel = app.label,
-                target = if (type == EarnRules.WALK) {
-                    EarnRules.WALK_STEPS
-                } else {
-                    EarnRules.FOCUS_MINUTES
-                },
+                target = EarnRules.targetFor(type),
                 rewardMinutes = EarnRules.REWARD_MINUTES,
                 startedAtMillis = now,
                 deadlineAtMillis = now + EarnRules.DEADLINE_HOURS * 60 * 60 * 1000,
@@ -114,6 +110,23 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
             val walked = total - running.baselineSteps
             if (walked == running.progress) return@launch
             val updated = running.copy(progress = walked)
+            if (updated.isComplete) finish(updated) else store.update(updated)
+        }
+    }
+
+    /**
+     * One push-up, as [PushUpCounter] judged it from the camera.
+     *
+     * Counted here rather than trusted from the counter's own total, so
+     * that leaving the screen and coming back resumes at the same number:
+     * the camera and the counter start again from nothing every time the
+     * screen is opened, and the activity is what remembers.
+     */
+    fun onPushUp() {
+        viewModelScope.launch {
+            val running = store.currentActive() ?: return@launch
+            if (!running.isPushUps || running.isComplete) return@launch
+            val updated = running.copy(progress = running.progress + 1)
             if (updated.isComplete) finish(updated) else store.update(updated)
         }
     }

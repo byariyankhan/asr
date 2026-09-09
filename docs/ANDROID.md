@@ -95,9 +95,10 @@ Figma 16 lists both halves, 17 shows what a witness may see, 19 is the
 inbox, 25 reacts to an event.
 
 **Earning time** (21–24) uses `TYPE_STEP_COUNTER` for walks, which the
-sensor hub keeps whether or not this app is running, and the enforcement
+sensor hub keeps whether or not this app is running, the enforcement
 loop itself for focus sessions — it is the only thing on the phone that can
-see a controlled app come to the front. Earned minutes raise today's
+see a controlled app come to the front — and the camera with an on-device
+pose model for push-ups (`android/PUSH_UPS.md`). Earned minutes raise today's
 allowance in `decide`, `pollDelayMillis` and `overLimit`, and never the pact.
 
 Storage is DataStore, not Room. The pact is one small immutable value read
@@ -471,11 +472,12 @@ missed.
 |---|---|---|
 | `walk_steps` | `TYPE_STEP_COUNTER` (needs `ACTIVITY_RECOGNITION` on API 29+) | Delta since activity start; capped at 200 steps/min to reject shaking |
 | `focus_session` | None: timer with screen-on and no controlled app foregrounded | Any controlled app foreground cancels the session |
+| `push_ups` | Front camera through CameraX, MediaPipe Pose Landmarker on-device (needs `CAMERA`) | Elbow straight → bent → straight in a plank, seven times; frames are dropped after inference. `android/PUSH_UPS.md` |
 | `waiting_period` | None: countdown | Nothing to verify; it is friction, not proof |
 
 Reward minutes are applied locally the instant the activity completes and
 reported to the server with the `activity_completed` event. The daily cap
--- the most bonus time one app can have in a day, across both kinds of
+-- the most bonus time one app can have in a day, across every kind of
 activity -- is enforced locally and re-checked by the server on the same
 rule. The phone also sends its IANA zone with its registration, every
 heartbeat and every summary; the server computes the challenge's "today"
@@ -498,10 +500,12 @@ opens the accept screen after sign-up.
 | `SYSTEM_ALERT_WINDOW` | Show the block screen over other apps | Onboarding step 3 |
 | `POST_NOTIFICATIONS` | Witness and reminder notifications | Onboarding step 4 |
 | `ACTIVITY_RECOGNITION` | Step activities | First time a step activity is started |
+| `CAMERA` | Counting push-ups, on the phone; nothing saved or sent | First time a push-up activity is started |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | The protection service | Manifest |
 | `RECEIVE_BOOT_COMPLETED` | Restart protection after reboot | Manifest |
 
-No location, contacts, camera, microphone, or SMS.
+No location, contacts, microphone, or SMS. The camera is opened only on the
+push-up screen, released with it, and no frame is ever written or sent.
 
 ## Play policy notes
 

@@ -1,7 +1,7 @@
 package io.joinasr.app.earn
 
 /**
- * The two ways to earn more time, and what each costs.
+ * The three ways to earn more time, and what each costs.
  *
  * These numbers are written into the pact when it starts and never read from
  * a request afterwards — the server takes the target and the reward from the
@@ -18,7 +18,15 @@ object EarnRules {
     /** Phone-free session: twenty uninterrupted minutes with the keyguard showing. */
     const val FOCUS_MINUTES = 20
 
-    /** What either one is worth. Figma 21 and 24: "+10 minutes". */
+    /**
+     * Push-ups, counted by the camera from a side view. Seven is the
+     * founder's price: roughly the effort of the walk for somebody who would
+     * rather not go outside, and few enough that the camera session is over
+     * in under a minute.
+     */
+    const val PUSHUP_REPS = 7
+
+    /** What any one of them is worth. Figma 21 and 24: "+10 minutes". */
     const val REWARD_MINUTES = 10
 
     /** The most that can be earned for one app in a day. */
@@ -42,4 +50,11 @@ object EarnRules {
     /** What the server calls them. */
     const val WALK = "walk_steps"
     const val FOCUS = "focus_session"
+    const val PUSHUPS = "push_ups"
+
+    fun targetFor(type: String): Int = when (type) {
+        WALK -> WALK_STEPS
+        PUSHUPS -> PUSHUP_REPS
+        else -> FOCUS_MINUTES
+    }
 }

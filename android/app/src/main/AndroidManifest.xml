@@ -38,6 +38,24 @@
          and nothing here asks where it was kept. -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
+    <!-- The camera, and only to count push-ups (earn/PoseCamera.kt). Asked
+         the first time somebody chooses the push-up activity and never at
+         launch, like steps. Each frame goes to a pose model that runs on
+         the phone and is then dropped: no photo or video is written, and
+         nothing from the camera is sent anywhere. The hardware is declared
+         optional so a phone without a camera still installs; it is simply
+         not offered push-ups. Both feature names, because asking for the
+         CAMERA permission makes aapt imply android.hardware.camera as
+         *required* unless that exact name is declared optional too, and a
+         tablet with only a front camera would vanish from Play. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
     <!-- The enforcement loop runs as a foreground service. SPECIAL_USE is the
          type Android 14 requires for it: the other types describe things this
          is not (no media, no location, no sync), and the whole point is that

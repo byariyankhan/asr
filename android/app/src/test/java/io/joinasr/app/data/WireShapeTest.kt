@@ -73,6 +73,7 @@ class WireShapeTest {
                         dailyCapMinutes = 60,
                         targetMinutes = 25,
                     ),
+                    pushUps = ActivityRule(rewardMinutes = 15, dailyCapMinutes = 60, target = 7),
                 ),
             ),
         )
@@ -135,6 +136,6 @@ class WireShapeTest {
 
     private companion object {
         // Kept on one line, and repeated verbatim in the backend test.
-        const val PACT_CREATE_WIRE = """{"device_id":"8f14e45f-ea9e-4c3b-9d1a-2b6c7d8e9f01","duration_days":14,"timezone":"Asia/Dhaka","snapshot":{"apps":[{"package":"com.instagram.android","label":"Instagram","daily_limit_min":30}],"reset_time":"00:00","activities":{"walk_steps":{"reward_min":15,"daily_cap_min":60,"target":6000},"focus_session":{"reward_min":15,"daily_cap_min":60,"target_min":25}}}}"""
+        const val PACT_CREATE_WIRE = """{"device_id":"8f14e45f-ea9e-4c3b-9d1a-2b6c7d8e9f01","duration_days":14,"timezone":"Asia/Dhaka","snapshot":{"apps":[{"package":"com.instagram.android","label":"Instagram","daily_limit_min":30}],"reset_time":"00:00","activities":{"walk_steps":{"reward_min":15,"daily_cap_min":60,"target":6000},"focus_session":{"reward_min":15,"daily_cap_min":60,"target_min":25},"push_ups":{"reward_min":15,"daily_cap_min":60,"target":7}}}}"""
     }
 }
