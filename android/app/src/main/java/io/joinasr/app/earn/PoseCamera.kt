@@ -190,7 +190,12 @@ fun PushUpCameraView(
         )
         val providerFuture = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
+        // Set on the main thread by onDispose, read on the main thread by
+        // the listener: a provider that arrives after the screen has gone
+        // must not bind a camera nothing will ever unbind.
+        var disposed = false
         providerFuture.addListener({
+            if (disposed) return@addListener
             val bound = runCatching { providerFuture.get() }.getOrNull()
             if (bound == null) {
                 latestOnError("The camera could not be opened.")
@@ -214,6 +219,7 @@ fun PushUpCameraView(
         }, ContextCompat.getMainExecutor(context))
 
         onDispose {
+            disposed = true
             provider?.unbindAll()
             tracker.close()
         }
