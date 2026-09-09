@@ -472,7 +472,7 @@ missed.
 |---|---|---|
 | `walk_steps` | `TYPE_STEP_COUNTER` (needs `ACTIVITY_RECOGNITION` on API 29+) | Delta since activity start; capped at 200 steps/min to reject shaking |
 | `focus_session` | None: timer with screen-on and no controlled app foregrounded | Any controlled app foreground cancels the session |
-| `push_ups` | Front camera through CameraX, MediaPipe Pose Landmarker on-device (needs `CAMERA`) | Elbow straight → bent → straight in a plank, seven times; frames are dropped after inference. `android/PUSH_UPS.md`. Server side not yet done |
+| `push_ups` | Front camera through CameraX, MediaPipe Pose Landmarker on-device (needs `CAMERA`) | Elbow straight → bent → straight in a plank, seven times; frames are dropped after inference. `android/PUSH_UPS.md` |
 | `waiting_period` | None: countdown | Nothing to verify; it is friction, not proof |
 
 Reward minutes are applied locally the instant the activity completes and

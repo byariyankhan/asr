@@ -358,16 +358,17 @@ caps it at the pact's own rules and it is what makes a day within limits at
 { "id": "<uuidv7>", "type": "walk_steps", "started_at": "…", "deadline_at": "…" }
 ```
 
-`201` with the activity. Target and reward minutes come from the pact
-snapshot's activity rules, never from the request. `409
+`type` is one of `walk_steps`, `focus_session`, `push_ups` or
+`waiting_period`. `201` with the activity. Target and reward minutes come
+from the pact snapshot's activity rules, never from the request. `409
 activity_not_allowed` if the pact has no rule for that type, `409
 daily_cap_reached` if pending plus completed activities for that
-`app_package` today -- of either kind -- already reach the rule's daily cap
+`app_package` today -- of any kind -- already reach the rule's daily cap
 (the day on the phone's calendar), `409 deadline_too_far` if the deadline
 is more than 24 h after the start. `200` with the existing row when the id
 was seen before.
 
-The cap is per app, across both kinds of activity: "the most bonus time
+The cap is per app, across every kind of activity: "the most bonus time
 Instagram can have today", which is the rule the phone enforces and the
 one the daily summary holds each app's `earned_min` to. It used to be per
 kind across all apps, and with two apps the phone had awarded a third walk

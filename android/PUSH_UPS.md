@@ -84,27 +84,22 @@ The lite model is used because a push-up is a slow, large movement seen
 from the side; the accuracy the heavier models add is in fingers and
 faces, which this feature discards.
 
-## What is not done yet
+## The server side
 
-**The server does not know `push_ups`.** Three things, all in `backend/`
-and `docs/`, and one of them is a migration, so it is a founder decision
-(AGENTS.md, "Ask before critical work"):
+`push_ups` is an activity type like the other two (`backend/src/lib/schemas.ts`,
+`ACTIVITY_TYPES`), with a snapshot rule `{ target, reward_min, daily_cap_min }`
+the phone sends when a pact starts. Start, complete, cancel, the per-app
+daily cap, the `activity_completed` ledger event and the `time_earned`
+witness notification are the existing code paths, untouched; the witness
+copy names the app and the minutes, not the exercise.
 
-1. `backend/src/lib/schemas.ts`: add `push_ups` to `ACTIVITY_TYPES` and a
-   `push_ups: activityRule.extend({ target: int 1..500 })` entry to the
-   snapshot's `activities`.
-2. A migration that widens the `activity.type` check constraint to include
-   `'push_ups'`. Backward compatible: the previous release never writes it.
-3. `backend/src/server/db/schema.ts`, `docs/API.md`, `docs/DATABASE.md`.
-
-Until then the app behaves safely: the server strips the unknown
-`push_ups` key from the snapshot when a pact is created, refuses to start
-a push-up activity (400, unknown type), and the phone treats that as a
-settled refusal (`Sync.StartResult.Refused`): the activity is stood down
-with the server's message and nothing is awarded. Pacts started before the
-server change carry no `push_ups` rule in their snapshot, so push-ups will
-be refused on them until they end; only pacts started afterwards get it,
-unless the founder chooses to add the rule to running pacts.
+Migration `0013_push_ups` widens the `activity.type` check and adds a
+`push_ups` rule to every pact already on the ledger, priced like that
+pact's walk. The snapshot is locked when a challenge starts so a phone
+cannot renegotiate a price mid-way, which is exactly why a rule added
+later has to be added by the server or it is not there at all. The
+founder's decision, pre-launch with no real users: push-ups are on for
+every challenge, running or future, with no compatibility carve-out.
 
 ## Device acceptance checks
 
