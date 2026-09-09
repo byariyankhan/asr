@@ -264,6 +264,48 @@ class PushUpCounterTest {
         assertEquals(PushUpCounter.View.NONE, counter.view)
     }
 
+    @Test fun `a face on its side, the phone laid the other way, is still a face`() {
+        val counter = PushUpCounter()
+        fun sideways(gap: Float) = face(gap).let {
+            it.copy(
+                leftEye = Landmark(0.5f, 0.4f - gap / 2, 0.95f),
+                rightEye = Landmark(0.5f, 0.4f + gap / 2, 0.95f),
+                nose = Landmark(0.6f, 0.4f, 0.95f),
+            )
+        }
+        counter.hold(sideways(0.10f), 0)
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        counter.hold(sideways(0.18f), 1_000)
+        assertEquals(1, counter.hold(sideways(0.10f), 2_000))
+    }
+
+    @Test fun `a face looking into the lens is the floor view even if the model guesses an arm and a hip`() {
+        val counter = PushUpCounter()
+        // From the floor the body is foreshortened into something the
+        // model may still call an arm and a torso, standing upright.
+        val guessed = face(0.10f).let {
+            val point = Landmark(0.5f, 0.9f, 0.7f)
+            it.copy(
+                leftShoulder = point, leftElbow = point.copy(y = 1.0f), leftWrist = point.copy(y = 1.1f),
+                leftHip = point.copy(y = 1.3f),
+            )
+        }
+        counter.hold(guessed, 0)
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+    }
+
+    @Test fun `re-propping the phone between reps arms the new view`() {
+        val counter = PushUpCounter()
+        counter.hold(pose(175.0), 0)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        // Same "up", other view: the first rep in the new view must count.
+        counter.hold(face(0.10f), 1_000)
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        counter.hold(face(0.18f), 2_000)
+        assertEquals(1, counter.hold(face(0.10f), 3_000))
+    }
+
     @Test fun `a face the model is unsure of is nobody`() {
         val counter = PushUpCounter()
         counter.hold(face(0.10f, eyeVisibility = 0.2f), 0)

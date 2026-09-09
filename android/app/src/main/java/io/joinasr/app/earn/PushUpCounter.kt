@@ -186,9 +186,13 @@ class PushUpCounter(
     fun observe(pose: PushUpPose?, nowMillis: Long): Boolean {
         val arm = pose?.let(::bestArm)
         val torso = pose?.let(::torsoTilt)
+        // A face looking into the lens decides before anything else: from
+        // the floor the model often guesses an arm and a hip out of the
+        // foreshortened body, and judged as a side view they read as
+        // "not in a plank". A real side view shows a profile.
         val seen = when {
-            arm != null && torso != null -> View.SIDE
             pose != null && facingLens(pose) -> View.FRONT
+            arm != null && torso != null -> View.SIDE
             else -> View.NONE
         }
         if (seen != view) {
@@ -202,7 +206,11 @@ class PushUpCounter(
             if (candidateViewFrames < settleFrames) return false
             // A different way of looking is a different ruler: a rep in
             // flight is lost, and the front view's baseline starts over.
+            // The phase starts over too, so the new view's first "up" is a
+            // transition that arms the counter rather than a repeat of the
+            // old view's "up" that settle() would ignore.
             view = seen
+            phase = Phase.NO_BODY
             armed = false
             topScale = null
             smoothedScale = null
@@ -308,14 +316,23 @@ class PushUpCounter(
      * Both eyes seen, and the nose between them: a face turned to the lens.
      * From the side the nose sits well outside the eye pair, and a profile
      * must not be judged by how close it looks.
+     *
+     * "Between" is measured along the line through the eyes, whichever
+     * way that line runs in the picture: a phone laid with its long edge
+     * towards the person shows the face on its side, and a face on its
+     * side is still a face looking at the lens.
      */
     private fun facingLens(pose: PushUpPose): Boolean {
         if (pose.leftEye.visibility < minVisibility || pose.rightEye.visibility < minVisibility) return false
         if (pose.nose.visibility < minVisibility) return false
-        val gap = abs(pose.leftEye.x - pose.rightEye.x)
+        val axisX = pose.rightEye.x - pose.leftEye.x
+        val axisY = pose.rightEye.y - pose.leftEye.y
+        val gap = hypot(axisX, axisY)
         if (gap <= 0f) return false
-        val middle = (pose.leftEye.x + pose.rightEye.x) / 2f
-        return abs(pose.nose.x - middle) <= gap * 0.6f
+        val middleX = (pose.leftEye.x + pose.rightEye.x) / 2f
+        val middleY = (pose.leftEye.y + pose.rightEye.y) / 2f
+        val along = ((pose.nose.x - middleX) * axisX + (pose.nose.y - middleY) * axisY) / gap
+        return abs(along) <= gap * 0.6f
     }
 
     private class Arm(val shoulder: Landmark, val elbow: Landmark, val wrist: Landmark) {
