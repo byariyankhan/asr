@@ -317,6 +317,10 @@ fun AsrApp(
     // notifications already do. A silent nothing is not an answer.
     var cameraRefused by remember { mutableStateOf(false) }
     var cameraDeniedForGood by remember { mutableStateOf(false) }
+    // Read into state rather than asked on every composition, because a
+    // grant made on the app's Settings page arrives through no callback:
+    // the resume below re-reads it, and the screens follow.
+    var cameraGranted by remember { mutableStateOf(Permissions.hasCamera(context)) }
     val askForCamera = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -421,6 +425,17 @@ fun AsrApp(
     // exactly the moment somebody returns from granting one.
     LifecycleResumeEffect(Unit) {
         protection = PermissionState.read(context)
+        cameraGranted = Permissions.hasCamera(context)
+        if (cameraGranted) {
+            // Back from Settings with the camera allowed: the refusal is
+            // over, and a push-up set chosen before the trip starts now.
+            cameraRefused = false
+            cameraDeniedForGood = false
+            if (askingForCamera) {
+                askingForCamera = false
+                pushUpsOnceGranted = true
+            }
+        }
         onPauseOrDispose {}
     }
 
@@ -711,6 +726,15 @@ fun AsrApp(
     // screen used to ignore the button altogether.
     val invitationOpen = code != null && (signedIn || !inviteDeferred) && !needsProfile
     val earnAppNow = (pactState as? PactState.Active)?.pact?.let { pact -> earningFor?.let(pact::appFor) }
+    // The chooser shows the earn error. Anywhere else -- a set put aside
+    // with "Finish later" and stood down for running out of time, say --
+    // the message would otherwise vanish with the set it explains.
+    LaunchedEffect(earnError, earnAppNow) {
+        val message = earnError ?: return@LaunchedEffect
+        if (earnAppNow != null) return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        earnViewModel.clearError()
+    }
     val backAction: (() -> Unit)? = when {
         resetToken != null -> ({
             resetToken = null
@@ -1170,7 +1194,7 @@ fun AsrApp(
                                         },
                                     )
                                 } else if (running != null && !activityMinimised && running.isPushUps &&
-                                    !Permissions.hasCamera(context)
+                                    !cameraGranted
                                 ) {
                                     // Revoked in Settings mid-set. Ask again
                                     // rather than open a camera that will
@@ -1255,14 +1279,14 @@ fun AsrApp(
                                             val pact = activePact
                                             if (pact == null) {
                                                 earningFor = null
-                                            } else if (Permissions.hasCamera(context)) {
+                                            } else if (cameraGranted) {
                                                 cameraRefused = false
                                                 earnViewModel.start(pact, earnApp, EarnRules.PUSHUPS)
                                             } else {
                                                 askingForCamera = true
                                             }
                                         },
-                                        errorMessage = earnError ?: if (cameraRefused && !Permissions.hasCamera(context)) {
+                                        errorMessage = earnError ?: if (cameraRefused && !cameraGranted) {
                                             "Camera access was refused, so push-ups cannot be counted. " +
                                                 "Choose push-ups again to allow it."
                                         } else {
