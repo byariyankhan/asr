@@ -7,7 +7,7 @@ import java.util.Locale
  * activity, drawn in ui/components/AsrIcons.kt; an enum rather than a
  * composable here so this file stays plain Kotlin.
  */
-enum class EarnIcon { WALK, FOCUS, PUSH_UPS, PLANK, WALL_SIT }
+enum class EarnIcon { WALK, FOCUS, PUSH_UPS, PLANK, WALL_SIT, RUN, STAIRS }
 
 /**
  * One way to earn time, as the chooser describes it.
@@ -44,7 +44,8 @@ data class EarnOption(
 
 /** The catalogue entry for a type, however the phone is equipped, or null for a type the chooser does not list. */
 fun earnOptionFor(type: String): EarnOption? =
-    earnOptions(stepsAvailable = true, cameraAvailable = true).firstOrNull { it.type == type }
+    earnOptions(stepsAvailable = true, cameraAvailable = true, barometerAvailable = true)
+        .firstOrNull { it.type == type }
 
 /**
  * The activities this build can actually run, in the order the chooser
@@ -54,7 +55,7 @@ fun earnOptionFor(type: String): EarnOption? =
  * locks and the view model starts with, so the sheet cannot promise a
  * price the activity does not pay.
  */
-fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean): List<EarnOption> = listOf(
+fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean, barometerAvailable: Boolean): List<EarnOption> = listOf(
     EarnOption(
         type = EarnRules.WALK,
         name = "Walk",
@@ -145,5 +146,43 @@ fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean): List<EarnOpt
             "This phone has no camera, so a wall sit cannot be timed."
         },
         done = "Your wall sit is done.",
+    ),
+    EarnOption(
+        type = EarnRules.RUN,
+        name = "Run",
+        title = "Run ${String.format(Locale.US, "%,d", EarnRules.RUN_STEPS)} steps",
+        target = "${String.format(Locale.US, "%,d", EarnRules.RUN_STEPS)} steps at a running pace, about six minutes",
+        icon = EarnIcon.RUN,
+        explanation = "Go for a run with the phone on you. Only steps at a running pace count, so a " +
+            "walk to the park is not part of it. You can lock the phone and put it away.",
+        verification = "Your phone's own step counter, read in twenty-second stretches: a stretch at " +
+            "140 steps a minute or more is running, and its steps count. No GPS.",
+        privacy = "No location or GPS. No route: only the pace of your steps, on the phone, and " +
+            "the count that came of it.",
+        recommended = false,
+        unavailableReason = if (stepsAvailable) null else {
+            "This phone has no step counter, so a run cannot be measured."
+        },
+        done = "Your run is done.",
+    ),
+    EarnOption(
+        type = EarnRules.STAIRS,
+        name = "Stairs",
+        title = "Climb ${EarnRules.STAIR_FLOORS} floors",
+        target = "${EarnRules.STAIR_FLOORS} floors, on foot",
+        icon = EarnIcon.STAIRS,
+        explanation = "Take the stairs, with the phone on you. Floors add up across the day until " +
+            "you have ${EarnRules.STAIR_FLOORS}; going down and taking the lift count for nothing.",
+        verification = "Your phone's barometer, which feels the air thin as you climb, read together " +
+            "with the step counter: a rise made while stepping is a climb, a rise without steps is a lift.",
+        privacy = "No location or GPS. Only air pressure and steps, on the phone, and the floors " +
+            "that came of them.",
+        recommended = false,
+        unavailableReason = when {
+            !stepsAvailable -> "This phone has no step counter, so a climb cannot be measured."
+            !barometerAvailable -> "This phone has no barometer, so a climb cannot be measured."
+            else -> null
+        },
+        done = "Your climb is done.",
     ),
 )

@@ -2,8 +2,6 @@ package io.joinasr.app.earn
 
 import android.app.AlarmManager
 import android.app.KeyguardManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -12,12 +10,8 @@ import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
-import io.joinasr.app.MainActivity
-import io.joinasr.app.R
 import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.diagnostics.Crash
 import io.joinasr.app.sync.Sync
@@ -192,28 +186,12 @@ class PhoneFreeMonitor(private val context: Context) {
     }
 
     private fun showCompleted(activity: EarnActivity) {
-        context.getSystemService<NotificationManager>()?.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Phone-free sessions", NotificationManager.IMPORTANCE_DEFAULT),
+        EarnNotifications.completed(
+            context, activity,
+            channelId = CHANNEL_ID, channelName = "Phone-free sessions",
+            title = "Your ${activity.target} phone-free minutes are complete.",
+            requestCode = 20,
         )
-        val open = PendingIntent.getActivity(
-            context, 20,
-            Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val body = "You earned +${activity.rewardMinutes} minutes for ${activity.appLabel} today."
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_protection)
-            .setContentTitle("Your ${activity.target} phone-free minutes are complete.")
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .build()
-        // The existing notification grant applies. Denial never loses a reward;
-        // the stored completion is also shown when the person returns to Asr.
-        runCatching { NotificationManagerCompat.from(context).notify(CHANNEL_ID, 20, notification) }
     }
 
     fun stop() {

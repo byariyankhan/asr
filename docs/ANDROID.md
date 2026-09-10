@@ -475,6 +475,8 @@ missed.
 | `push_ups` | Front camera through CameraX, MediaPipe Pose Landmarker on-device (needs `CAMERA`) | Elbow straight → bent → straight in a plank, seven times; frames are dropped after inference. `android/PUSH_UPS.md` |
 | `plank` | Same camera and model | Shoulder, hip and ankle in one straight line sloping to the feet, timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
 | `wall_sit` | Same camera and model | Back upright, thigh level, knee near a right angle, timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
+| `run_steps` | `TYPE_STEP_COUNTER`, read by the foreground service in 10-second batches | Steps in each 20-second window at 140/min or more are running and count; slower windows do not. 1,000 of them. `android/MOTION.md` |
+| `stairs` | `TYPE_PRESSURE` and `TYPE_STEP_COUNTER`, read by the foreground service | Altitude from the barometer; a rise made while stepping is banked, a rise without steps (a lift) or a descent moves the reference. 2.8 m a floor, 10 floors. `android/MOTION.md` |
 | `waiting_period` | None: countdown | Nothing to verify; it is friction, not proof |
 
 Reward minutes are applied locally the instant the activity completes and

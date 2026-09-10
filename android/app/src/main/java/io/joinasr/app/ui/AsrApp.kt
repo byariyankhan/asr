@@ -300,15 +300,17 @@ fun AsrApp(
     LaunchedEffect(activeActivity?.id) { activityMinimised = false }
     // True while Figma 22 is showing, between choosing a walk and the grant.
     var askingForSteps by remember { mutableStateOf(false) }
-    // Set when the grant comes back yes, so the walk starts without the
-    // person having to press the same row twice.
-    var walkOnceGranted by remember { mutableStateOf(false) }
+    // Set when the grant comes back yes, so the walk (or run, or climb:
+    // stepsWanted says which) starts without the person having to press
+    // the same row twice.
+    var stepsOnceGranted by remember { mutableStateOf(false) }
+    var stepsWanted by remember { mutableStateOf(EarnRules.WALK) }
 
     val askForSteps = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         askingForSteps = false
-        walkOnceGranted = granted
+        stepsOnceGranted = granted
     }
     // The same pair for the camera, between choosing a camera activity and
     // the grant; cameraWanted is which one, since three share the lens.
@@ -543,12 +545,12 @@ fun AsrApp(
         Toast.makeText(context, "$label is in your challenge.", Toast.LENGTH_SHORT).show()
     }
 
-    LaunchedEffect(walkOnceGranted, earningFor, pactState) {
-        if (!walkOnceGranted) return@LaunchedEffect
-        walkOnceGranted = false
+    LaunchedEffect(stepsOnceGranted, earningFor, pactState) {
+        if (!stepsOnceGranted) return@LaunchedEffect
+        stepsOnceGranted = false
         val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
         val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
-        earnViewModel.start(pact, app, EarnRules.WALK)
+        earnViewModel.start(pact, app, stepsWanted)
     }
     LaunchedEffect(cameraOnceGranted, earningFor, pactState) {
         if (!cameraOnceGranted) return@LaunchedEffect
@@ -569,8 +571,9 @@ fun AsrApp(
     // The camera activities are counted on the camera screen itself
     // (CameraActivityScreen), which is the only place the camera is open.
     //
-    // Phone-free focus sessions are owned by EnforcementService, even when
-    // this UI is stopped or destroyed. Compose must never award focus time.
+    // Phone-free focus sessions, runs and climbs are owned by
+    // EnforcementService, even when this UI is stopped or destroyed.
+    // Compose must never award their time.
     LaunchedEffect(activeActivity?.id) {
         val running = activeActivity ?: return@LaunchedEffect
         if (running.isWalk) {
@@ -1141,7 +1144,7 @@ fun AsrApp(
                     addingApp = false
                     pactViewModel.clearAddAppError()
                     askingForSteps = false
-                    walkOnceGranted = false
+                    stepsOnceGranted = false
                     askingForCamera = false
                     cameraOnceGranted = false
                     cameraRefused = false
@@ -1249,6 +1252,7 @@ fun AsrApp(
                                 } else if (earnApp != null && askingForSteps) {
                                     // Figma 22.
                                     ActivityTrackingScreen(
+                                        type = stepsWanted,
                                         onBack = { askingForSteps = false },
                                         onAllow = {
                                             askForSteps.launch(
@@ -1265,6 +1269,7 @@ fun AsrApp(
                                         options = earnOptions(
                                             stepsAvailable = earnViewModel.steps.available,
                                             cameraAvailable = Permissions.hasCameraHardware(context),
+                                            barometerAvailable = Permissions.hasBarometer(context),
                                         ),
                                         onBack = {
                                             earningFor = null
@@ -1274,15 +1279,18 @@ fun AsrApp(
                                             val pact = activePact
                                             when {
                                                 pact == null -> earningFor = null
-                                                // A walk and push-ups each need a permission
-                                                // first; the screen that asks for it starts
-                                                // the activity once it is granted.
-                                                option.type == EarnRules.WALK ->
+                                                // Anything on the step counter, and anything
+                                                // on the camera, needs a permission first; the
+                                                // screen that asks for it starts the activity
+                                                // once it is granted.
+                                                option.type in EarnRules.STEP_TYPES -> {
+                                                    stepsWanted = option.type
                                                     if (Permissions.hasActivityRecognition(context)) {
-                                                        earnViewModel.start(pact, earnApp, EarnRules.WALK)
+                                                        earnViewModel.start(pact, earnApp, option.type)
                                                     } else {
                                                         askingForSteps = true
                                                     }
+                                                }
                                                 option.type in EarnRules.CAMERA_TYPES -> {
                                                     cameraWanted = option.type
                                                     if (cameraGranted) {

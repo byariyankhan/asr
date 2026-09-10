@@ -78,7 +78,11 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
                 deadlineAtMillis = now + EarnRules.DEADLINE_HOURS * 60 * 60 * 1000,
             )
             store.start(activity)
-            if (type == EarnRules.FOCUS) EnforcementService.start(getApplication())
+            // The service measures these, screen on or off: the keyguard
+            // for a focus session, the motion sensors for a run or a climb.
+            if (type == EarnRules.FOCUS || type in EarnRules.MOTION_TYPES) {
+                EnforcementService.start(getApplication())
+            }
             // Stood down only on a settled refusal -- the day's bonus for
             // this app already spent, which the server can know before this
             // phone does. Silence and every other failure leave it running.

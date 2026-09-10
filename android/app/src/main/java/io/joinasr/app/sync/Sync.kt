@@ -360,6 +360,16 @@ class Sync(context: Context) {
                         dailyCapMinutes = EarnRules.DAILY_CAP_MINUTES,
                         target = EarnRules.WALL_SIT_SECONDS,
                     ),
+                    runSteps = ActivityRule(
+                        rewardMinutes = EarnRules.REWARD_MINUTES,
+                        dailyCapMinutes = EarnRules.DAILY_CAP_MINUTES,
+                        target = EarnRules.RUN_STEPS,
+                    ),
+                    stairs = ActivityRule(
+                        rewardMinutes = EarnRules.REWARD_MINUTES,
+                        dailyCapMinutes = EarnRules.DAILY_CAP_MINUTES,
+                        target = EarnRules.STAIR_FLOORS,
+                    ),
                 ),
             ),
         )

@@ -289,6 +289,85 @@ object AsrIcons {
     }
 
     /**
+     * A person running, from the side: leaning into it, the legs open
+     * wide, one arm forward. Phase is the stride, 0 and 1 the two
+     * extremes; it passes through the legs together in between.
+     */
+    @Composable
+    fun Run(colour: Color, phase: Float, size: Dp = 24.dp) = Icon(size) { scale ->
+        val stroke = strokeOf(scale)
+        val swing = phase * 2f - 1f
+        val lift = 0.6f * (1f - kotlin.math.abs(swing))
+        val hip = Offset(11.6f, 12.4f + lift)
+        val shoulder = Offset(13.4f, 7.6f + lift)
+        drawCircle(color = colour, radius = 2.0f * scale, center = Offset(14.6f * scale, (4.4f + lift) * scale))
+        drawPath(
+            path = path(scale) {
+                // Torso, leaning forward.
+                moveTo(shoulder.x, shoulder.y)
+                lineTo(hip.x, hip.y)
+                // Back leg trailing, knee bent; front leg reaching.
+                moveTo(hip.x, hip.y)
+                lineTo(hip.x - 3.2f * swing - 1.2f, 16.2f)
+                lineTo(hip.x - 5.2f * swing - 1.6f, 19.8f)
+                moveTo(hip.x, hip.y)
+                lineTo(hip.x + 3.6f * swing + 1.0f, 16.6f)
+                lineTo(hip.x + 4.4f * swing + 1.8f, 19.8f)
+                // Arms, pumping against the legs.
+                moveTo(shoulder.x, shoulder.y)
+                lineTo(shoulder.x + 3.4f * swing + 0.6f, 10.6f + lift)
+                moveTo(shoulder.x, shoulder.y)
+                lineTo(shoulder.x - 3.0f * swing - 0.6f, 10.2f + lift)
+            },
+            color = colour,
+            style = stroke,
+        )
+    }
+
+    /**
+     * A climb: three steps rising to the right and a person on them, one
+     * foot on the next step up. Phase lifts the trailing foot to join it.
+     */
+    @Composable
+    fun Stairs(colour: Color, phase: Float, size: Dp = 24.dp) = Icon(size) { scale ->
+        val stroke = strokeOf(scale)
+        drawPath(
+            path = path(scale) {
+                // The stairs.
+                moveTo(3.5f, 20.4f)
+                lineTo(9.0f, 20.4f)
+                lineTo(9.0f, 16.0f)
+                lineTo(14.5f, 16.0f)
+                lineTo(14.5f, 11.6f)
+                lineTo(20.5f, 11.6f)
+            },
+            color = colour,
+            style = stroke,
+        )
+        val hip = Offset(11.2f, 9.6f)
+        drawCircle(color = colour, radius = 1.9f * scale, center = Offset(12.4f * scale, 3.6f * scale))
+        drawPath(
+            path = path(scale) {
+                moveTo(12.0f, 5.8f)
+                lineTo(hip.x, hip.y)
+                // Front foot on the upper step, knee high.
+                moveTo(hip.x, hip.y)
+                lineTo(13.8f, 12.0f)
+                lineTo(15.6f, 16.0f)
+                // Back foot leaving the lower step.
+                moveTo(hip.x, hip.y)
+                lineTo(9.4f - 0.6f * phase, 14.6f - 1.4f * phase)
+                lineTo(10.4f - 0.2f * phase, 20.4f - 4.0f * phase)
+                // The hand on the rail, ahead.
+                moveTo(12.0f, 6.6f)
+                lineTo(15.4f, 9.0f)
+            },
+            color = colour,
+            style = stroke,
+        )
+    }
+
+    /**
      * One icon on a 24-unit grid.
      *
      * [content] receives the scale from grid units to pixels, so every path
