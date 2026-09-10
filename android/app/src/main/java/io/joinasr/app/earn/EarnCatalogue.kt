@@ -76,8 +76,9 @@ fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean): List<EarnOpt
             "before the time is up starts the ${EarnRules.FOCUS_MINUTES} minutes over.",
         verification = "The lock screen. Calls and notifications that arrive over it do not " +
             "count against you; unlocking does.",
-        privacy = "Only whether the phone is locked. Nothing about what is on it, and " +
-            "nothing leaves the phone.",
+        privacy = "Only whether the phone is locked, and that stays on the phone. Nothing " +
+            "about what is on it. Your witnesses and Asr's server learn that the session " +
+            "was completed, not when you unlocked.",
         recommended = false,
         unavailableReason = null,
     ),
