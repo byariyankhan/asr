@@ -358,8 +358,9 @@ caps it at the pact's own rules and it is what makes a day within limits at
 { "id": "<uuidv7>", "type": "walk_steps", "started_at": "…", "deadline_at": "…" }
 ```
 
-`type` is one of `walk_steps`, `focus_session`, `push_ups` or
-`waiting_period`. `201` with the activity. Target and reward minutes come
+`type` is one of `walk_steps`, `focus_session`, `push_ups`, `plank`,
+`wall_sit`, `run_steps`, `stairs` or `waiting_period`. `201` with the
+activity. Target and reward minutes come
 from the pact snapshot's activity rules, never from the request. `409
 activity_not_allowed` if the pact has no rule for that type, `409
 daily_cap_reached` if pending plus completed activities for that
