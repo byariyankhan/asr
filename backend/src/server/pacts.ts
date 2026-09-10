@@ -29,11 +29,41 @@ export const pactColumns = [
 // Lock a pact. The partial unique index pact_one_active_idx is the real
 // guard against two active pacts; the resulting 409 is the API's answer.
 // Witnesses who opted in hear that it started.
+/**
+ * The activities every challenge gets whether or not the phone asked for
+ * them, and what each asks. Added in migration 0014 to every pact then on
+ * the ledger; this is the same thing for a pact created afterwards by a
+ * phone that does not know them yet, so a challenge started the day
+ * before the app update is not a challenge without a plank for 90 days.
+ * The snapshot is still locked: this only fills in what is missing, with
+ * the price the phone did put on its walk (or its focus session), and
+ * never changes a rule the phone sent.
+ */
+type LaterActivity = "plank" | "wall_sit" | "run_steps" | "stairs";
+const LATER_ACTIVITY_TARGETS: Array<[LaterActivity, number]> = [
+  ["plank", 45],
+  ["wall_sit", 45],
+  ["run_steps", 1000],
+  ["stairs", 10],
+];
+
+export function withLaterActivities(snapshot: Snapshot): Snapshot {
+  const priced = snapshot.activities.walk_steps ?? snapshot.activities.focus_session;
+  if (!priced) return snapshot;
+  const activities: Snapshot["activities"] = { ...snapshot.activities };
+  for (const [type, target] of LATER_ACTIVITY_TARGETS) {
+    if (activities[type]) continue;
+    activities[type] = { target, reward_min: priced.reward_min, daily_cap_min: priced.daily_cap_min };
+  }
+  return { ...snapshot, activities };
+}
+
 export async function createPact(userId: string, input: PactCreate) {
   await requireOwnedDevice(userId, input.device_id);
 
   const startsAt = new Date();
   const id = newId();
+  const snapshot = withLaterActivities(input.snapshot);
   try {
     return await db.transaction().execute(async (trx) => {
       const pact = await trx
@@ -46,7 +76,7 @@ export async function createPact(userId: string, input: PactCreate) {
           timezone: input.timezone,
           starts_at: startsAt,
           ends_at: addDays(startsAt, input.duration_days),
-          snapshot: JSON.stringify(input.snapshot),
+          snapshot: JSON.stringify(snapshot),
         })
         .returning(pactColumns)
         .executeTakeFirstOrThrow();

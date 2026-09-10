@@ -70,7 +70,45 @@ describe.skipIf(!DATABASE_URL)("the activities added after push-ups", async () =
     }
   });
 
-  it("a pact without a rule for one of them refuses it, like any other type", async () => {
+  it("a pact from a phone that sent only the old rules gets the new ones, priced like its walk", async () => {
+    const other = newId();
+    const now = new Date();
+    await db
+      .insertInto("user")
+      .values({ id: other, name: "Walker", email: `${other}@test.local`, emailVerified: false, createdAt: now, updatedAt: now })
+      .execute();
+    const theirs = await registerDevice(other, { install_id: "old-build", app_version: "0.9.0" });
+    const pact = await createPact(other, {
+      device_id: theirs.id,
+      duration_days: 7,
+      timezone: "Asia/Dhaka",
+      snapshot: {
+        apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }],
+        reset_time: "00:00",
+        activities: {
+          walk_steps: { target: 2500, reward_min: 15, daily_cap_min: 45 },
+          focus_session: { target_min: 20, reward_min: 10, daily_cap_min: 30 },
+        },
+      },
+    });
+    expect(pact.snapshot.activities).toMatchObject({
+      walk_steps: { target: 2500, reward_min: 15, daily_cap_min: 45 },
+      plank: { target: 45, reward_min: 15, daily_cap_min: 45 },
+      wall_sit: { target: 45, reward_min: 15, daily_cap_min: 45 },
+      run_steps: { target: 1000, reward_min: 15, daily_cap_min: 45 },
+      stairs: { target: 10, reward_min: 15, daily_cap_min: 45 },
+    });
+    const { activity } = await createActivity(other, pact.id, {
+      id: newId(),
+      type: "plank",
+      started_at: iso(now),
+      deadline_at: iso(new Date(now.getTime() + 3_600_000)),
+    });
+    expect(activity).toMatchObject({ type: "plank", target: 45, reward_min: 15 });
+    await db.deleteFrom("user").where("id", "=", other).execute();
+  });
+
+  it("a pact with no priced rule at all gets none, and refuses them like any other type", async () => {
     const other = newId();
     const now = new Date();
     await db
@@ -85,9 +123,10 @@ describe.skipIf(!DATABASE_URL)("the activities added after push-ups", async () =
       snapshot: {
         apps: [{ package: "com.instagram.android", label: "Instagram", daily_limit_min: 30 }],
         reset_time: "00:00",
-        activities: { walk_steps: { target: 2500, reward_min: 10, daily_cap_min: 30 } },
+        activities: {},
       },
     });
+    expect(pact.snapshot.activities).toEqual({});
     await expect(
       createActivity(other, pact.id, {
         id: newId(),
