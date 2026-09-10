@@ -194,7 +194,14 @@ fun PushUpCameraView(
     val latestOnPose by rememberUpdatedState(onPose)
     val latestOnError by rememberUpdatedState(onError)
     val previewView = remember {
-        PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            // Nobody on the floor mid-set can touch the phone to stop the
+            // screen timing out, and a dark screen is a set that cannot be
+            // followed. The flag lives on this view, so it holds exactly as
+            // long as the camera is on screen and not a moment after.
+            keepScreenOn = true
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
