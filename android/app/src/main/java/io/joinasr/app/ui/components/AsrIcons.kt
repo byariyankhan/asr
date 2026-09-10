@@ -101,72 +101,126 @@ object AsrIcons {
     }
 
     /**
-     * A walk: a path that winds off and ends in an arrowhead. For the earn
-     * chooser's tile, where the old "↗" glyph sat at whatever weight the
-     * system font gave it.
+     * The three earn activities, each a small figure doing the thing. Each
+     * takes a [phase] from 0 to 1 so the chooser can move them (a step, a
+     * phone set down, a push-up) and the sheet can hold them still; the
+     * drawing is a function of the phase, nothing is stored.
+     */
+
+    /**
+     * A person walking, seen from the side: head, torso, and the legs and
+     * arms swung against each other over the ground. Phase 0 is one leg
+     * forward, 1 the other; halfway the legs pass and the body dips.
      */
     @Composable
-    fun Walk(colour: Color, size: Dp = 24.dp) = Icon(size) { scale ->
+    fun Walk(colour: Color, phase: Float, size: Dp = 24.dp) = Icon(size) { scale ->
         val stroke = strokeOf(scale)
-        drawPath(
-            path = path(scale) {
-                moveTo(4.5f, 19.5f)
-                cubicTo(9f, 19.5f, 8f, 12f, 12.5f, 12f)
-                cubicTo(16.5f, 12f, 15f, 6f, 19.5f, 5f)
-            },
+        val swing = phase * 2f - 1f                    // -1..1
+        val bob = 0.5f * (1f - kotlin.math.abs(swing)) // dips as the legs pass
+        val hipY = 12.6f + bob
+        drawCircle(
             color = colour,
-            style = stroke,
+            radius = 2.1f * scale,
+            center = Offset(12f * scale, (4.4f + bob) * scale),
         )
         drawPath(
             path = path(scale) {
-                moveTo(15.2f, 4.6f)
-                lineTo(19.5f, 5f)
-                lineTo(19.0f, 9.3f)
+                // Torso, leaning a little into the walk.
+                moveTo(12.3f, 6.9f + bob)
+                lineTo(11.8f, hipY)
+                // Legs: the forward one reaches, the back one trails.
+                moveTo(11.8f, hipY)
+                lineTo(11.8f + 4.6f * swing, 19.4f)
+                moveTo(11.8f, hipY)
+                lineTo(11.8f - 4.0f * swing, 19.4f)
+                // Arms, swung the other way, and never quite together, so
+                // the figure does not fold into its own torso mid-stride.
+                moveTo(12.2f, 8.2f + bob)
+                lineTo(11.0f - 3.6f * swing, 12.8f)
+                moveTo(12.2f, 8.2f + bob)
+                lineTo(13.4f + 3.6f * swing, 12.8f)
+                // The ground.
+                moveTo(3.5f, 20.4f)
+                lineTo(20.5f, 20.4f)
             },
             color = colour,
             style = stroke,
         )
     }
 
-    /** A phone put down: a target, two rings and a centre. */
+    /**
+     * A phone being put down on a surface, seen from the front: standing
+     * at phase 0, tipping away and foreshortening until it lies flat at 1.
+     * The bottom edge stays on the surface throughout; the height is what
+     * changes, so nothing swings through the line.
+     */
     @Composable
-    fun Focus(colour: Color, size: Dp = 24.dp) = Icon(size) { scale ->
-        val centre = Offset(12f * scale, 12f * scale)
-        drawCircle(color = colour, radius = 8.2f * scale, center = centre, style = strokeOf(scale))
-        drawCircle(color = colour, radius = 4.2f * scale, center = centre, style = strokeOf(scale))
-        drawCircle(color = colour, radius = 1.3f * scale, center = centre)
+    fun Focus(colour: Color, phase: Float, size: Dp = 24.dp) = Icon(size) { scale ->
+        val stroke = strokeOf(scale)
+        val tilt = Math.toRadians(80.0 * phase)
+        val height = 13f * kotlin.math.cos(tilt).toFloat().coerceAtLeast(0.2f)
+        val top = 20f - height
+        val corner = (1.6f).coerceAtMost(height / 2f)
+        drawPath(
+            path = path(scale) {
+                moveTo(3.5f, 20f)
+                lineTo(20.5f, 20f)
+            },
+            color = colour,
+            style = stroke,
+        )
+        drawRoundRect(
+            color = colour,
+            topLeft = Offset(8f * scale, top * scale),
+            size = Size(8f * scale, height * scale),
+            cornerRadius = CornerRadius(corner * scale),
+            style = stroke,
+        )
+        // The earpiece, so the rectangle reads as a phone; it foreshortens
+        // with the rest and is gone once the phone is flat.
+        if (height > 4f) {
+            val ear = top + 2.2f * (height / 13f)
+            drawPath(
+                path = path(scale) {
+                    moveTo(10.6f, ear)
+                    lineTo(13.4f, ear)
+                },
+                color = colour,
+                style = stroke,
+            )
+        }
     }
 
-    /** A push-up: a body in a plank over the floor, one arm down to it. */
+    /**
+     * A push-up from the side: feet on the floor, the body straight from
+     * them to the shoulder, one arm to the floor, the head ahead. Phase 0
+     * is the top, 1 the bottom; the arm bends as the body comes down.
+     */
     @Composable
-    fun PushUps(colour: Color, size: Dp = 24.dp) = Icon(size) { scale ->
+    fun PushUps(colour: Color, phase: Float, size: Dp = 24.dp) = Icon(size) { scale ->
         val stroke = strokeOf(scale)
-        // The head.
-        drawCircle(color = colour, radius = 2.1f * scale, center = Offset(5.2f * scale, 8.6f * scale))
-        // Shoulders to feet, straight.
-        drawPath(
-            path = path(scale) {
-                moveTo(7.8f, 10.3f)
-                lineTo(20.5f, 14.6f)
-            },
-            color = colour,
-            style = stroke,
+        val feet = Offset(20.2f, 19.2f)
+        val shoulder = Offset(7.6f, 13.0f + 3.4f * phase)
+        val hand = Offset(9.8f, 19.6f)
+        // The head sits a little past the shoulder along the body's line.
+        val dx = shoulder.x - feet.x
+        val dy = shoulder.y - feet.y
+        val len = kotlin.math.sqrt(dx * dx + dy * dy)
+        val head = Offset(shoulder.x + dx / len * 3.4f, shoulder.y + dy / len * 3.4f)
+        val elbow = Offset(
+            (shoulder.x + hand.x) / 2f + 3.4f * phase,
+            (shoulder.y + hand.y) / 2f + 0.6f * phase,
         )
-        // The arm, bent to the floor.
+        drawCircle(color = colour, radius = 2.1f * scale, center = Offset(head.x * scale, head.y * scale))
         drawPath(
             path = path(scale) {
-                moveTo(9.6f, 10.9f)
-                lineTo(8.4f, 14.4f)
-                lineTo(10.8f, 17.6f)
-            },
-            color = colour,
-            style = stroke,
-        )
-        // The floor.
-        drawPath(
-            path = path(scale) {
-                moveTo(3.5f, 19.5f)
-                lineTo(20.5f, 19.5f)
+                moveTo(shoulder.x, shoulder.y)
+                lineTo(feet.x, feet.y)
+                moveTo(shoulder.x, shoulder.y)
+                lineTo(elbow.x, elbow.y)
+                lineTo(hand.x, hand.y)
+                moveTo(3.5f, 20f)
+                lineTo(20.5f, 20f)
             },
             color = colour,
             style = stroke,
