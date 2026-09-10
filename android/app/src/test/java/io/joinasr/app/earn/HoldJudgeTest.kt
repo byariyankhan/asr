@@ -120,6 +120,20 @@ class HoldJudgeTest {
         assertEquals(3_300L, judge.heldMillis)
     }
 
+    @Test fun `a gap in the frames is the camera stopped, and is worth nothing`() {
+        val judge = judge()
+        judge.feed(plank, 0, 2_400)
+        assertEquals(2_000L, judge.heldMillis)
+        // The app went to the background for 45 seconds with the plank
+        // entered; the first frame back must not be 45 seconds of plank.
+        assertEquals(0, judge.observe(plank, 47_400))
+        assertEquals(2_000L, judge.heldMillis)
+        assertEquals(PoseJudge.Phase.WORKING, judge.phase)
+        // And counting picks up from there, frame to frame.
+        judge.feed(plank, 47_500, 1_000)
+        assertEquals(3_100L, judge.heldMillis)
+    }
+
     @Test fun `nobody in the picture is nobody, not somebody out of position`() {
         val judge = judge()
         judge.feed(null, 0, 1_000)

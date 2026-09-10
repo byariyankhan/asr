@@ -92,11 +92,19 @@ class PushUpJudge(private val counter: PushUpCounter = PushUpCounter()) : PoseJu
  * settling time before "holding" is believed is not counted; the time
  * before a break is believed is, which is the smaller error and the
  * kinder one.
+ *
+ * Time is counted frame to frame, and only between frames that are close
+ * together: a gap longer than [maxFrameGapMillis] is the camera having
+ * stopped (the app sent to the background, the screen locked) and is
+ * worth nothing, however long it was. Without that, a plank entered and
+ * then left with the phone in a pocket for a minute would be a minute's
+ * plank on the first frame back.
  */
 class HoldJudge(
     private val position: (BodyPose) -> Boolean,
     private val hasBody: (BodyPose) -> Boolean,
     private val settleMillis: Long = 400L,
+    private val maxFrameGapMillis: Long = 500L,
     private val coach: (PoseJudge.Phase, Boolean) -> Pair<String, String>,
 ) : PoseJudge {
 
@@ -135,7 +143,8 @@ class HoldJudge(
         }
         if (phase == PoseJudge.Phase.WORKING) {
             val last = lastFrameAt
-            if (last != null && nowMillis > last) heldMillis += nowMillis - last
+            val gap = if (last != null) nowMillis - last else 0L
+            if (gap in 1..maxFrameGapMillis) heldMillis += gap
             lastFrameAt = nowMillis
         } else {
             lastFrameAt = null
