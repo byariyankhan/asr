@@ -35,10 +35,10 @@ import java.util.concurrent.Executors
  * The camera, turned into poses.
  *
  * Every frame goes from CameraX to MediaPipe's Pose Landmarker, which runs
- * on the phone and answers with 33 points; the eight a push-up is judged by
- * are kept and the frame is dropped. Nothing here writes a file, holds a
+ * on the phone and answers with 33 points; the ones the judges read are
+ * kept and the frame is dropped. Nothing here writes a file, holds a
  * bitmap past the next frame, or has a network call to make: the model is
- * an asset in the APK, and the whole path from lens to [PushUpPose] is in
+ * an asset in the APK, and the whole path from lens to [BodyPose] is in
  * this file.
  *
  * LIVE_STREAM mode, so a slow phone drops frames rather than falling
@@ -56,7 +56,7 @@ import java.util.concurrent.Executors
  */
 class PoseTracker(
     context: Context,
-    private val onPose: (PushUpPose?, Long) -> Unit,
+    private val onPose: (BodyPose?, Long) -> Unit,
     private val onError: (String) -> Unit,
 ) {
     private val mainExecutor = ContextCompat.getMainExecutor(context)
@@ -140,7 +140,7 @@ class PoseTracker(
             Landmark(x = it.x(), y = it.y(), visibility = it.visibility().orElse(0f))
         }
         val pose = points?.let {
-            PushUpPose.fromNormalised(it, input.width.toFloat() / input.height.coerceAtLeast(1))
+            BodyPose.fromNormalised(it, input.width.toFloat() / input.height.coerceAtLeast(1))
         }
         val at = result.timestampMs()
         mainExecutor.execute { if (!closed) onPose(pose, at) }
@@ -174,7 +174,7 @@ class PoseTracker(
 }
 
 /**
- * The live camera view for the push-up screen.
+ * The live camera view for the camera activities.
  *
  * The front camera, because the phone is propped up facing the person and
  * that is the side the screen is on: they see their count. Back camera if
@@ -184,8 +184,8 @@ class PoseTracker(
  * lens open from anywhere else.
  */
 @Composable
-fun PushUpCameraView(
-    onPose: (PushUpPose?, Long) -> Unit,
+fun PoseCameraView(
+    onPose: (BodyPose?, Long) -> Unit,
     onError: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {

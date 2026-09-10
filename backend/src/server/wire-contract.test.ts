@@ -22,7 +22,7 @@ import { meUpdate, pactAppAdd, pactCreate } from "@/lib/schemas";
  */
 describe("what the Android app sends", () => {
   const PACT_CREATE_WIRE =
-    '{"device_id":"8f14e45f-ea9e-4c3b-9d1a-2b6c7d8e9f01","duration_days":14,"timezone":"Asia/Dhaka","snapshot":{"apps":[{"package":"com.instagram.android","label":"Instagram","daily_limit_min":30}],"reset_time":"00:00","activities":{"walk_steps":{"reward_min":15,"daily_cap_min":60,"target":6000},"focus_session":{"reward_min":15,"daily_cap_min":60,"target_min":25},"push_ups":{"reward_min":15,"daily_cap_min":60,"target":7}}}}';
+    '{"device_id":"8f14e45f-ea9e-4c3b-9d1a-2b6c7d8e9f01","duration_days":14,"timezone":"Asia/Dhaka","snapshot":{"apps":[{"package":"com.instagram.android","label":"Instagram","daily_limit_min":30}],"reset_time":"00:00","activities":{"walk_steps":{"reward_min":15,"daily_cap_min":60,"target":6000},"focus_session":{"reward_min":15,"daily_cap_min":60,"target_min":25},"push_ups":{"reward_min":15,"daily_cap_min":60,"target":7},"plank":{"reward_min":15,"daily_cap_min":60,"target":45},"wall_sit":{"reward_min":15,"daily_cap_min":60,"target":45}}}}';
 
   it("a pact it starts is a pact this server accepts", () => {
     const parsed = pactCreate.parse(JSON.parse(PACT_CREATE_WIRE));

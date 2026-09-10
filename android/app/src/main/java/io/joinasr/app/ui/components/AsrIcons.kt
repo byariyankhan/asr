@@ -228,6 +228,67 @@ object AsrIcons {
     }
 
     /**
+     * A plank from the side: forearms on the floor, the body one straight
+     * line from shoulder to heel, low. Phase moves the body a hair, the
+     * breathing of somebody holding still.
+     */
+    @Composable
+    fun Plank(colour: Color, phase: Float, size: Dp = 24.dp) = Icon(size) { scale ->
+        val stroke = strokeOf(scale)
+        val breath = 0.35f * phase
+        val shoulder = Offset(7.4f, 12.6f - breath)
+        val heel = Offset(20.4f, 16.6f)
+        drawCircle(color = colour, radius = 2.0f * scale, center = Offset(4.2f * scale, (11.2f - breath) * scale))
+        drawPath(
+            path = path(scale) {
+                // Shoulder to heel.
+                moveTo(shoulder.x, shoulder.y)
+                lineTo(heel.x, heel.y)
+                // Upper arm down to the elbow, forearm along the floor.
+                moveTo(shoulder.x, shoulder.y)
+                lineTo(6.6f, 18.4f)
+                lineTo(11.4f, 18.4f)
+                // The floor.
+                moveTo(3.5f, 20f)
+                lineTo(20.5f, 20f)
+            },
+            color = colour,
+            style = stroke,
+        )
+    }
+
+    /**
+     * A wall sit from the side: a wall on the left, the back flat against
+     * it, thighs level, shins down to the floor. Phase is the shake of a
+     * hold that is starting to hurt.
+     */
+    @Composable
+    fun WallSit(colour: Color, phase: Float, size: Dp = 24.dp) = Icon(size) { scale ->
+        val stroke = strokeOf(scale)
+        val shake = 0.3f * phase
+        val hip = Offset(8.6f, 13.2f + shake)
+        val knee = Offset(15.4f, 13.2f + shake)
+        drawCircle(color = colour, radius = 2.0f * scale, center = Offset(8.6f * scale, 5.2f * scale))
+        drawPath(
+            path = path(scale) {
+                // The wall.
+                moveTo(5.6f, 3.5f)
+                lineTo(5.6f, 20f)
+                // Back, thigh, shin.
+                moveTo(8.6f, 7.4f)
+                lineTo(hip.x, hip.y)
+                lineTo(knee.x, knee.y)
+                lineTo(15.4f, 19.6f)
+                // The floor.
+                moveTo(5.6f, 20f)
+                lineTo(20.5f, 20f)
+            },
+            color = colour,
+            style = stroke,
+        )
+    }
+
+    /**
      * One icon on a 24-unit grid.
      *
      * [content] receives the scale from grid units to pixels, so every path

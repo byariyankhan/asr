@@ -68,8 +68,11 @@ import io.joinasr.app.earn.EarnActivity
 import io.joinasr.app.earn.EarnIcon
 import io.joinasr.app.earn.EarnOption
 import io.joinasr.app.earn.EarnRules
-import io.joinasr.app.earn.PushUpCameraView
-import io.joinasr.app.earn.PushUpCounter
+import io.joinasr.app.earn.CameraSpec
+import io.joinasr.app.earn.PoseCameraView
+import io.joinasr.app.earn.PoseJudge
+import io.joinasr.app.earn.cameraSpec
+import io.joinasr.app.earn.earnOptionFor
 import io.joinasr.app.earn.earnOptions
 import io.joinasr.app.earn.rememberRepFeedback
 import io.joinasr.app.enforcement.PactApp
@@ -306,11 +309,15 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.WALK -> 0.9f
         EarnIcon.FOCUS -> 1f
         EarnIcon.PUSH_UPS -> 0f
+        EarnIcon.PLANK -> 0f
+        EarnIcon.WALL_SIT -> 0f
     }
     val period = when (icon) {
         EarnIcon.WALK -> 620
         EarnIcon.FOCUS -> 1500
         EarnIcon.PUSH_UPS -> 1100
+        EarnIcon.PLANK -> 1800
+        EarnIcon.WALL_SIT -> 260
     }
     val context = LocalContext.current
     val animationsOn = remember(context) {
@@ -333,6 +340,8 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.WALK -> AsrIcons.Walk(colour, phase, size)
         EarnIcon.FOCUS -> AsrIcons.Focus(colour, phase, size)
         EarnIcon.PUSH_UPS -> AsrIcons.PushUps(colour, phase, size)
+        EarnIcon.PLANK -> AsrIcons.Plank(colour, phase, size)
+        EarnIcon.WALL_SIT -> AsrIcons.WallSit(colour, phase, size)
     }
 }
 
@@ -570,13 +579,14 @@ fun ActivityTrackingScreen(
 /**
  * The camera's counterpart to Figma 22, in its layout.
  *
- * Asked the first time somebody chooses push-ups and never at launch. The
+ * Asked the first time somebody chooses a camera activity and never at launch. The
  * promises on it are the ones enforced in earn/PoseCamera.kt: frames go to
  * a model on the phone and are dropped, nothing is written, nothing is
  * sent, and the camera is released with the screen.
  */
 @Composable
 fun CameraAccessScreen(
+    spec: CameraSpec,
     onBack: () -> Unit,
     onAllow: () -> Unit,
     onSkip: () -> Unit,
@@ -600,13 +610,13 @@ fun CameraAccessScreen(
         Spacer(Modifier.height(18.dp))
         Text("EARN TIME", style = AsrType.Eyebrow, color = AsrColors.Accent)
         Spacer(Modifier.height(14.dp))
-        Text("Count your push-ups.", style = AsrType.display(38), color = AsrColors.TextPrimary)
+        Text(spec.permissionTitle, style = AsrType.display(38), color = AsrColors.TextPrimary)
         Spacer(Modifier.height(16.dp))
         Text(
             if (openSettings) {
-                "Camera access was refused. Allow it on Asr's page in Settings to count push-ups."
+                "Camera access was refused. Allow it on Asr's page in Settings to count ${spec.noun}."
             } else {
-                "Only requested when you choose push-ups to earn extra app time."
+                "Only requested when you choose a camera activity to earn extra app time."
             },
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
@@ -622,13 +632,13 @@ fun CameraAccessScreen(
         ) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    "${EarnRules.PUSHUP_REPS}",
+                    "${EarnRules.targetFor(spec.type)}",
                     style = AsrType.display(38),
                     color = AsrColors.Accent,
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "PUSH-UPS",
+                    spec.unitLabel,
                     style = AsrType.Eyebrow.copy(fontSize = 11.sp),
                     color = AsrColors.Accent,
                     modifier = Modifier.padding(bottom = 8.dp),
@@ -636,14 +646,13 @@ fun CameraAccessScreen(
             }
             Spacer(Modifier.height(12.dp))
             Text(
-                "Phone on the floor, camera looking up at you",
+                spec.placementLine,
                 style = AsrType.Label.copy(fontSize = 14.sp),
                 color = AsrColors.TextPrimary,
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Your phone finds your face and shoulders in each frame and counts " +
-                    "each time you come down to it and back up. The frame is then dropped.",
+                spec.verification,
                 style = AsrType.Legal.copy(fontSize = 12.sp),
                 color = AsrColors.TextSecondary,
             )
@@ -660,7 +669,7 @@ fun CameraAccessScreen(
             Text("Camera access", style = AsrType.RowTitle, color = AsrColors.TextPrimary)
             Spacer(Modifier.height(10.dp))
             Text(
-                "Used only while the push-up screen is open. The camera switches " +
+                "Used only while the camera screen is open. The camera switches " +
                     "off the moment you leave it.",
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,
@@ -885,39 +894,44 @@ fun ActivityProgressScreen(
 }
 
 /**
- * Push-ups in progress: the camera with the count on it, and the rest below.
+ * A camera activity in progress: the camera with the count on it, and the
+ * rest below. Push-ups, a plank, a wall sit: the same screen, told what it
+ * is running by a [CameraSpec], which brings the judge that watches the
+ * poses and the words for what it counts.
  *
  * The picture comes first because the person is on the floor looking up at
- * it from half a metre. The number sits on the picture at a size that reads
- * from a plank, the next thing to do runs along its bottom edge, and the
- * frame's colour says what the counter sees: grey for nobody, green while
- * counting, a green wash at the bottom of every rep, amber for a body that
- * is not in a plank. Every counted rep ticks and pulses ([RepFeedback]),
- * because at the bottom of a push-up nobody is reading.
+ * it from half a metre, or across the room from a plank. The number sits
+ * on the picture at a size that reads from there, the next thing to do
+ * runs along its bottom edge, and the frame's colour says what the judge
+ * sees: grey for nobody, green while counting, a green wash while working
+ * (the bottom of a push-up, a plank being held), amber for a body that is
+ * not in position. Counted units tick and pulse ([RepFeedback]), every rep
+ * or every few seconds, because at the bottom of a push-up nobody is
+ * reading.
  *
- * The counter belongs to this screen and starts from nothing each time it
- * opens; the activity carries the number, through [onPushUp], so stepping
+ * The judge belongs to this screen and starts from nothing each time it
+ * opens; the activity carries the number, through [onCounted], so stepping
  * away and coming back resumes at the same count. Compose never awards the
- * minutes: the view model does, on the seventh, the same way a walk ends.
+ * minutes: the view model does, on the last unit, the same way a walk ends.
  *
  * A minute without a body and the camera is put down. The permission
  * screen promises the lens is open only while the set is on, and a phone
  * forgotten on the floor must not be a lit, watching one.
  */
 @Composable
-fun PushUpProgressScreen(
+fun CameraActivityScreen(
     activity: EarnActivity,
+    spec: CameraSpec,
     onBack: () -> Unit,
     onEnd: () -> Unit,
-    onPushUp: () -> Unit,
+    onCounted: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Bumped to start the camera and the counter over: after a failure the
+    // Bumped to start the camera and the judge over: after a failure the
     // person asked to retry, or after the pause for absence.
     var attempt by remember(activity.id) { mutableIntStateOf(0) }
-    val counter = remember(activity.id, attempt) { PushUpCounter() }
-    var phase by remember(activity.id, attempt) { mutableStateOf(PushUpCounter.Phase.NO_BODY) }
-    var view by remember(activity.id, attempt) { mutableStateOf(PushUpCounter.View.NONE) }
+    val judge = remember(activity.id, attempt) { spec.newJudge() }
+    var phase by remember(activity.id, attempt) { mutableStateOf(PoseJudge.Phase.NO_BODY) }
     /** True once the first frame has been judged: before that nothing is looking. */
     var started by remember(activity.id, attempt) { mutableStateOf(false) }
     var cameraProblem by remember(activity.id, attempt) { mutableStateOf<String?>(null) }
@@ -927,30 +941,32 @@ fun PushUpProgressScreen(
     val scope = rememberCoroutineScope()
     val flash = remember(activity.id) { Animatable(0f) }
     val pop = remember(activity.id) { Animatable(1f) }
-    val coaching = coachingFor(view, phase, started = started)
+    // Re-read on every phase change: the judge's coaching is a function of
+    // what it last saw, and the phase is what it last settled on.
+    val coaching = remember(judge, phase, started) { judge.coaching(started) }
 
     // A minute of nobody, and the camera goes. The count is the activity's,
     // so nothing is lost; the tap that resumes starts a fresh attempt,
-    // camera and counter both.
+    // camera and judge both.
     LaunchedEffect(activity.id, attempt, started, phase, paused) {
-        if (paused || !started || phase != PushUpCounter.Phase.NO_BODY) return@LaunchedEffect
+        if (paused || !started || phase != PoseJudge.Phase.NO_BODY) return@LaunchedEffect
         delay(ABSENCE_PAUSE_MILLIS)
         paused = true
     }
 
     val counting = started && !paused && cameraProblem == null &&
-        (phase == PushUpCounter.Phase.UP || phase == PushUpCounter.Phase.DOWN)
+        (phase == PoseJudge.Phase.READY || phase == PoseJudge.Phase.WORKING)
     val frameColour by animateColorAsState(
         targetValue = when {
             paused || cameraProblem != null || !started -> AsrColors.FieldBorder
-            phase == PushUpCounter.Phase.NOT_IN_POSITION -> AsrColors.Warning
+            phase == PoseJudge.Phase.NOT_IN_POSITION -> AsrColors.Warning
             counting -> AsrColors.Accent
             else -> AsrColors.FieldBorder
         },
         label = "frame",
     )
     val downWash by animateFloatAsState(
-        targetValue = if (counting && phase == PushUpCounter.Phase.DOWN) 0.22f else 0f,
+        targetValue = if (counting && phase == PoseJudge.Phase.WORKING) 0.22f else 0f,
         label = "down",
     )
 
@@ -987,28 +1003,32 @@ fun PushUpProgressScreen(
                 problem != null -> CameraProblemPanel(problem, onRetry = { attempt++ })
                 else -> {
                     key(attempt) {
-                        PushUpCameraView(
+                        PoseCameraView(
                             onPose = { pose, at ->
                                 if (!started) started = true
-                                val counted = counter.observe(pose, at)
-                                val seenNow = counter.view
-                                if (view == PushUpCounter.View.NONE && seenNow != PushUpCounter.View.NONE) {
+                                val before = phase
+                                val counted = judge.observe(pose, at)
+                                val now = judge.phase
+                                if (before == PoseJudge.Phase.NO_BODY && now != PoseJudge.Phase.NO_BODY) {
                                     feedback.found()
                                 }
-                                if (counted) {
-                                    feedback.rep()
-                                    scope.launch {
-                                        flash.snapTo(1f)
-                                        flash.animateTo(0f, tween(320))
+                                if (counted > 0) {
+                                    // Every rep; every few seconds of a hold.
+                                    val reached = activity.progress + counted
+                                    if (reached % spec.tickEvery == 0 || reached >= activity.target) {
+                                        feedback.rep()
+                                        scope.launch {
+                                            flash.snapTo(1f)
+                                            flash.animateTo(0f, tween(320))
+                                        }
+                                        scope.launch {
+                                            pop.snapTo(1.3f)
+                                            pop.animateTo(1f, tween(260))
+                                        }
                                     }
-                                    scope.launch {
-                                        pop.snapTo(1.3f)
-                                        pop.animateTo(1f, tween(260))
-                                    }
-                                    onPushUp()
+                                    onCounted(counted)
                                 }
-                                phase = counter.phase
-                                view = seenNow
+                                phase = now
                             },
                             onError = { cameraProblem = it },
                             modifier = Modifier.fillMaxSize(),
@@ -1026,22 +1046,42 @@ fun PushUpProgressScreen(
                             .fillMaxSize()
                             .background(AsrColors.Accent.copy(alpha = flash.value * 0.55f)),
                     )
-                    // How many to go, as dots: a glance, not a read.
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        repeat(activity.target) { index ->
+                    // How far along, at a glance: dots for a handful of
+                    // reps, a bar for a count too long to dot.
+                    if (activity.target <= 12) {
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            repeat(activity.target) { index ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (index < activity.progress) AsrColors.Accent
+                                            else Color.White.copy(alpha = 0.35f),
+                                        ),
+                                )
+                            }
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 16.dp, start = 24.dp, end = 24.dp)
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(Color.White.copy(alpha = 0.3f)),
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (index < activity.progress) AsrColors.Accent
-                                        else Color.White.copy(alpha = 0.35f),
-                                    ),
+                                    .fillMaxWidth(activity.fraction)
+                                    .height(6.dp)
+                                    .background(AsrColors.Accent),
                             )
                         }
                     }
@@ -1107,7 +1147,7 @@ fun PushUpProgressScreen(
         RewardContext(activity)
 
         Spacer(Modifier.height(14.dp))
-        PhonePlacement()
+        PhonePlacement(spec)
 
         Spacer(Modifier.height(18.dp))
         Column(
@@ -1132,7 +1172,7 @@ fun PushUpProgressScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "of ${activity.target} push-ups",
+                        "of ${activity.target} ${spec.noun}",
                         style = AsrType.Label.copy(fontSize = 14.sp),
                         color = AsrColors.TextSecondary,
                     )
@@ -1160,7 +1200,7 @@ fun PushUpProgressScreen(
 
         Spacer(Modifier.height(16.dp))
         RewardNote(
-            title = "${activity.remaining} to go",
+            title = if (spec.timed) "${activity.remaining} seconds to go" else "${activity.remaining} to go",
             body = "Finish and ${activity.appLabel} gets +${activity.rewardMinutes} minutes today.",
         )
 
@@ -1185,7 +1225,7 @@ fun PushUpProgressScreen(
             if (activity.progress > 0) {
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    "Your ${activity.progress} push-ups are saved.",
+                    "Your ${activity.progress} ${spec.noun} are saved.",
                     style = AsrType.Legal.copy(fontSize = 12.sp),
                     color = AsrColors.TextSecondary,
                 )
@@ -1202,7 +1242,7 @@ fun PushUpProgressScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    "Give up this set? Your ${activity.progress} push-ups will not count.",
+                    "Give up this set? Your ${activity.progress} ${spec.noun} will not count.",
                     style = AsrType.Label.copy(fontSize = 13.sp),
                     color = AsrColors.TextPrimary,
                     textAlign = TextAlign.Center,
@@ -1267,7 +1307,7 @@ private fun PausedPanel(onResume: () -> Unit) {
         Spacer(Modifier.height(10.dp))
         Text(
             "Nobody was in the picture for a minute, so the camera was switched off. " +
-                "Your push-ups are saved.",
+                "What you have done is saved.",
             style = AsrType.Label.copy(fontSize = 13.sp),
             color = AsrColors.TextSecondary,
             textAlign = TextAlign.Center,
@@ -1320,36 +1360,13 @@ private fun CameraProblemPanel(problem: String, onRetry: () -> Unit) {
     }
 }
 
-/** What the counter can see, said as the next thing to do: a title and a line under it. */
-private fun coachingFor(
-    view: PushUpCounter.View,
-    phase: PushUpCounter.Phase,
-    started: Boolean,
-): Pair<String, String> =
-    when {
-        !started -> "Starting the camera" to ""
-        phase == PushUpCounter.Phase.NO_BODY ->
-            "Looking for you" to "Phone on the floor just ahead of your hands, screen up."
-        view == PushUpCounter.View.FRONT && phase == PushUpCounter.Phase.UP ->
-            "Go down" to "Bring your chest down towards the phone."
-        view == PushUpCounter.View.FRONT ->
-            "Push up" to "All the way back up. That is one."
-        phase == PushUpCounter.Phase.NOT_IN_POSITION ->
-            "Get into a plank" to "Hands under your shoulders, body straight."
-        phase == PushUpCounter.Phase.UP ->
-            "Now go down" to "Bend your elbows until your chest is near the floor."
-        else ->
-            "Push up" to "Straighten your arms all the way. That is one."
-    }
-
 /**
  * Where the phone goes, for the person reading with it in their hand. The
- * first person to try this put the phone on the floor under their face,
- * which is the natural place and the one the counter expects; the side
- * view is the alternative for anybody with somewhere to prop it.
+ * steps are the spec's: the floor under the face for push-ups, propped
+ * across the room for a plank.
  */
 @Composable
-private fun PhonePlacement() {
+private fun PhonePlacement(spec: CameraSpec) {
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier = Modifier
@@ -1364,12 +1381,13 @@ private fun PhonePlacement() {
             color = AsrColors.Accent,
         )
         Spacer(Modifier.height(10.dp))
-        PlacementStep("1", "On the floor, screen up, a hand's width in front of your hands. The camera looks up at you.")
-        Spacer(Modifier.height(8.dp))
-        PlacementStep("2", "Keep your face in the picture. You will hear a tick for every push-up that counts.")
+        spec.placement.forEachIndexed { index, step ->
+            if (index > 0) Spacer(Modifier.height(8.dp))
+            PlacementStep("${index + 1}", step)
+        }
         Spacer(Modifier.height(10.dp))
         Text(
-            "Prefer a side view? Prop it on its side a few steps away with your whole body in frame.",
+            spec.placementNote,
             style = AsrType.Legal.copy(fontSize = 12.sp),
             color = AsrColors.TextTertiary,
         )
@@ -1408,14 +1426,15 @@ fun EarnedScreen(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // The last push-up replaces the camera with this screen in the same
-    // frame, while the person is still in a plank. So for a moment it is
-    // the number they were working towards, at floor size, with the finish
-    // chime, and only then the receipt for the person who has stood up.
-    var moment by remember(activity.id) { mutableStateOf(activity.isPushUps) }
+    // The last rep, or second, replaces the camera with this screen in the
+    // same frame, while the person is still on the floor. So for a moment
+    // it is the number they were working towards, at floor size, with the
+    // finish chime, and only then the receipt for the person who has
+    // stood up.
+    var moment by remember(activity.id) { mutableStateOf(activity.isCamera) }
     val feedback = rememberRepFeedback()
     LaunchedEffect(activity.id) {
-        if (!activity.isPushUps) return@LaunchedEffect
+        if (!activity.isCamera) return@LaunchedEffect
         feedback.finished()
         delay(1_400)
         moment = false
@@ -1464,17 +1483,8 @@ fun EarnedScreen(
         )
         Spacer(Modifier.height(14.dp))
         Text(
-            when {
-                activity.isWalk ->
-                    "Your walk is complete. ${activity.appLabel} now has " +
-                        "${activity.rewardMinutes} extra minutes available today."
-                activity.isPushUps ->
-                    "Your push-ups are done. ${activity.appLabel} now has " +
-                        "${activity.rewardMinutes} extra minutes available today."
-                else ->
-                    "Your phone-free session is complete. ${activity.appLabel} now has " +
-                        "${activity.rewardMinutes} extra minutes available today."
-            },
+            (earnOptionFor(activity.type)?.done ?: "Your activity is complete.") +
+                " ${activity.appLabel} now has ${activity.rewardMinutes} extra minutes available today.",
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
             textAlign = TextAlign.Center,

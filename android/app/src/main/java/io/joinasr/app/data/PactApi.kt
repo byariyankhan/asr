@@ -41,7 +41,7 @@ data class PactAppAdd(
 data class ActivityRule(
     @SerialName("reward_min") val rewardMinutes: Int,
     @SerialName("daily_cap_min") val dailyCapMinutes: Int,
-    /** Steps, for a walk; reps, for push-ups. */
+    /** Steps, for a walk; reps, for push-ups; seconds, for a hold. */
     val target: Int? = null,
     /** Minutes, for a focus session. */
     @SerialName("target_min") val targetMinutes: Int? = null,
@@ -66,6 +66,9 @@ data class ActivityRules(
      * nothing is awarded that the ledger will not carry. docs/API.md.
      */
     @SerialName("push_ups") val pushUps: ActivityRule? = null,
+    /** Timed by the camera, in seconds. Server since migration 0014. */
+    @SerialName("plank") val plank: ActivityRule? = null,
+    @SerialName("wall_sit") val wallSit: ActivityRule? = null,
 )
 
 @Serializable

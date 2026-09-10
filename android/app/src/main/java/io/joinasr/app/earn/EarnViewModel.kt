@@ -119,19 +119,21 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * One push-up, as [PushUpCounter] judged it from the camera.
+     * Units the camera screen's judge awarded this frame: a push-up, a
+     * second held in a plank.
      *
-     * Counted here rather than trusted from the counter's own total, so
+     * Counted here rather than trusted from the judge's own total, so
      * that leaving the screen and coming back resumes at the same number:
-     * the camera and the counter start again from nothing every time the
+     * the camera and the judge start again from nothing every time the
      * screen is opened, and the activity is what remembers.
      */
-    fun onPushUp() {
+    fun onCounted(units: Int) {
+        if (units <= 0) return
         viewModelScope.launch {
             val running = store.currentActive() ?: return@launch
-            if (!running.isPushUps || running.isComplete) return@launch
+            if (!running.isCamera || running.isComplete) return@launch
             if (expireIfOverdue(running)) return@launch
-            val updated = running.copy(progress = running.progress + 1)
+            val updated = running.copy(progress = (running.progress + units).coerceAtMost(running.target))
             if (updated.isComplete) finish(updated) else store.update(updated)
         }
     }

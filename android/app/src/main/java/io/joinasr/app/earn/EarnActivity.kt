@@ -15,11 +15,11 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class EarnActivity(
     val id: String,
-    /** [EarnRules.WALK], [EarnRules.FOCUS] or [EarnRules.PUSHUPS]. */
+    /** [EarnRules.WALK], [EarnRules.FOCUS], or one of [EarnRules.CAMERA_TYPES]. */
     val type: String,
     val packageName: String,
     val appLabel: String,
-    /** Steps for a walk, minutes for a focus session, reps for push-ups. */
+    /** Steps for a walk, minutes for a focus session, reps for push-ups, seconds for a hold. */
     val target: Int,
     val rewardMinutes: Int,
     val startedAtMillis: Long,
@@ -31,17 +31,18 @@ data class EarnActivity(
      * -1 until the first sample arrives, which can take a moment.
      */
     val baselineSteps: Int = -1,
-    /** Steps taken, whole minutes focused, or push-ups counted. Never above [target] on screen. */
+    /** Steps taken, whole minutes focused, reps counted, or seconds held. Never above [target] on screen. */
     val progress: Int = 0,
     /** Local display hint only. The service never restores trust from this timestamp. */
     val focusLockedSinceElapsed: Long? = null,
 ) {
     val isWalk: Boolean get() = type == EarnRules.WALK
 
-    val isPushUps: Boolean get() = type == EarnRules.PUSHUPS
+    /** Counted or timed by the camera, on the camera screen. */
+    val isCamera: Boolean get() = type in EarnRules.CAMERA_TYPES
 
-    /** Everything that is not a walk or push-ups: the keyguard-timed session. */
-    val isFocus: Boolean get() = !isWalk && !isPushUps
+    /** Everything that is not a walk or a camera activity: the keyguard-timed session. */
+    val isFocus: Boolean get() = !isWalk && !isCamera
 
     val fraction: Float
         get() = if (target <= 0) 1f else (progress.toFloat() / target).coerceIn(0f, 1f)

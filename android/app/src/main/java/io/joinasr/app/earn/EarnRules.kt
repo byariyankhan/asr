@@ -1,7 +1,7 @@
 package io.joinasr.app.earn
 
 /**
- * The three ways to earn more time, and what each costs.
+ * The ways to earn more time, and what each costs.
  *
  * These numbers are written into the pact when it starts and never read from
  * a request afterwards — the server takes the target and the reward from the
@@ -25,6 +25,14 @@ object EarnRules {
      * in under a minute.
      */
     const val PUSHUP_REPS = 7
+
+    /**
+     * A plank and a wall sit, timed by the camera. Forty-five seconds each:
+     * the easy end of the list, on purpose, for the person who would give
+     * the challenge up if every way to earn were a walk.
+     */
+    const val PLANK_SECONDS = 45
+    const val WALL_SIT_SECONDS = 45
 
     /** What any one of them is worth. Figma 21 and 24: "+10 minutes". */
     const val REWARD_MINUTES = 10
@@ -51,10 +59,17 @@ object EarnRules {
     const val WALK = "walk_steps"
     const val FOCUS = "focus_session"
     const val PUSHUPS = "push_ups"
+    const val PLANK = "plank"
+    const val WALL_SIT = "wall_sit"
+
+    /** The activities the camera counts or times, on the camera screen. */
+    val CAMERA_TYPES: Set<String> = setOf(PUSHUPS, PLANK, WALL_SIT)
 
     fun targetFor(type: String): Int = when (type) {
         WALK -> WALK_STEPS
         PUSHUPS -> PUSHUP_REPS
+        PLANK -> PLANK_SECONDS
+        WALL_SIT -> WALL_SIT_SECONDS
         else -> FOCUS_MINUTES
     }
 }

@@ -43,6 +43,7 @@ import io.joinasr.app.PendingInvite
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.cameraSpec
 import io.joinasr.app.earn.earnOptions
 import io.joinasr.app.earn.EarnViewModel
 import io.joinasr.app.enforcement.PactViewModel
@@ -57,7 +58,7 @@ import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ActivityProgressScreen
 import io.joinasr.app.ui.screens.ActivityTrackingScreen
 import io.joinasr.app.ui.screens.CameraAccessScreen
-import io.joinasr.app.ui.screens.PushUpProgressScreen
+import io.joinasr.app.ui.screens.CameraActivityScreen
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.ui.screens.ChallengeEndedScreen
 import io.joinasr.app.ui.screens.GiveUpScreen
@@ -309,9 +310,11 @@ fun AsrApp(
         askingForSteps = false
         walkOnceGranted = granted
     }
-    // The same pair for the camera, between choosing push-ups and the grant.
+    // The same pair for the camera, between choosing a camera activity and
+    // the grant; cameraWanted is which one, since three share the lens.
     var askingForCamera by remember { mutableStateOf(false) }
-    var pushUpsOnceGranted by remember { mutableStateOf(false) }
+    var cameraWanted by remember { mutableStateOf<String?>(null) }
+    var cameraOnceGranted by remember { mutableStateOf(false) }
     // A refusal is said, not swallowed: the chooser names it, and once
     // Android has stopped showing the dialog (two refusals) the camera
     // screen's button goes to the app's page in Settings instead, the way
@@ -326,7 +329,7 @@ fun AsrApp(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         askingForCamera = false
-        pushUpsOnceGranted = granted
+        cameraOnceGranted = granted
         cameraRefused = !granted
         if (!granted) {
             val activity = context as? Activity
@@ -429,12 +432,12 @@ fun AsrApp(
         cameraGranted = Permissions.hasCamera(context)
         if (cameraGranted) {
             // Back from Settings with the camera allowed: the refusal is
-            // over, and a push-up set chosen before the trip starts now.
+            // over, and the activity chosen before the trip starts now.
             cameraRefused = false
             cameraDeniedForGood = false
             if (askingForCamera) {
                 askingForCamera = false
-                pushUpsOnceGranted = true
+                cameraOnceGranted = true
             }
         }
         onPauseOrDispose {}
@@ -547,12 +550,13 @@ fun AsrApp(
         val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
         earnViewModel.start(pact, app, EarnRules.WALK)
     }
-    LaunchedEffect(pushUpsOnceGranted, earningFor, pactState) {
-        if (!pushUpsOnceGranted) return@LaunchedEffect
-        pushUpsOnceGranted = false
+    LaunchedEffect(cameraOnceGranted, earningFor, pactState) {
+        if (!cameraOnceGranted) return@LaunchedEffect
+        cameraOnceGranted = false
+        val type = cameraWanted ?: return@LaunchedEffect
         val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
         val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
-        earnViewModel.start(pact, app, EarnRules.PUSHUPS)
+        earnViewModel.start(pact, app, type)
     }
 
     // What actually drives an activity forward.
@@ -562,8 +566,8 @@ fun AsrApp(
     // screen is up loses nothing, and the difference from the baseline is
     // still right when somebody comes back.
     //
-    // Push-ups are counted by the camera on the push-up screen itself
-    // (PushUpProgressScreen), which is the only place the camera is open.
+    // The camera activities are counted on the camera screen itself
+    // (CameraActivityScreen), which is the only place the camera is open.
     //
     // Phone-free focus sessions are owned by EnforcementService, even when
     // this UI is stopped or destroyed. Compose must never award focus time.
@@ -1139,7 +1143,7 @@ fun AsrApp(
                     askingForSteps = false
                     walkOnceGranted = false
                     askingForCamera = false
-                    pushUpsOnceGranted = false
+                    cameraOnceGranted = false
                     cameraRefused = false
                     showingNotifications = false
                     showingProtectionLost = false
@@ -1194,21 +1198,23 @@ fun AsrApp(
                                             earningFor = null
                                         },
                                     )
-                                } else if (running != null && !activityMinimised && running.isPushUps &&
+                                } else if (running != null && !activityMinimised && running.isCamera &&
                                     !cameraGranted
                                 ) {
                                     // Revoked in Settings mid-set. Ask again
                                     // rather than open a camera that will
                                     // refuse; the activity and its count wait.
                                     CameraAccessScreen(
+                                        spec = cameraSpec(running.type)!!,
                                         onBack = { activityMinimised = true },
                                         onAllow = allowCamera,
                                         onSkip = { activityMinimised = true },
                                         openSettings = cameraDeniedForGood,
                                     )
-                                } else if (running != null && !activityMinimised && running.isPushUps) {
-                                    PushUpProgressScreen(
+                                } else if (running != null && !activityMinimised && running.isCamera) {
+                                    CameraActivityScreen(
                                         activity = running,
+                                        spec = cameraSpec(running.type)!!,
                                         onBack = {
                                             activityMinimised = true
                                             earningFor = null
@@ -1217,7 +1223,7 @@ fun AsrApp(
                                             earnViewModel.cancel()
                                             earningFor = null
                                         },
-                                        onPushUp = earnViewModel::onPushUp,
+                                        onCounted = earnViewModel::onCounted,
                                     )
                                 } else if (running != null && !activityMinimised) {
                                     // Figma 23.
@@ -1232,8 +1238,9 @@ fun AsrApp(
                                             earningFor = null
                                         },
                                     )
-                                } else if (earnApp != null && askingForCamera) {
+                                } else if (earnApp != null && askingForCamera && cameraWanted != null) {
                                     CameraAccessScreen(
+                                        spec = cameraSpec(cameraWanted!!)!!,
                                         onBack = { askingForCamera = false },
                                         onAllow = allowCamera,
                                         onSkip = { askingForCamera = false },
@@ -1276,19 +1283,21 @@ fun AsrApp(
                                                     } else {
                                                         askingForSteps = true
                                                     }
-                                                option.type == EarnRules.PUSHUPS ->
+                                                option.type in EarnRules.CAMERA_TYPES -> {
+                                                    cameraWanted = option.type
                                                     if (cameraGranted) {
                                                         cameraRefused = false
-                                                        earnViewModel.start(pact, earnApp, EarnRules.PUSHUPS)
+                                                        earnViewModel.start(pact, earnApp, option.type)
                                                     } else {
                                                         askingForCamera = true
                                                     }
+                                                }
                                                 else -> earnViewModel.start(pact, earnApp, option.type)
                                             }
                                         },
                                         errorMessage = earnError ?: if (cameraRefused && !cameraGranted) {
-                                            "Camera access was refused, so push-ups cannot be counted. " +
-                                                "Choose push-ups again to allow it."
+                                            "Camera access was refused, so nothing can be counted on camera. " +
+                                                "Choose the activity again to allow it."
                                         } else {
                                             null
                                         },
