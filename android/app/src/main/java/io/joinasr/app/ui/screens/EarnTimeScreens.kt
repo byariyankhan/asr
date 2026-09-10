@@ -1096,7 +1096,7 @@ private fun coachingFor(
     when {
         !started -> "Starting the camera" to ""
         phase == PushUpCounter.Phase.NO_BODY ->
-            "Looking for you" to "Phone on the floor just ahead of your hands, face towards it."
+            "Looking for you" to "Phone on the floor just ahead of your hands, screen up."
         view == PushUpCounter.View.FRONT && phase == PushUpCounter.Phase.UP ->
             "Go down" to "Bring your chest down towards the phone."
         view == PushUpCounter.View.FRONT ->
@@ -1169,7 +1169,8 @@ private fun PlacementStep(number: String, text: String) {
 @Composable
 fun EarnedScreen(
     activity: EarnActivity,
-    availableNow: Int,
+    /** Bonus minutes this app has won today, this activity included. */
+    earnedToday: Int,
     onUseNow: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1286,15 +1287,15 @@ fun EarnedScreen(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "AVAILABLE NOW",
+                    "EARNED TODAY",
                     style = AsrType.Eyebrow.copy(fontSize = 11.sp),
                     color = AsrColors.TextTertiary,
                 )
                 Spacer(Modifier.height(8.dp))
-                Text("$availableNow min", style = AsrType.display(26), color = AsrColors.TextPrimary)
+                Text("$earnedToday min", style = AsrType.display(26), color = AsrColors.TextPrimary)
             }
             Text(
-                "for ${activity.appLabel} today",
+                "extra for ${activity.appLabel} today",
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,
             )
