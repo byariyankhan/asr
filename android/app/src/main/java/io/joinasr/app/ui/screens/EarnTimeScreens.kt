@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -250,7 +251,9 @@ private fun ActivityTile(
             .padding(top = 10.dp, bottom = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.height(22.dp), contentAlignment = Alignment.Center) {
+        // A minimum, not a fixed height: the pill's text follows the
+        // system font scale, and a row it cannot fit would clip it.
+        Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.Center) {
             if (option.recommended && !dimmed) {
                 SmallPill("RECOMMENDED", AsrColors.Accent, AsrColors.AccentMuted, fontSize = 8.sp)
             }
