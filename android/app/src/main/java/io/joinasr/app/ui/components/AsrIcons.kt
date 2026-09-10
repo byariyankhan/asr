@@ -17,17 +17,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * The two icons that have to be drawn rather than typed.
+ * The icons that have to be drawn rather than typed.
  *
  * The tab bar keeps its glyphs: ⌂ ▥ ◎ ○ are what the frames specify, they
  * read correctly next to their labels, and they are fine on a phone. These
- * two are not. Figma draws the notification bell as a vector, and there is
+ * are not. Figma draws the notification bell as a vector, and there is
  * no bell character in a system font that is not the full-colour emoji —
  * which arrives at whatever size the emoji font decides and looks like a
  * sticker glued to the header. The padlock has the same problem in an even
- * smaller space.
+ * smaller space, and the earn chooser's three activities need a matched
+ * set, which three arrows from a system font were never going to be.
  *
- * Both are defined on a 24-unit grid and scaled, so one drawn at 22dp and
+ * All are defined on a 24-unit grid and scaled, so one drawn at 22dp and
  * another at 12dp keep the same stroke weight relative to themselves.
  */
 object AsrIcons {
@@ -96,6 +97,79 @@ object AsrIcons {
             topLeft = Offset(centreX - bodyWidth / 2, shoulder),
             size = Size(bodyWidth, bodyHeight),
             cornerRadius = CornerRadius(2f * scale, 2f * scale),
+        )
+    }
+
+    /**
+     * A walk: a path that winds off and ends in an arrowhead. For the earn
+     * chooser's tile, where the old "↗" glyph sat at whatever weight the
+     * system font gave it.
+     */
+    @Composable
+    fun Walk(colour: Color, size: Dp = 24.dp) = Icon(size) { scale ->
+        val stroke = strokeOf(scale)
+        drawPath(
+            path = path(scale) {
+                moveTo(4.5f, 19.5f)
+                cubicTo(9f, 19.5f, 8f, 12f, 12.5f, 12f)
+                cubicTo(16.5f, 12f, 15f, 6f, 19.5f, 5f)
+            },
+            color = colour,
+            style = stroke,
+        )
+        drawPath(
+            path = path(scale) {
+                moveTo(15.2f, 4.6f)
+                lineTo(19.5f, 5f)
+                lineTo(19.0f, 9.3f)
+            },
+            color = colour,
+            style = stroke,
+        )
+    }
+
+    /** A phone put down: a target, two rings and a centre. */
+    @Composable
+    fun Focus(colour: Color, size: Dp = 24.dp) = Icon(size) { scale ->
+        val centre = Offset(12f * scale, 12f * scale)
+        drawCircle(color = colour, radius = 8.2f * scale, center = centre, style = strokeOf(scale))
+        drawCircle(color = colour, radius = 4.2f * scale, center = centre, style = strokeOf(scale))
+        drawCircle(color = colour, radius = 1.3f * scale, center = centre)
+    }
+
+    /** A push-up: a body in a plank over the floor, one arm down to it. */
+    @Composable
+    fun PushUps(colour: Color, size: Dp = 24.dp) = Icon(size) { scale ->
+        val stroke = strokeOf(scale)
+        // The head.
+        drawCircle(color = colour, radius = 2.1f * scale, center = Offset(5.2f * scale, 8.6f * scale))
+        // Shoulders to feet, straight.
+        drawPath(
+            path = path(scale) {
+                moveTo(7.8f, 10.3f)
+                lineTo(20.5f, 14.6f)
+            },
+            color = colour,
+            style = stroke,
+        )
+        // The arm, bent to the floor.
+        drawPath(
+            path = path(scale) {
+                moveTo(9.6f, 10.9f)
+                lineTo(8.4f, 14.4f)
+                lineTo(10.8f, 17.6f)
+            },
+            color = colour,
+            style = stroke,
+        )
+        // The floor.
+        drawPath(
+            path = path(scale) {
+                moveTo(3.5f, 19.5f)
+                lineTo(20.5f, 19.5f)
+            },
+            color = colour,
+            style = stroke,
         )
     }
 

@@ -29,7 +29,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -48,16 +51,21 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.joinasr.app.earn.EarnActivity
+import io.joinasr.app.earn.EarnIcon
+import io.joinasr.app.earn.EarnOption
 import io.joinasr.app.earn.EarnRules
 import io.joinasr.app.earn.PushUpCameraView
 import io.joinasr.app.earn.PushUpCounter
+import io.joinasr.app.earn.earnOptions
 import io.joinasr.app.earn.rememberRepFeedback
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.ui.components.AsrAppIcon
 import io.joinasr.app.ui.components.AsrBackChevron
+import io.joinasr.app.ui.components.AsrIcons
 import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
@@ -65,30 +73,31 @@ import io.joinasr.app.ui.theme.AsrType
 import java.util.Locale
 
 /**
- * Figma 21 — Earn Time / Choose Activity (node 131:2).
+ * Figma 21 — Earn Time / Choose Activity (node 131:2), relaid as a grid.
  *
  * Reached from the block screen, which is the only place it makes sense: the
  * moment somebody wants more time is the moment they have run out.
  *
- * Walking is offered only when the phone has a step counter and only when
- * the permission is there — Figma 22 is what asks for it, and a row that
- * opened a tracker which could never count would be worse than one that says
- * what it needs first.
+ * The three activities sit in one row of tiles, each a glyph, a name and the
+ * price; the ask, the rule, and the privacy line are on a sheet that opens
+ * when a tile is tapped, so the screen stays the same height when a fourth
+ * or fifth activity is added. What is listed comes from [earnOptions]; an
+ * activity this phone cannot run (no step counter, no camera) is still
+ * shown, dimmed, and its sheet says why, so the row a person heard about is
+ * never simply missing.
  */
 @Composable
 fun ChooseActivityScreen(
     app: PactApp,
     earnedSoFar: Int,
-    stepsAvailable: Boolean,
-    cameraAvailable: Boolean,
+    options: List<EarnOption>,
     onBack: () -> Unit,
-    onWalk: () -> Unit,
-    onFocus: () -> Unit,
-    onPushUps: () -> Unit,
+    onStart: (EarnOption) -> Unit,
     errorMessage: String?,
     modifier: Modifier = Modifier,
 ) {
     val capped = earnedSoFar >= EarnRules.DAILY_CAP_MINUTES
+    var open by remember { mutableStateOf<EarnOption?>(null) }
 
     Column(
         modifier = modifier
@@ -118,56 +127,17 @@ fun ChooseActivityScreen(
         Text("Choose an activity", style = AsrType.display(20), color = AsrColors.TextPrimary)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Only completed activities earn time.",
+            if (capped) {
+                "Today's ${EarnRules.DAILY_CAP_MINUTES} bonus minutes for ${app.label} are used up."
+            } else {
+                "Tap one to see how it works."
+            },
             style = AsrType.Legal.copy(fontSize = 13.sp),
             color = AsrColors.TextTertiary,
         )
 
         Spacer(Modifier.height(14.dp))
-        ActivityCard(
-            glyph = "↗",
-            title = "Walk ${"%.1f".format(Locale.US, EarnRules.kilometresFor(EarnRules.WALK_STEPS))} km",
-            subtitle = "≈ ${format(EarnRules.WALK_STEPS)} steps",
-            detail = if (stepsAvailable) {
-                "Track steps until the goal is complete."
-            } else {
-                "This phone has no step counter, so a walk cannot be measured."
-            },
-            reward = "Earn +${EarnRules.REWARD_MINUTES}m for ${app.label}",
-            badge = if (stepsAvailable) "RECOMMENDED" else null,
-            enabled = stepsAvailable && !capped,
-            onClick = onWalk,
-        )
-
-        Spacer(Modifier.height(14.dp))
-        ActivityCard(
-            glyph = "◎",
-            title = "Put your phone down for ${EarnRules.FOCUS_MINUTES} minutes.",
-            subtitle = "Phone-free session",
-            detail = "Keep your phone locked and spend some time in the real world.",
-            reward = "Earn +${EarnRules.REWARD_MINUTES}m for ${app.label}",
-            badge = null,
-            enabled = !capped,
-            onClick = onFocus,
-        )
-
-        // Not in Figma: added after 21-24 were built, laid out from the
-        // same card. Offered only where there is a camera to count with.
-        Spacer(Modifier.height(14.dp))
-        ActivityCard(
-            glyph = "⇅",
-            title = "Do ${EarnRules.PUSHUP_REPS} push-ups",
-            subtitle = "Counted by your camera",
-            detail = if (cameraAvailable) {
-                "Put your phone on the floor in front of you and do them on camera. Nothing is recorded."
-            } else {
-                "This phone has no camera, so push-ups cannot be counted."
-            },
-            reward = "Earn +${EarnRules.REWARD_MINUTES}m for ${app.label}",
-            badge = null,
-            enabled = cameraAvailable && !capped,
-            onClick = onPushUps,
-        )
+        ActivityGrid(options = options, capped = capped, onOpen = { open = it })
 
         errorMessage?.let {
             Spacer(Modifier.height(14.dp))
@@ -194,6 +164,229 @@ fun ChooseActivityScreen(
         )
         Spacer(Modifier.height(28.dp))
     }
+
+    open?.let { option ->
+        ActivitySheet(
+            option = option,
+            app = app,
+            capped = capped,
+            onDismiss = { open = null },
+            onStart = {
+                open = null
+                onStart(option)
+            },
+        )
+    }
+}
+
+/**
+ * Three tiles to a row, rows as needed. A short last row is padded with
+ * empty weights so its tiles keep the width of the others rather than
+ * stretching to fill.
+ */
+@Composable
+private fun ActivityGrid(
+    options: List<EarnOption>,
+    capped: Boolean,
+    onOpen: (EarnOption) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        options.chunked(GRID_COLUMNS).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { option ->
+                    ActivityTile(
+                        option = option,
+                        dimmed = capped || !option.available,
+                        onClick = { onOpen(option) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                repeat(GRID_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+private const val GRID_COLUMNS = 3
+
+/**
+ * One activity, at a glance. Always tappable: a dimmed tile opens the same
+ * sheet, where the reason it cannot be started is written out, instead of
+ * a dead square the person has to guess about.
+ */
+@Composable
+private fun ActivityTile(
+    option: EarnOption,
+    dimmed: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    val ink = if (dimmed) AsrColors.TextTertiary else AsrColors.TextPrimary
+    Column(
+        modifier = modifier
+            .clip(shape)
+            .background(AsrColors.Surface)
+            .border(1.dp, AsrColors.FieldBorder, shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (dimmed) AsrColors.Field else AsrColors.AccentMuted),
+            contentAlignment = Alignment.Center,
+        ) {
+            EarnIconView(
+                icon = option.icon,
+                colour = if (dimmed) AsrColors.TextTertiary else AsrColors.Accent,
+                size = 24.dp,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            option.name,
+            style = AsrType.Label.copy(fontSize = 13.sp),
+            color = ink,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            "+${EarnRules.REWARD_MINUTES}m",
+            style = AsrType.Legal.copy(fontSize = 12.sp),
+            color = if (dimmed) AsrColors.TextTertiary else AsrColors.Accent,
+        )
+        if (option.recommended && !dimmed) {
+            Spacer(Modifier.height(8.dp))
+            SmallPill("RECOMMENDED", AsrColors.Accent, AsrColors.AccentMuted, fontSize = 8.sp)
+        }
+    }
+}
+
+/** The drawing for an [EarnIcon]; the only place the enum meets Compose. */
+@Composable
+private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp) {
+    when (icon) {
+        EarnIcon.WALK -> AsrIcons.Walk(colour, size)
+        EarnIcon.FOCUS -> AsrIcons.Focus(colour, size)
+        EarnIcon.PUSH_UPS -> AsrIcons.PushUps(colour, size)
+    }
+}
+
+/**
+ * The detail behind a tile: the whole ask, the price, how it is done, how
+ * it is counted, what is collected, and the Start button. The button is
+ * the only way to start; the sheet closes before the activity opens so the
+ * chooser is clean when the person comes back to it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActivitySheet(
+    option: EarnOption,
+    app: PactApp,
+    capped: Boolean,
+    onDismiss: () -> Unit,
+    onStart: () -> Unit,
+) {
+    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = state,
+        containerColor = AsrColors.Surface,
+        contentColor = AsrColors.TextPrimary,
+    ) {
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 28.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(AsrColors.AccentMuted),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EarnIconView(icon = option.icon, colour = AsrColors.Accent, size = 26.dp)
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(option.title, style = AsrType.display(22), color = AsrColors.TextPrimary)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        option.target,
+                        style = AsrType.Label.copy(fontSize = 13.sp),
+                        color = AsrColors.TextSecondary,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(18.dp))
+            val rewardShape = RoundedCornerShape(14.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(AsrColors.AccentMuted, rewardShape)
+                    .border(1.dp, AsrColors.AccentBorder, rewardShape)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("REWARD", style = AsrType.Eyebrow.copy(fontSize = 10.sp), color = AsrColors.Accent)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "+${EarnRules.REWARD_MINUTES} minutes · for ${app.label}, today only",
+                        style = AsrType.Field.copy(fontSize = 14.sp),
+                        color = AsrColors.TextPrimary,
+                    )
+                }
+                if (option.recommended && option.available) {
+                    Spacer(Modifier.width(10.dp))
+                    SmallPill("RECOMMENDED", AsrColors.Accent, AsrColors.AccentMuted)
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            SheetSection("HOW IT WORKS", option.explanation)
+            Spacer(Modifier.height(16.dp))
+            SheetSection("HOW IT IS COUNTED", option.verification)
+            option.privacy?.let {
+                Spacer(Modifier.height(16.dp))
+                SheetSection("PRIVACY", it)
+            }
+
+            val blocker = option.unavailableReason ?: if (capped) {
+                "Today's ${EarnRules.DAILY_CAP_MINUTES} bonus minutes for ${app.label} are used up. " +
+                    "Tomorrow starts fresh."
+            } else {
+                null
+            }
+            blocker?.let {
+                Spacer(Modifier.height(18.dp))
+                Text(it, style = AsrType.Label.copy(fontSize = 13.sp), color = AsrColors.Warning)
+            }
+
+            Spacer(Modifier.height(22.dp))
+            AsrPrimaryButton(
+                text = "Start",
+                onClick = onStart,
+                enabled = option.available && !capped,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetSection(heading: String, body: String) {
+    Text(heading, style = AsrType.Eyebrow.copy(fontSize = 10.sp), color = AsrColors.TextTertiary)
+    Spacer(Modifier.height(6.dp))
+    Text(body, style = AsrType.Field.copy(fontSize = 14.sp), color = AsrColors.TextSecondary)
 }
 
 /**
@@ -1432,76 +1625,6 @@ private fun TrackingStatus(walk: Boolean) {
 }
 
 @Composable
-private fun ActivityCard(
-    glyph: String,
-    title: String,
-    subtitle: String,
-    detail: String,
-    reward: String,
-    badge: String?,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(20.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(AsrColors.Surface)
-            .border(1.dp, AsrColors.FieldBorder, shape)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(15.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (enabled) AsrColors.AccentMuted else AsrColors.Field),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                glyph,
-                style = AsrType.display(24),
-                color = if (enabled) AsrColors.Accent else AsrColors.TextTertiary,
-            )
-        }
-        Spacer(Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    title,
-                    style = AsrType.display(19),
-                    color = if (enabled) AsrColors.TextPrimary else AsrColors.TextTertiary,
-                    modifier = Modifier.weight(1f),
-                )
-                if (badge != null && enabled) {
-                    SmallPill(badge, AsrColors.Accent, AsrColors.AccentMuted)
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                subtitle,
-                style = AsrType.Label.copy(fontSize = 13.sp),
-                color = AsrColors.TextSecondary,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                detail,
-                style = AsrType.Legal.copy(fontSize = 13.sp),
-                color = AsrColors.TextTertiary,
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                reward,
-                style = AsrType.Label.copy(fontSize = 13.sp),
-                color = if (enabled) AsrColors.Accent else AsrColors.TextTertiary,
-            )
-        }
-    }
-}
-
-@Composable
 private fun RewardNote(title: String, body: String) {
     val shape = RoundedCornerShape(16.dp)
     Row(
@@ -1541,12 +1664,9 @@ private fun ChooseActivityPreview() {
         ChooseActivityScreen(
             app = PactApp("com.zhiliaoapp.musically", "TikTok", 20),
             earnedSoFar = 0,
-            stepsAvailable = true,
-            cameraAvailable = true,
+            options = earnOptions(stepsAvailable = true, cameraAvailable = true),
             onBack = {},
-            onWalk = {},
-            onFocus = {},
-            onPushUps = {},
+            onStart = {},
             errorMessage = null,
         )
     }

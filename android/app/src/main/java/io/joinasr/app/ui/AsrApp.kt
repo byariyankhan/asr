@@ -43,6 +43,7 @@ import io.joinasr.app.PendingInvite
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.earnOptions
 import io.joinasr.app.earn.EarnViewModel
 import io.joinasr.app.enforcement.PactViewModel
 import io.joinasr.app.ui.components.AsrBottomNav
@@ -1254,36 +1255,35 @@ fun AsrApp(
                                     ChooseActivityScreen(
                                         app = earnApp,
                                         earnedSoFar = earnedToday.forPackage(earnApp.packageName),
-                                        stepsAvailable = earnViewModel.steps.available,
-                                        cameraAvailable = Permissions.hasCameraHardware(context),
+                                        options = earnOptions(
+                                            stepsAvailable = earnViewModel.steps.available,
+                                            cameraAvailable = Permissions.hasCameraHardware(context),
+                                        ),
                                         onBack = {
                                             earningFor = null
                                             earnViewModel.clearError()
                                         },
-                                        onWalk = {
+                                        onStart = { option ->
                                             val pact = activePact
-                                            if (pact == null) {
-                                                earningFor = null
-                                            } else if (Permissions.hasActivityRecognition(context)) {
-                                                earnViewModel.start(pact, earnApp, EarnRules.WALK)
-                                            } else {
-                                                askingForSteps = true
-                                            }
-                                        },
-                                        onFocus = {
-                                            activePact?.let {
-                                                earnViewModel.start(it, earnApp, EarnRules.FOCUS)
-                                            }
-                                        },
-                                        onPushUps = {
-                                            val pact = activePact
-                                            if (pact == null) {
-                                                earningFor = null
-                                            } else if (cameraGranted) {
-                                                cameraRefused = false
-                                                earnViewModel.start(pact, earnApp, EarnRules.PUSHUPS)
-                                            } else {
-                                                askingForCamera = true
+                                            when {
+                                                pact == null -> earningFor = null
+                                                // A walk and push-ups each need a permission
+                                                // first; the screen that asks for it starts
+                                                // the activity once it is granted.
+                                                option.type == EarnRules.WALK ->
+                                                    if (Permissions.hasActivityRecognition(context)) {
+                                                        earnViewModel.start(pact, earnApp, EarnRules.WALK)
+                                                    } else {
+                                                        askingForSteps = true
+                                                    }
+                                                option.type == EarnRules.PUSHUPS ->
+                                                    if (cameraGranted) {
+                                                        cameraRefused = false
+                                                        earnViewModel.start(pact, earnApp, EarnRules.PUSHUPS)
+                                                    } else {
+                                                        askingForCamera = true
+                                                    }
+                                                else -> earnViewModel.start(pact, earnApp, option.type)
                                             }
                                         },
                                         errorMessage = earnError ?: if (cameraRefused && !cameraGranted) {
