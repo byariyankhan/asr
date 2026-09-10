@@ -319,15 +319,19 @@ internal fun SmallPill(
     text: String,
     colour: androidx.compose.ui.graphics.Color,
     fill: androidx.compose.ui.graphics.Color,
+    fontSize: androidx.compose.ui.unit.TextUnit = 10.sp,
 ) {
+    // Padding follows the type, so the 8sp pill on a chooser tile is a
+    // smaller pill and not the same pill with a smaller word in it.
+    val tight = fontSize < 10.sp
     Box(
         modifier = Modifier
             .clip(CircleShape)
             .background(fill)
             .border(1.dp, AsrColors.FieldBorder, CircleShape)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+            .padding(horizontal = if (tight) 8.dp else 12.dp, vertical = if (tight) 4.dp else 7.dp),
     ) {
-        Text(text, style = AsrType.Eyebrow.copy(fontSize = 10.sp), color = colour)
+        Text(text, style = AsrType.Eyebrow.copy(fontSize = fontSize), color = colour, maxLines = 1)
     }
 }
 

@@ -126,7 +126,14 @@ fun NotificationsScreen(
             NotificationsOffCard(onTurnOn = onTurnOnNotifications)
             Spacer(Modifier.height(12.dp))
         }
-        Summary(unread = unread, count = items.size, loaded = loaded)
+        if (loaded && items.isEmpty()) {
+            Text(
+                "Nothing yet. Updates about your challenge, your witnesses and your " +
+                    "protection appear here.",
+                style = AsrType.Field,
+                color = AsrColors.TextSecondary,
+            )
+        }
 
         if (today.isNotEmpty()) {
             Spacer(Modifier.height(24.dp))
@@ -172,39 +179,6 @@ private fun NotificationsOffCard(onTurnOn: () -> Unit) {
         )
         Spacer(Modifier.height(12.dp))
         AsrPrimaryButton(text = "Turn on notifications", onClick = onTurnOn)
-    }
-}
-
-@Composable
-private fun Summary(unread: Int, count: Int, loaded: Boolean) {
-    val shape = RoundedCornerShape(18.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(AsrColors.Surface, shape)
-            .border(1.dp, AsrColors.FieldBorder, shape)
-            .padding(15.dp),
-    ) {
-        Text(
-            when {
-                !loaded -> "Loading…"
-                unread > 0 -> "$unread unread"
-                count == 0 -> "Nothing yet"
-                else -> "All read"
-            },
-            style = AsrType.CardTitle,
-            color = AsrColors.TextPrimary,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            if (count == 0 && loaded) {
-                "Updates about your challenge, your witnesses and your protection appear here."
-            } else {
-                "Important accountability and protection updates."
-            },
-            style = AsrType.Legal.copy(fontSize = 12.sp),
-            color = AsrColors.TextSecondary,
-        )
     }
 }
 
