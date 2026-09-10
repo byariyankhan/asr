@@ -6,7 +6,13 @@ import androidx.compose.runtime.produceState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
+import android.provider.Settings
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -15,6 +21,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -192,13 +201,18 @@ private fun ActivityGrid(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         options.chunked(GRID_COLUMNS).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Sized to the tallest tile, so a badge or a longer name on
+            // one does not leave its neighbours shorter.
+            Row(
+                modifier = Modifier.height(IntrinsicSize.Max),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 row.forEach { option ->
                     ActivityTile(
                         option = option,
                         dimmed = capped || !option.available,
                         onClick = { onOpen(option) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                 }
                 repeat(GRID_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
@@ -213,6 +227,9 @@ private const val GRID_COLUMNS = 3
  * One activity, at a glance. Always tappable: a dimmed tile opens the same
  * sheet, where the reason it cannot be started is written out, instead of
  * a dead square the person has to guess about.
+ *
+ * The badge row at the top is there on every tile, empty or not, so the
+ * three icons sit on one line and the tiles come out the same height.
  */
 @Composable
 private fun ActivityTile(
@@ -229,9 +246,16 @@ private fun ActivityTile(
             .background(AsrColors.Surface)
             .border(1.dp, AsrColors.FieldBorder, shape)
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 14.dp),
+            .padding(horizontal = 8.dp)
+            .padding(top = 10.dp, bottom = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Box(Modifier.height(22.dp), contentAlignment = Alignment.Center) {
+            if (option.recommended && !dimmed) {
+                SmallPill("RECOMMENDED", AsrColors.Accent, AsrColors.AccentMuted, fontSize = 8.sp)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
         Box(
             modifier = Modifier
                 .size(46.dp)
@@ -242,7 +266,8 @@ private fun ActivityTile(
             EarnIconView(
                 icon = option.icon,
                 colour = if (dimmed) AsrColors.TextTertiary else AsrColors.Accent,
-                size = 24.dp,
+                size = 26.dp,
+                moving = !dimmed,
             )
         }
         Spacer(Modifier.height(10.dp))
@@ -260,20 +285,51 @@ private fun ActivityTile(
             style = AsrType.Legal.copy(fontSize = 12.sp),
             color = if (dimmed) AsrColors.TextTertiary else AsrColors.Accent,
         )
-        if (option.recommended && !dimmed) {
-            Spacer(Modifier.height(8.dp))
-            SmallPill("RECOMMENDED", AsrColors.Accent, AsrColors.AccentMuted, fontSize = 8.sp)
-        }
     }
 }
 
-/** The drawing for an [EarnIcon]; the only place the enum meets Compose. */
+/**
+ * The drawing for an [EarnIcon]; the only place the enum meets Compose.
+ *
+ * [moving] plays the figure through its motion, slowly and forever, while
+ * it is on screen: a step, a phone set down, a push-up. It stops for a
+ * dimmed tile, and everywhere when the system's animation scale is off,
+ * which is the setting people who cannot stand motion use. A still icon
+ * is caught at the pose that reads best.
+ */
 @Composable
-private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp) {
+private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolean) {
+    val still = when (icon) {
+        EarnIcon.WALK -> 0.9f
+        EarnIcon.FOCUS -> 1f
+        EarnIcon.PUSH_UPS -> 0f
+    }
+    val period = when (icon) {
+        EarnIcon.WALK -> 620
+        EarnIcon.FOCUS -> 1500
+        EarnIcon.PUSH_UPS -> 1100
+    }
+    val context = LocalContext.current
+    val animationsOn = remember(context) {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+    }
+    val phase = if (moving && animationsOn) {
+        rememberInfiniteTransition(label = "earn-icon").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(period, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "phase",
+        ).value
+    } else {
+        still
+    }
     when (icon) {
-        EarnIcon.WALK -> AsrIcons.Walk(colour, size)
-        EarnIcon.FOCUS -> AsrIcons.Focus(colour, size)
-        EarnIcon.PUSH_UPS -> AsrIcons.PushUps(colour, size)
+        EarnIcon.WALK -> AsrIcons.Walk(colour, phase, size)
+        EarnIcon.FOCUS -> AsrIcons.Focus(colour, phase, size)
+        EarnIcon.PUSH_UPS -> AsrIcons.PushUps(colour, phase, size)
     }
 }
 
@@ -313,7 +369,7 @@ private fun ActivitySheet(
                         .background(AsrColors.AccentMuted),
                     contentAlignment = Alignment.Center,
                 ) {
-                    EarnIconView(icon = option.icon, colour = AsrColors.Accent, size = 26.dp)
+                    EarnIconView(icon = option.icon, colour = AsrColors.Accent, size = 28.dp, moving = option.available)
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
