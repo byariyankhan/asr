@@ -57,7 +57,10 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun start(pact: Pact, app: PactApp, type: String) {
         viewModelScope.launch {
-            if (store.currentActive() != null) return@launch
+            if (store.currentActive() != null) {
+                _error.value = "You already have an activity running. Open it from Home."
+                return@launch
+            }
             val earnedSoFar = store.earnedToday().forPackage(app.packageName)
             if (earnedSoFar >= EarnRules.DAILY_CAP_MINUTES) {
                 _error.value = "You have earned all the bonus time ${app.label} can have today."
@@ -103,6 +106,7 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val running = store.currentActive() ?: return@launch
             if (!running.isWalk) return@launch
+            if (expireIfOverdue(running)) return@launch
             if (running.baselineSteps < 0 || total < running.baselineSteps) {
                 store.update(running.copy(baselineSteps = total, progress = 0))
                 return@launch
@@ -126,6 +130,7 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val running = store.currentActive() ?: return@launch
             if (!running.isPushUps || running.isComplete) return@launch
+            if (expireIfOverdue(running)) return@launch
             val updated = running.copy(progress = running.progress + 1)
             if (updated.isComplete) finish(updated) else store.update(updated)
         }
@@ -137,6 +142,20 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
             store.clearActive(running.id)
             runCatching { sync.cancelActivity(running) }
         }
+    }
+
+    /**
+     * The server fails an activity whose deadline passed (docs/API.md) and
+     * would refuse its completion; a set paused at breakfast and finished
+     * at midnight must not be awarded here first and refused there after.
+     * The same rule, applied on the phone before the last rep rather than
+     * discovered after it. True if the activity was stood down.
+     */
+    private suspend fun expireIfOverdue(running: EarnActivity): Boolean {
+        if (!running.expired(System.currentTimeMillis())) return false
+        store.clearActive(running.id)
+        _error.value = "That activity ran out of time. Start a fresh one."
+        return true
     }
 
     fun acknowledgeEarned() {

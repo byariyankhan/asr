@@ -1,6 +1,7 @@
 package io.joinasr.app.ui
 
 import android.Manifest
+import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -309,11 +311,36 @@ fun AsrApp(
     // The same pair for the camera, between choosing push-ups and the grant.
     var askingForCamera by remember { mutableStateOf(false) }
     var pushUpsOnceGranted by remember { mutableStateOf(false) }
+    // A refusal is said, not swallowed: the chooser names it, and once
+    // Android has stopped showing the dialog (two refusals) the camera
+    // screen's button goes to the app's page in Settings instead, the way
+    // notifications already do. A silent nothing is not an answer.
+    var cameraRefused by remember { mutableStateOf(false) }
+    var cameraDeniedForGood by remember { mutableStateOf(false) }
+    // Read into state rather than asked on every composition, because a
+    // grant made on the app's Settings page arrives through no callback:
+    // the resume below re-reads it, and the screens follow.
+    var cameraGranted by remember { mutableStateOf(Permissions.hasCamera(context)) }
     val askForCamera = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         askingForCamera = false
         pushUpsOnceGranted = granted
+        cameraRefused = !granted
+        if (!granted) {
+            val activity = context as? Activity
+            cameraDeniedForGood = activity != null &&
+                !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA)
+        } else {
+            cameraDeniedForGood = false
+        }
+    }
+    val allowCamera: () -> Unit = {
+        if (cameraDeniedForGood) {
+            runCatching { context.startActivity(Permissions.appDetailsIntent(context)) }
+        } else {
+            askForCamera.launch(Manifest.permission.CAMERA)
+        }
     }
 
     // Notifications, asked of a witness rather than of everybody at launch.
@@ -398,6 +425,17 @@ fun AsrApp(
     // exactly the moment somebody returns from granting one.
     LifecycleResumeEffect(Unit) {
         protection = PermissionState.read(context)
+        cameraGranted = Permissions.hasCamera(context)
+        if (cameraGranted) {
+            // Back from Settings with the camera allowed: the refusal is
+            // over, and a push-up set chosen before the trip starts now.
+            cameraRefused = false
+            cameraDeniedForGood = false
+            if (askingForCamera) {
+                askingForCamera = false
+                pushUpsOnceGranted = true
+            }
+        }
         onPauseOrDispose {}
     }
 
@@ -478,7 +516,14 @@ fun AsrApp(
                 onLinkHandled()
             }
             is DeepLink.Earn -> {
-                earningFor = opened.packageName
+                // One activity at a time, as on the dashboard: a set put
+                // aside with the back chevron comes back rather than a
+                // chooser whose rows would do nothing.
+                if (activeActivity != null) {
+                    activityMinimised = false
+                } else {
+                    earningFor = opened.packageName
+                }
                 tab = AsrTab.Home
                 onLinkHandled()
             }
@@ -681,6 +726,15 @@ fun AsrApp(
     // screen used to ignore the button altogether.
     val invitationOpen = code != null && (signedIn || !inviteDeferred) && !needsProfile
     val earnAppNow = (pactState as? PactState.Active)?.pact?.let { pact -> earningFor?.let(pact::appFor) }
+    // The chooser shows the earn error. Anywhere else -- a set put aside
+    // with "Finish later" and stood down for running out of time, say --
+    // the message would otherwise vanish with the set it explains.
+    LaunchedEffect(earnError, earnAppNow) {
+        val message = earnError ?: return@LaunchedEffect
+        if (earnAppNow != null) return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        earnViewModel.clearError()
+    }
     val backAction: (() -> Unit)? = when {
         resetToken != null -> ({
             resetToken = null
@@ -1085,6 +1139,7 @@ fun AsrApp(
                     walkOnceGranted = false
                     askingForCamera = false
                     pushUpsOnceGranted = false
+                    cameraRefused = false
                     showingNotifications = false
                     showingProtectionLost = false
                     fixingProtection = false
@@ -1139,15 +1194,16 @@ fun AsrApp(
                                         },
                                     )
                                 } else if (running != null && !activityMinimised && running.isPushUps &&
-                                    !Permissions.hasCamera(context)
+                                    !cameraGranted
                                 ) {
                                     // Revoked in Settings mid-set. Ask again
                                     // rather than open a camera that will
                                     // refuse; the activity and its count wait.
                                     CameraAccessScreen(
                                         onBack = { activityMinimised = true },
-                                        onAllow = { askForCamera.launch(Manifest.permission.CAMERA) },
+                                        onAllow = allowCamera,
                                         onSkip = { activityMinimised = true },
+                                        openSettings = cameraDeniedForGood,
                                     )
                                 } else if (running != null && !activityMinimised && running.isPushUps) {
                                     PushUpProgressScreen(
@@ -1178,8 +1234,9 @@ fun AsrApp(
                                 } else if (earnApp != null && askingForCamera) {
                                     CameraAccessScreen(
                                         onBack = { askingForCamera = false },
-                                        onAllow = { askForCamera.launch(Manifest.permission.CAMERA) },
+                                        onAllow = allowCamera,
                                         onSkip = { askingForCamera = false },
+                                        openSettings = cameraDeniedForGood,
                                     )
                                 } else if (earnApp != null && askingForSteps) {
                                     // Figma 22.
@@ -1222,13 +1279,19 @@ fun AsrApp(
                                             val pact = activePact
                                             if (pact == null) {
                                                 earningFor = null
-                                            } else if (Permissions.hasCamera(context)) {
+                                            } else if (cameraGranted) {
+                                                cameraRefused = false
                                                 earnViewModel.start(pact, earnApp, EarnRules.PUSHUPS)
                                             } else {
                                                 askingForCamera = true
                                             }
                                         },
-                                        errorMessage = earnError,
+                                        errorMessage = earnError ?: if (cameraRefused && !cameraGranted) {
+                                            "Camera access was refused, so push-ups cannot be counted. " +
+                                                "Choose push-ups again to allow it."
+                                        } else {
+                                            null
+                                        },
                                     )
                                 } else if (about != null) {
                                     // Figma 25.
@@ -1309,6 +1372,7 @@ fun AsrApp(
                                         },
                                         unreadNotifications = unread,
                                         earnedMinutes = earnedToday.minutesByPackage,
+                                        runningActivity = activeActivity,
                                         onEarnTime = { app ->
                                             // One activity at a time: while one
                                             // runs, Earn shows it again rather
