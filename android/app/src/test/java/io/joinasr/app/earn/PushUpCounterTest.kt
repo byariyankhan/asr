@@ -19,7 +19,7 @@ class PushUpCounterTest {
         leftVisibility: Float = 0.95f,
         rightVisibility: Float = 0.2f,
         hipVisibility: Float = 0.95f,
-    ): PushUpPose {
+    ): BodyPose {
         val shoulder = Landmark(0.3f, 0.5f, leftVisibility)
         val torso = Math.toRadians(torsoDegrees)
         val hip = Landmark(
@@ -42,7 +42,7 @@ class PushUpCounterTest {
         // occluded point. Without both eyes there is no face to measure,
         // so a side view is never judged by the front rule.
         val eye = Landmark(0.2f, 0.45f, 0.9f)
-        return PushUpPose(
+        return BodyPose(
             nose = Landmark(0.15f, 0.47f, 0.9f),
             leftEye = eye, rightEye = eye.copy(x = 0.22f, visibility = 0.3f),
             mouthLeft = Landmark(0.19f, 0.5f, 0.9f), mouthRight = Landmark(0.2f, 0.5f, 0.9f),
@@ -61,12 +61,12 @@ class PushUpCounterTest {
         eyeGap: Float,
         eyeVisibility: Float = 0.95f,
         eyesToMouth: Float = eyeGap,
-    ): PushUpPose {
+    ): BodyPose {
         val left = Landmark(0.5f - eyeGap / 2, 0.4f, eyeVisibility)
         val right = Landmark(0.5f + eyeGap / 2, 0.4f, eyeVisibility)
         val shoulder = Landmark(0.5f, 0.9f, 0.6f)
         val gone = Landmark(0.5f, 1.2f, 0.05f)
-        return PushUpPose(
+        return BodyPose(
             nose = Landmark(0.5f, 0.5f, eyeVisibility),
             leftEye = left, rightEye = right,
             mouthLeft = Landmark(0.48f, 0.4f + eyesToMouth, eyeVisibility),
@@ -77,7 +77,7 @@ class PushUpCounterTest {
     }
 
     /** Feeds [frames] identical poses [gapMillis] apart, returning how many reps completed. */
-    private fun PushUpCounter.hold(pose: PushUpPose?, from: Long, frames: Int = 3, gapMillis: Long = 50): Int =
+    private fun PushUpCounter.hold(pose: BodyPose?, from: Long, frames: Int = 3, gapMillis: Long = 50): Int =
         (0 until frames).count { observe(pose, from + it * gapMillis) }
 
     @Test fun `straight, bent, straight is one push-up`() {
@@ -387,21 +387,21 @@ class PushUpCounterTest {
         // A straight arm pointing down in a 4:3 frame: in normalised
         // space the vertical run is scaled by 3/4 relative to horizontal,
         // which an angle check must undo before it can call it straight.
-        val points = MutableList(PushUpPose.LANDMARK_COUNT) { Landmark(0f, 0f, 0f) }
-        points[PushUpPose.NOSE] = Landmark(0.30f, 0.32f, 1f)
-        points[PushUpPose.LEFT_EYE] = Landmark(0.28f, 0.30f, 1f)
-        points[PushUpPose.MOUTH_LEFT] = Landmark(0.29f, 0.36f, 1f)
-        points[PushUpPose.MOUTH_RIGHT] = Landmark(0.31f, 0.36f, 1f)
-        points[PushUpPose.RIGHT_EYE] = Landmark(0.32f, 0.30f, 1f)
-        points[PushUpPose.LEFT_SHOULDER] = Landmark(0.30f, 0.40f, 1f)
-        points[PushUpPose.LEFT_ELBOW] = Landmark(0.30f, 0.55f, 1f)
-        points[PushUpPose.LEFT_WRIST] = Landmark(0.36f, 0.70f, 1f)
-        points[PushUpPose.LEFT_HIP] = Landmark(0.60f, 0.40f, 1f)
-        val pose = PushUpPose.fromNormalised(points, aspectRatio = 4f / 3f)!!
+        val points = MutableList(BodyPose.LANDMARK_COUNT) { Landmark(0f, 0f, 0f) }
+        points[BodyPose.NOSE] = Landmark(0.30f, 0.32f, 1f)
+        points[BodyPose.LEFT_EYE] = Landmark(0.28f, 0.30f, 1f)
+        points[BodyPose.MOUTH_LEFT] = Landmark(0.29f, 0.36f, 1f)
+        points[BodyPose.MOUTH_RIGHT] = Landmark(0.31f, 0.36f, 1f)
+        points[BodyPose.RIGHT_EYE] = Landmark(0.32f, 0.30f, 1f)
+        points[BodyPose.LEFT_SHOULDER] = Landmark(0.30f, 0.40f, 1f)
+        points[BodyPose.LEFT_ELBOW] = Landmark(0.30f, 0.55f, 1f)
+        points[BodyPose.LEFT_WRIST] = Landmark(0.36f, 0.70f, 1f)
+        points[BodyPose.LEFT_HIP] = Landmark(0.60f, 0.40f, 1f)
+        val pose = BodyPose.fromNormalised(points, aspectRatio = 4f / 3f)!!
         assertEquals(0.40f, pose.leftShoulder.x, 1e-6f)
         assertEquals(0.40f, pose.leftShoulder.y, 1e-6f)
         assertEquals(0.80f, pose.leftHip.x, 1e-6f)
         assertEquals(0.28f * 4f / 3f, pose.leftEye.x, 1e-6f)
-        assertNull(PushUpPose.fromNormalised(points.take(10), 1f))
+        assertNull(BodyPose.fromNormalised(points.take(10), 1f))
     }
 }

@@ -1,4 +1,4 @@
-# Push-ups (earn time)
+# Push-ups, and the other camera activities (earn time)
 
 Seven push-ups, counted by the camera, earn the same +10 minutes as a
 2 km walk or a 20-minute phone-free session. The selected app, the reward,
@@ -104,6 +104,47 @@ Built for somebody on the floor, half a metre from the screen, hands busy:
 - A refused camera permission is said on the chooser, and once Android
   stops showing the dialog the camera screen's button opens the app's
   page in Settings, as the notification flow does.
+
+## The plank and the wall sit
+
+Two more activities on the same camera, forty-five seconds each: the easy
+end of the list, for the person who would give the challenge up if every
+way to earn were a walk. Server types `plank` and `wall_sit`, rules
+`{ "target": 45, "reward_min": 10, "daily_cap_min": 30 }` (seconds).
+
+The screen is the push-up screen (`CameraActivityScreen`), told what it is
+running by a `CameraSpec` (`earn/CameraActivities.kt`): the judge that
+watches the poses, the noun for the units, and where the phone goes. A
+judge is a `PoseJudge`: one frame in, how many units it earned out, and
+the next thing to do as a title and a line. The push-up counter is one
+(`PushUpJudge` wraps it); the two holds are `HoldJudge` with a position
+rule from `HoldPositions`:
+
+- **Plank**, from the side: shoulder, hip and ankle on one side of the
+  body all seen, the shoulder-to-ankle line sloping down to the feet by
+  6° to 45° (lying flat is under, sitting up is over), and the hip within
+  14% of that line's length from it (sagging or piked hips are off it;
+  sitting with the legs out has the hips far below it). Forearms or hands
+  are not asked about. A kneeling plank passes; that is the easy end.
+- **Wall sit**, from the side: the shoulder-to-hip line at least 55° from
+  horizontal, the hip-to-knee line within 30° of it, and the knee between
+  65° and 125°. A chair would pass too. The camera cannot see what is
+  behind the legs, and the mechanism is honesty.
+
+Both are timed, not counted: the clock runs while the position holds and
+stops while it does not, and whole seconds are handed to the activity as
+they complete, so leaving and coming back resumes at the same number. A
+break pauses the clock rather than resetting it. A change of phase has to
+hold for 400 ms before it is believed, so a hip the model loses for a
+frame is not a break; the settling time before a hold is believed is not
+counted, and the time before a break is believed is, which is the smaller
+error and the kinder one. Every fifth second ticks and pulses, and the
+last one; every second would be a metronome. Tested without a camera in
+`HoldJudgeTest`.
+
+Both are side-view only: the phone propped on its side a few steps away,
+low, with the whole body in the picture. From the floor under the face
+the model cannot see legs, and a plank cannot be told from kneeling.
 
 ## What it does not do
 

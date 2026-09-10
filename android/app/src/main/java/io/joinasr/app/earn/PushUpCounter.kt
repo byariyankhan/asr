@@ -1,7 +1,6 @@
 package io.joinasr.app.earn
 
 import kotlin.math.abs
-import kotlin.math.acos
 import kotlin.math.atan2
 import kotlin.math.hypot
 
@@ -9,21 +8,20 @@ import kotlin.math.hypot
  * One body landmark from the pose model, with how sure the model is that it
  * can actually be seen (0..1). Coordinates are in image proportions with
  * the aspect ratio already applied, so that an angle measured between them
- * is the angle in the picture: see [PushUpPose.fromNormalised].
+ * is the angle in the picture: see [BodyPose.fromNormalised].
  */
 data class Landmark(val x: Float, val y: Float, val visibility: Float)
 
 /**
- * The points a push-up is judged by. Both sides are carried because from a
- * side view the model reports the far arm through the torso at a low
- * visibility, and the counter picks whichever it can see better. The eyes
- * and the mouth are for the other view, the phone on the floor looking
- * up: how big the face is in the picture is how close it is, and a face
- * is measured two ways (across the eyes, and eyes to mouth) because a
- * head turned to the side shrinks one and a head bowed to the floor
- * shrinks the other, never both.
+ * The points of a body the camera activities are judged by. Both sides
+ * are carried because from a side view the model reports the far limb
+ * through the torso at a low visibility, and each judge picks whichever
+ * it can see better. The eyes and the mouth are for the push-up's floor
+ * view (how big the face is in the picture is how close it is); the knees
+ * and ankles are for the plank and the wall sit, which are judged on the
+ * shape of the whole body from the side.
  */
-data class PushUpPose(
+data class BodyPose(
     val nose: Landmark,
     val leftEye: Landmark,
     val rightEye: Landmark,
@@ -37,11 +35,18 @@ data class PushUpPose(
     val rightElbow: Landmark,
     val rightWrist: Landmark,
     val rightHip: Landmark,
+    val leftKnee: Landmark = UNSEEN,
+    val rightKnee: Landmark = UNSEEN,
+    val leftAnkle: Landmark = UNSEEN,
+    val rightAnkle: Landmark = UNSEEN,
 ) {
     companion object {
-        // MediaPipe Pose Landmarker's fixed 33-point order. The eight used
-        // here are the only ones this feature reads; the face, the hands
-        // and the feet are discarded on the way in.
+        /** A point the model has no opinion on. */
+        val UNSEEN = Landmark(0f, 0f, 0f)
+
+        // MediaPipe Pose Landmarker's fixed 33-point order. The points
+        // read here are the only ones this feature keeps; the hands, the
+        // feet and the rest of the face are discarded on the way in.
         const val NOSE = 0
         const val LEFT_EYE = 2
         const val RIGHT_EYE = 5
@@ -55,6 +60,10 @@ data class PushUpPose(
         const val RIGHT_WRIST = 16
         const val LEFT_HIP = 23
         const val RIGHT_HIP = 24
+        const val LEFT_KNEE = 25
+        const val RIGHT_KNEE = 26
+        const val LEFT_ANKLE = 27
+        const val RIGHT_ANKLE = 28
         const val LANDMARK_COUNT = 33
 
         /**
@@ -66,10 +75,10 @@ data class PushUpPose(
          * than a whole body, which it does not do in practice, but a
          * counter that crashes on a short list is not a counter.
          */
-        fun fromNormalised(points: List<Landmark>, aspectRatio: Float): PushUpPose? {
+        fun fromNormalised(points: List<Landmark>, aspectRatio: Float): BodyPose? {
             if (points.size < LANDMARK_COUNT) return null
             fun at(index: Int) = points[index].let { it.copy(x = it.x * aspectRatio) }
-            return PushUpPose(
+            return BodyPose(
                 nose = at(NOSE),
                 leftEye = at(LEFT_EYE),
                 rightEye = at(RIGHT_EYE),
@@ -83,6 +92,10 @@ data class PushUpPose(
                 rightElbow = at(RIGHT_ELBOW),
                 rightWrist = at(RIGHT_WRIST),
                 rightHip = at(RIGHT_HIP),
+                leftKnee = at(LEFT_KNEE),
+                rightKnee = at(RIGHT_KNEE),
+                leftAnkle = at(LEFT_ANKLE),
+                rightAnkle = at(RIGHT_ANKLE),
             )
         }
     }
@@ -195,7 +208,7 @@ class PushUpCounter(
      * One frame. Returns true when this frame finished a push-up, so the
      * caller can award it once rather than compare counts.
      */
-    fun observe(pose: PushUpPose?, nowMillis: Long): Boolean {
+    fun observe(pose: BodyPose?, nowMillis: Long): Boolean {
         val arm = pose?.let(::bestArm)
         val torso = pose?.let(::torsoTilt)
         // A body in a plank seen from the side is the side view. Failing
@@ -252,7 +265,7 @@ class PushUpCounter(
         }
     }
 
-    private fun front(pose: PushUpPose, nowMillis: Long): Boolean {
+    private fun front(pose: BodyPose, nowMillis: Long): Boolean {
         val raw = faceSize(pose)
         if (raw <= 0f) return settle(Phase.NO_BODY, nowMillis)
         // Light smoothing: the model's points shiver by a percent or two
@@ -328,7 +341,7 @@ class PushUpCounter(
     }
 
     /** A face the model is sure of: both eyes. Where it points is not asked. */
-    private fun hasFace(pose: PushUpPose): Boolean =
+    private fun hasFace(pose: BodyPose): Boolean =
         pose.leftEye.visibility >= minVisibility && pose.rightEye.visibility >= minVisibility
 
     /**
@@ -343,7 +356,7 @@ class PushUpCounter(
      * flickers in and out of the model's confidence therefore changes
      * nothing; a size that jumped with it would have read as a rep.
      */
-    private fun faceSize(pose: PushUpPose): Float {
+    private fun faceSize(pose: BodyPose): Float {
         val eyes = hypot(pose.leftEye.x - pose.rightEye.x, pose.leftEye.y - pose.rightEye.y)
         if (eyes <= 0f) return 0f
         val mouthSeen = pose.mouthLeft.visibility >= minVisibility && pose.mouthRight.visibility >= minVisibility
@@ -365,7 +378,7 @@ class PushUpCounter(
     }
 
     /** The arm the model can see best, or null if it cannot see one whole. */
-    private fun bestArm(pose: PushUpPose): Arm? {
+    private fun bestArm(pose: BodyPose): Arm? {
         val left = Arm(pose.leftShoulder, pose.leftElbow, pose.leftWrist)
         val right = Arm(pose.rightShoulder, pose.rightElbow, pose.rightWrist)
         val best = if (left.visibility >= right.visibility) left else right
@@ -378,7 +391,7 @@ class PushUpCounter(
      * body with no hips in the picture cannot be told from a person
      * standing at the edge of the frame.
      */
-    private fun torsoTilt(pose: PushUpPose): Float? {
+    private fun torsoTilt(pose: BodyPose): Float? {
         val sides = listOf(pose.leftShoulder to pose.leftHip, pose.rightShoulder to pose.rightHip)
         val (shoulder, hip) = sides
             .filter { (s, h) -> s.visibility >= minVisibility && h.visibility >= minVisibility }
@@ -389,14 +402,5 @@ class PushUpCounter(
         return Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
     }
 
-    private fun angleAt(vertex: Landmark, a: Landmark, b: Landmark): Float {
-        val ax = a.x - vertex.x
-        val ay = a.y - vertex.y
-        val bx = b.x - vertex.x
-        val by = b.y - vertex.y
-        val magnitude = hypot(ax, ay) * hypot(bx, by)
-        if (magnitude == 0f) return 180f
-        val cosine = ((ax * bx + ay * by) / magnitude).coerceIn(-1f, 1f)
-        return Math.toDegrees(acos(cosine).toDouble()).toFloat()
-    }
+    private fun angleAt(vertex: Landmark, a: Landmark, b: Landmark): Float = PoseGeometry.angleAt(vertex, a, b)
 }

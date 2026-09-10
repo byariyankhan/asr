@@ -7,7 +7,7 @@ import java.util.Locale
  * activity, drawn in ui/components/AsrIcons.kt; an enum rather than a
  * composable here so this file stays plain Kotlin.
  */
-enum class EarnIcon { WALK, FOCUS, PUSH_UPS }
+enum class EarnIcon { WALK, FOCUS, PUSH_UPS, PLANK, WALL_SIT }
 
 /**
  * One way to earn time, as the chooser describes it.
@@ -36,13 +36,19 @@ data class EarnOption(
     val recommended: Boolean,
     /** Why this phone cannot offer it, or null when it can. */
     val unavailableReason: String?,
+    /** The first line of the receipt: "Your walk is complete." */
+    val done: String,
 ) {
     val available: Boolean get() = unavailableReason == null
 }
 
+/** The catalogue entry for a type, however the phone is equipped, or null for a type the chooser does not list. */
+fun earnOptionFor(type: String): EarnOption? =
+    earnOptions(stepsAvailable = true, cameraAvailable = true).firstOrNull { it.type == type }
+
 /**
  * The activities this build can actually run, in the order the chooser
- * shows them. Only these three exist; nothing is listed that is not built.
+ * shows them. Only these exist; nothing is listed that is not built.
  *
  * Reward and target come from [EarnRules], the same constants the pact
  * locks and the view model starts with, so the sheet cannot promise a
@@ -65,6 +71,7 @@ fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean): List<EarnOpt
         unavailableReason = if (stepsAvailable) null else {
             "This phone has no step counter, so a walk cannot be measured."
         },
+        done = "Your walk is complete.",
     ),
     EarnOption(
         type = EarnRules.FOCUS,
@@ -81,6 +88,7 @@ fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean): List<EarnOpt
             "was completed, not when you unlocked.",
         recommended = false,
         unavailableReason = null,
+        done = "Your phone-free session is complete.",
     ),
     EarnOption(
         type = EarnRules.PUSHUPS,
@@ -98,5 +106,44 @@ fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean): List<EarnOpt
         unavailableReason = if (cameraAvailable) null else {
             "This phone has no camera, so push-ups cannot be counted."
         },
+        done = "Your push-ups are done.",
+    ),
+    EarnOption(
+        type = EarnRules.PLANK,
+        name = "Plank",
+        title = "Hold a plank for ${EarnRules.PLANK_SECONDS} seconds",
+        target = "${EarnRules.PLANK_SECONDS} seconds, timed on camera",
+        icon = EarnIcon.PLANK,
+        explanation = "Prop your phone on its side a few steps away and get into a plank, on your " +
+            "forearms or your hands. The clock runs while you hold it. Rest if you need to: " +
+            "the seconds you have done are kept.",
+        verification = "The front camera and an on-device pose model: the clock runs while your " +
+            "shoulders, hips and ankles make a straight line.",
+        privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
+            "judged, and nothing from the camera leaves the phone.",
+        recommended = false,
+        unavailableReason = if (cameraAvailable) null else {
+            "This phone has no camera, so a plank cannot be timed."
+        },
+        done = "Your plank is done.",
+    ),
+    EarnOption(
+        type = EarnRules.WALL_SIT,
+        name = "Wall sit",
+        title = "Hold a wall sit for ${EarnRules.WALL_SIT_SECONDS} seconds",
+        target = "${EarnRules.WALL_SIT_SECONDS} seconds, timed on camera",
+        icon = EarnIcon.WALL_SIT,
+        explanation = "Back against a wall, slide down until your knees are at a right angle, and " +
+            "hold it. Prop your phone on its side a few steps away, looking at you from the side. " +
+            "Rest if you need to: the seconds you have done are kept.",
+        verification = "The front camera and an on-device pose model: the clock runs while your " +
+            "back is upright and your thighs are level with the floor.",
+        privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
+            "judged, and nothing from the camera leaves the phone.",
+        recommended = false,
+        unavailableReason = if (cameraAvailable) null else {
+            "This phone has no camera, so a wall sit cannot be timed."
+        },
+        done = "Your wall sit is done.",
     ),
 )

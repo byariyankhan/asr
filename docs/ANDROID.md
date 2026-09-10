@@ -473,6 +473,8 @@ missed.
 | `walk_steps` | `TYPE_STEP_COUNTER` (needs `ACTIVITY_RECOGNITION` on API 29+) | Delta since activity start; capped at 200 steps/min to reject shaking |
 | `focus_session` | None: timer with screen-on and no controlled app foregrounded | Any controlled app foreground cancels the session |
 | `push_ups` | Front camera through CameraX, MediaPipe Pose Landmarker on-device (needs `CAMERA`) | Elbow straight → bent → straight in a plank, seven times; frames are dropped after inference. `android/PUSH_UPS.md` |
+| `plank` | Same camera and model | Shoulder, hip and ankle in one straight line sloping to the feet, timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
+| `wall_sit` | Same camera and model | Back upright, thigh level, knee near a right angle, timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
 | `waiting_period` | None: countdown | Nothing to verify; it is friction, not proof |
 
 Reward minutes are applied locally the instant the activity completes and
@@ -500,7 +502,7 @@ opens the accept screen after sign-up.
 | `SYSTEM_ALERT_WINDOW` | Show the block screen over other apps | Onboarding step 3 |
 | `POST_NOTIFICATIONS` | Witness and reminder notifications | Onboarding step 4 |
 | `ACTIVITY_RECOGNITION` | Step activities | First time a step activity is started |
-| `CAMERA` | Counting push-ups, on the phone; nothing saved or sent | First time a push-up activity is started |
+| `CAMERA` | Counting push-ups and timing a plank or a wall sit, on the phone; nothing saved or sent | First time a camera activity is started |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | The protection service | Manifest |
 | `RECEIVE_BOOT_COMPLETED` | Restart protection after reboot | Manifest |
 
