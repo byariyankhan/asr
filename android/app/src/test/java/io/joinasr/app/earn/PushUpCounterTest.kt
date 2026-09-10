@@ -37,12 +37,15 @@ class PushUpCounterTest {
             leftVisibility,
         )
         val ghost = Landmark(0.5f, 0.5f, rightVisibility)
-        // A face in profile: eyes nearly in line, nose well past them. It
-        // must not pull a side view over to the front rule.
+        // A face in profile: the near eye seen, the far one behind the
+        // nose and reported with the low visibility the model gives an
+        // occluded point. Without both eyes there is no face to measure,
+        // so a side view is never judged by the front rule.
         val eye = Landmark(0.2f, 0.45f, 0.9f)
         return PushUpPose(
             nose = Landmark(0.15f, 0.47f, 0.9f),
-            leftEye = eye, rightEye = eye.copy(x = 0.22f),
+            leftEye = eye, rightEye = eye.copy(x = 0.22f, visibility = 0.3f),
+            mouthLeft = Landmark(0.19f, 0.5f, 0.9f), mouthRight = Landmark(0.2f, 0.5f, 0.9f),
             leftShoulder = shoulder, leftElbow = elbow, leftWrist = wrist, leftHip = hip,
             rightShoulder = ghost, rightElbow = ghost, rightWrist = ghost, rightHip = ghost,
         )
@@ -50,9 +53,15 @@ class PushUpCounterTest {
 
     /**
      * The phone on the floor looking up: a face whose eyes are [eyeGap]
-     * apart in the picture, shoulders half-visible, no hips at all.
+     * apart in the picture and whose mouth is [eyesToMouth] below them
+     * (the same as the gap unless said otherwise, which is roughly a
+     * face), shoulders half-visible, no hips at all.
      */
-    private fun face(eyeGap: Float, eyeVisibility: Float = 0.95f): PushUpPose {
+    private fun face(
+        eyeGap: Float,
+        eyeVisibility: Float = 0.95f,
+        eyesToMouth: Float = eyeGap,
+    ): PushUpPose {
         val left = Landmark(0.5f - eyeGap / 2, 0.4f, eyeVisibility)
         val right = Landmark(0.5f + eyeGap / 2, 0.4f, eyeVisibility)
         val shoulder = Landmark(0.5f, 0.9f, 0.6f)
@@ -60,6 +69,8 @@ class PushUpCounterTest {
         return PushUpPose(
             nose = Landmark(0.5f, 0.5f, eyeVisibility),
             leftEye = left, rightEye = right,
+            mouthLeft = Landmark(0.48f, 0.4f + eyesToMouth, eyeVisibility),
+            mouthRight = Landmark(0.52f, 0.4f + eyesToMouth, eyeVisibility),
             leftShoulder = shoulder, leftElbow = gone, leftWrist = gone, leftHip = gone,
             rightShoulder = shoulder, rightElbow = gone, rightWrist = gone, rightHip = gone,
         )
@@ -257,11 +268,44 @@ class PushUpCounterTest {
         assertEquals(0, counter.reps)
     }
 
-    @Test fun `a face in profile with no hips in view is nobody, not a front view`() {
+    @Test fun `looking at the floor, not the phone, still counts`() {
         val counter = PushUpCounter()
-        val profile = face(0.10f).copy(nose = Landmark(0.2f, 0.5f, 0.9f))
-        counter.hold(profile, 0)
-        assertEquals(PushUpCounter.View.NONE, counter.view)
+        // A bowed head foreshortens the eyes-to-mouth line; across the
+        // eyes it is unchanged, and that is the measure that holds.
+        counter.hold(face(0.10f, eyesToMouth = 0.05f), 0)
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        counter.hold(face(0.18f, eyesToMouth = 0.09f), 1_000)
+        assertEquals(PushUpCounter.Phase.DOWN, counter.phase)
+        assertEquals(1, counter.hold(face(0.10f, eyesToMouth = 0.05f), 2_000))
+    }
+
+    @Test fun `turning the head aside is not a push-up, and does not spoil the next one`() {
+        val counter = PushUpCounter()
+        counter.hold(face(0.10f), 0)
+        // Turned 50 degrees: the eyes close up in the picture, the mouth
+        // stays where it was below them. The face is no bigger.
+        counter.hold(face(0.06f, eyesToMouth = 0.10f), 1_000)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        // Turned back: no closer than before, so nothing happens...
+        assertEquals(0, counter.hold(face(0.10f), 2_000))
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        // ...and the next real rep counts against the same baseline.
+        counter.hold(face(0.18f), 3_000)
+        assertEquals(1, counter.hold(face(0.10f), 4_000))
+    }
+
+    @Test fun `a face with no mouth in view is measured across the eyes`() {
+        val counter = PushUpCounter()
+        val eyesOnly = { gap: Float ->
+            face(gap).let {
+                it.copy(mouthLeft = it.mouthLeft.copy(visibility = 0.1f), mouthRight = it.mouthRight.copy(visibility = 0.1f))
+            }
+        }
+        counter.hold(eyesOnly(0.10f), 0)
+        assertEquals(PushUpCounter.View.FRONT, counter.view)
+        counter.hold(eyesOnly(0.18f), 1_000)
+        assertEquals(1, counter.hold(eyesOnly(0.10f), 2_000))
     }
 
     @Test fun `a face on its side, the phone laid the other way, is still a face`() {
@@ -271,6 +315,8 @@ class PushUpCounterTest {
                 leftEye = Landmark(0.5f, 0.4f - gap / 2, 0.95f),
                 rightEye = Landmark(0.5f, 0.4f + gap / 2, 0.95f),
                 nose = Landmark(0.6f, 0.4f, 0.95f),
+                mouthLeft = Landmark(0.5f + gap, 0.38f, 0.95f),
+                mouthRight = Landmark(0.5f + gap, 0.42f, 0.95f),
             )
         }
         counter.hold(sideways(0.10f), 0)
@@ -279,7 +325,7 @@ class PushUpCounterTest {
         assertEquals(1, counter.hold(sideways(0.10f), 2_000))
     }
 
-    @Test fun `a face looking into the lens is the floor view even if the model guesses an arm and a hip`() {
+    @Test fun `a face is the floor view even if the model guesses an upright arm and hip`() {
         val counter = PushUpCounter()
         // From the floor the body is foreshortened into something the
         // model may still call an arm and a torso, standing upright.
@@ -320,6 +366,8 @@ class PushUpCounterTest {
         val points = MutableList(PushUpPose.LANDMARK_COUNT) { Landmark(0f, 0f, 0f) }
         points[PushUpPose.NOSE] = Landmark(0.30f, 0.32f, 1f)
         points[PushUpPose.LEFT_EYE] = Landmark(0.28f, 0.30f, 1f)
+        points[PushUpPose.MOUTH_LEFT] = Landmark(0.29f, 0.36f, 1f)
+        points[PushUpPose.MOUTH_RIGHT] = Landmark(0.31f, 0.36f, 1f)
         points[PushUpPose.RIGHT_EYE] = Landmark(0.32f, 0.30f, 1f)
         points[PushUpPose.LEFT_SHOULDER] = Landmark(0.30f, 0.40f, 1f)
         points[PushUpPose.LEFT_ELBOW] = Landmark(0.30f, 0.55f, 1f)

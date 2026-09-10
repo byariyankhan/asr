@@ -25,14 +25,19 @@ from what the model can see:
 where the first person to try it put the phone, and the default the
 screen now teaches):
 
-- The face has to be looking at the lens: both eyes seen and the nose
-  between them. A profile is never judged by how close it looks.
-- Distance is read from how far apart the eyes are in the picture, against
-  the farthest they have been while up. Down is 1.35× closer, up is back
-  within 1.12×. The baseline is whatever "up" the person has, so the phone
-  can lie anywhere and a set begun from the bottom counts from the next
-  rep. A nod towards the phone (about 1.2×) is between the two and counts
-  for nothing.
+- A face: both eyes seen by the model. Nobody has to look at the phone.
+  The face is measured two ways, across the eyes and from the eyes to the
+  mouth, and the larger is taken: a head bowed to the floor shrinks the
+  second, a head turned aside shrinks the first, never both, so where the
+  person looks changes the reading little.
+- Distance is read from that size, against the smallest it has been while
+  up. Down is 1.35× closer, up is back within 1.12×. The baseline is
+  whatever "up" the person has, so the phone can lie anywhere and a set
+  begun from the bottom counts from the next rep. A nod towards the phone
+  (about 1.2×) is between the two and counts for nothing.
+- A body in a plank seen from the side is judged as a side view first;
+  otherwise a face is the floor view, even when the model guesses an
+  upright arm and hip out of a foreshortened body.
 - "Down" held for four seconds is a phone that was moved, not a push-up:
   where the face is now becomes the new up, uncounted.
 
