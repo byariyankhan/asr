@@ -156,6 +156,8 @@ export interface ActivityTable {
     | "wall_sit"
     | "run_steps"
     | "stairs"
+    | "cycling"
+    | "meditation"
     | "waiting_period";
   /** The app whose limit this earn was for, when the phone said. */
   app_package: string | null;
