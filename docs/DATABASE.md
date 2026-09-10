@@ -124,6 +124,10 @@ with have no `added_on`.
     "walk_steps":     { "target": 3000, "reward_min": 10, "daily_cap_min": 30 },
     "focus_session":  { "target_min": 25, "reward_min": 10, "daily_cap_min": 30 },
     "push_ups":       { "target": 7, "reward_min": 10, "daily_cap_min": 30 },
+    "plank":          { "target": 45, "reward_min": 10, "daily_cap_min": 30 },
+    "wall_sit":       { "target": 45, "reward_min": 10, "daily_cap_min": 30 },
+    "run_steps":      { "target": 1000, "reward_min": 10, "daily_cap_min": 30 },
+    "stairs":         { "target": 10, "reward_min": 10, "daily_cap_min": 30 },
     "waiting_period": { "wait_min": 10, "reward_min": 5, "daily_cap_min": 15 }
   }
 }
@@ -181,8 +185,9 @@ create table activity (
   id             uuid primary key,
   pact_id        uuid not null references pact(id) on delete cascade,
   user_id        text not null references "user"(id) on delete cascade,
-  type           text not null check (type in ('walk_steps', 'focus_session', 'push_ups', 'waiting_period')),  -- push_ups since 0013
-  target         integer not null,              -- steps, minutes, or reps
+  type           text not null check (type in ('walk_steps', 'focus_session', 'push_ups', 'plank', 'wall_sit',
+                   'run_steps', 'stairs', 'waiting_period')),  -- push_ups since 0013, the rest since 0014
+  target         integer not null,              -- steps, minutes, reps, seconds, or floors
   reward_min     integer not null,
   started_at     timestamptz not null,
   deadline_at    timestamptz not null,

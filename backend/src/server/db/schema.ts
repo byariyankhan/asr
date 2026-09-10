@@ -148,7 +148,15 @@ export interface ActivityTable {
   id: string;
   pact_id: string;
   user_id: string;
-  type: "walk_steps" | "focus_session" | "push_ups" | "waiting_period";
+  type:
+    | "walk_steps"
+    | "focus_session"
+    | "push_ups"
+    | "plank"
+    | "wall_sit"
+    | "run_steps"
+    | "stairs"
+    | "waiting_period";
   /** The app whose limit this earn was for, when the phone said. */
   app_package: string | null;
   target: number;

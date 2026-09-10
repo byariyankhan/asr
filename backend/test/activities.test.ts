@@ -36,6 +36,10 @@ describe.skipIf(!DATABASE_URL)("activities and daily summary", async () => {
           walk_steps: { target: 3000, reward_min: 10, daily_cap_min: 20 },
           focus_session: { target_min: 20, reward_min: 10, daily_cap_min: 20 },
           push_ups: { target: 7, reward_min: 10, daily_cap_min: 20 },
+          plank: { target: 45, reward_min: 10, daily_cap_min: 20 },
+          wall_sit: { target: 45, reward_min: 10, daily_cap_min: 20 },
+          run_steps: { target: 1000, reward_min: 10, daily_cap_min: 20 },
+          stairs: { target: 10, reward_min: 10, daily_cap_min: 20 },
         },
       },
     });
