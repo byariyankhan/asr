@@ -41,7 +41,7 @@ data class PactAppAdd(
 data class ActivityRule(
     @SerialName("reward_min") val rewardMinutes: Int,
     @SerialName("daily_cap_min") val dailyCapMinutes: Int,
-    /** Steps, for a walk; reps, for push-ups; seconds, for a hold. */
+    /** Steps, for a walk or a run; reps, for push-ups; seconds, for a hold; floors, for a climb. */
     val target: Int? = null,
     /** Minutes, for a focus session. */
     @SerialName("target_min") val targetMinutes: Int? = null,
@@ -69,6 +69,9 @@ data class ActivityRules(
     /** Timed by the camera, in seconds. Server since migration 0014. */
     @SerialName("plank") val plank: ActivityRule? = null,
     @SerialName("wall_sit") val wallSit: ActivityRule? = null,
+    /** Steps at a running cadence, and floors climbed. Server since migration 0014. */
+    @SerialName("run_steps") val runSteps: ActivityRule? = null,
+    @SerialName("stairs") val stairs: ActivityRule? = null,
 )
 
 @Serializable

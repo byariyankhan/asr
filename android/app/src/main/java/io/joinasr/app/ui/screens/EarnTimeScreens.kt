@@ -311,6 +311,8 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.PUSH_UPS -> 0f
         EarnIcon.PLANK -> 0f
         EarnIcon.WALL_SIT -> 0f
+        EarnIcon.RUN -> 1f
+        EarnIcon.STAIRS -> 0.8f
     }
     val period = when (icon) {
         EarnIcon.WALK -> 620
@@ -318,6 +320,8 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.PUSH_UPS -> 1100
         EarnIcon.PLANK -> 1800
         EarnIcon.WALL_SIT -> 260
+        EarnIcon.RUN -> 420
+        EarnIcon.STAIRS -> 700
     }
     val context = LocalContext.current
     val animationsOn = remember(context) {
@@ -342,6 +346,8 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.PUSH_UPS -> AsrIcons.PushUps(colour, phase, size)
         EarnIcon.PLANK -> AsrIcons.Plank(colour, phase, size)
         EarnIcon.WALL_SIT -> AsrIcons.WallSit(colour, phase, size)
+        EarnIcon.RUN -> AsrIcons.Run(colour, phase, size)
+        EarnIcon.STAIRS -> AsrIcons.Stairs(colour, phase, size)
     }
 }
 
@@ -460,12 +466,14 @@ private fun SheetSection(heading: String, body: String) {
 /**
  * Figma 22 — Permission / Activity Tracking — First Walk (node 119:73).
  *
- * Asked the first time somebody chooses a walk and never at launch, which is
+ * Asked the first time somebody chooses a walk (or a run, or a climb: the
+ * same step counter, the same permission) and never at launch, which is
  * the difference between a permission a person understands and one they
  * refuse on principle.
  */
 @Composable
 fun ActivityTrackingScreen(
+    type: String = EarnRules.WALK,
     onBack: () -> Unit,
     onAllow: () -> Unit,
     onSkip: () -> Unit,
@@ -484,10 +492,18 @@ fun ActivityTrackingScreen(
         Spacer(Modifier.height(18.dp))
         Text("EARN TIME", style = AsrType.Eyebrow, color = AsrColors.Accent)
         Spacer(Modifier.height(14.dp))
-        Text("Track your walk.", style = AsrType.display(38), color = AsrColors.TextPrimary)
+        Text(
+            when (type) {
+                EarnRules.RUN -> "Track your run."
+                EarnRules.STAIRS -> "Track your climb."
+                else -> "Track your walk."
+            },
+            style = AsrType.display(38),
+            color = AsrColors.TextPrimary,
+        )
         Spacer(Modifier.height(16.dp))
         Text(
-            "Only requested when you choose a walking activity to earn extra app time.",
+            "Only requested when you choose an activity on foot to earn extra app time.",
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
         )
@@ -721,13 +737,16 @@ fun ActivityProgressScreen(
     modifier: Modifier = Modifier,
 ) {
     val walk = activity.isWalk
+    val focus = activity.isFocus
+    val run = activity.type == EarnRules.RUN
+    val stairs = activity.type == EarnRules.STAIRS
     // Display only. No UI clock can complete an activity or award minutes.
     val focusRemaining by produceState(
         initialValue = activity.target * 60,
         key1 = activity.id,
         key2 = activity.focusLockedSinceElapsed,
     ) {
-        while (!walk) {
+        while (focus) {
             val elapsed = activity.focusLockedSinceElapsed?.let {
                 (SystemClock.elapsedRealtime() - it).coerceAtLeast(0L)
             } ?: 0L
@@ -736,7 +755,7 @@ fun ActivityProgressScreen(
             delay(250)
         }
     }
-    val fraction = if (walk) activity.fraction else
+    val fraction = if (!focus) activity.fraction else
         (1f - focusRemaining.toFloat() / (activity.target * 60).coerceAtLeast(1)).coerceIn(0f, 1f)
     val percent = (fraction * 100).toInt()
 
@@ -754,17 +773,28 @@ fun ActivityProgressScreen(
         Text("EARN TIME", style = AsrType.Eyebrow, color = AsrColors.Accent)
         Spacer(Modifier.height(14.dp))
         Text(
-            if (walk) "Keep walking." else "Put your phone down for ${activity.target} minutes.",
+            when {
+                walk -> "Keep walking."
+                run -> "Go for a run."
+                stairs -> "Take the stairs."
+                else -> "Put your phone down for ${activity.target} minutes."
+            },
             style = AsrType.display(36),
             color = AsrColors.TextPrimary,
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            if (walk) {
-                "Reach ${"%.0f".format(Locale.US, EarnRules.kilometresFor(activity.target))} km " +
-                    "to earn ${activity.rewardMinutes} more minutes for ${activity.appLabel}."
-            } else {
-                "Keep your phone locked and spend some time in the real world."
+            when {
+                walk ->
+                    "Reach ${"%.0f".format(Locale.US, EarnRules.kilometresFor(activity.target))} km " +
+                        "to earn ${activity.rewardMinutes} more minutes for ${activity.appLabel}."
+                run ->
+                    "${format(activity.target)} steps at a running pace earn " +
+                        "${activity.rewardMinutes} more minutes for ${activity.appLabel}. Walking does not count."
+                stairs ->
+                    "${activity.target} floors on foot earn ${activity.rewardMinutes} more minutes " +
+                        "for ${activity.appLabel}. The lift does not count."
+                else -> "Keep your phone locked and spend some time in the real world."
             },
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
@@ -792,7 +822,7 @@ fun ActivityProgressScreen(
                     Text(
                         if (activity.baselineSteps < 0 && walk) {
                             "—"
-                        } else if (!walk) {
+                        } else if (focus) {
                             String.format(Locale.US, "%02d:%02d", focusRemaining / 60, focusRemaining % 60)
                         } else {
                             format(activity.progress)
@@ -802,14 +832,12 @@ fun ActivityProgressScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        if (walk) {
-                            "of ${format(activity.target)} steps"
-                        } else {
-                            if (activity.focusLockedSinceElapsed == null) {
-                                "Lock your phone to start the timer."
-                            } else {
-                                "remaining with your phone locked"
-                            }
+                        when {
+                            walk -> "of ${format(activity.target)} steps"
+                            run -> "of ${format(activity.target)} running steps"
+                            stairs -> "of ${activity.target} floors"
+                            activity.focusLockedSinceElapsed == null -> "Lock your phone to start the timer."
+                            else -> "remaining with your phone locked"
                         },
                         style = AsrType.Label.copy(fontSize = 14.sp),
                         color = AsrColors.TextSecondary,
@@ -860,14 +888,15 @@ fun ActivityProgressScreen(
         }
 
         Spacer(Modifier.height(18.dp))
-        TrackingStatus(walk = walk)
+        TrackingStatus(type = activity.type)
 
         Spacer(Modifier.height(16.dp))
         RewardNote(
-            title = if (walk) {
-                "${format(activity.remaining)} steps to go"
-            } else {
-                "If you unlock your phone before the ${activity.target} minutes are complete, the timer will reset."
+            title = when {
+                walk -> "${format(activity.remaining)} steps to go"
+                run -> "${format(activity.remaining)} running steps to go"
+                stairs -> "${activity.remaining} floors to go"
+                else -> "If you unlock your phone before the ${activity.target} minutes are complete, the timer will reset."
             },
             body = "Finish and ${activity.appLabel} gets +${activity.rewardMinutes} minutes today.",
         )
@@ -1638,7 +1667,8 @@ private fun RewardContext(activity: EarnActivity) {
 }
 
 @Composable
-private fun TrackingStatus(walk: Boolean) {
+private fun TrackingStatus(type: String) {
+    val walk = type == EarnRules.WALK
     val shape = RoundedCornerShape(18.dp)
     Row(
         modifier = Modifier
@@ -1652,20 +1682,29 @@ private fun TrackingStatus(walk: Boolean) {
         Spacer(Modifier.width(12.dp))
         Column {
             Text(
-                if (walk) "Counted by your phone" else "Time for the real world",
+                if (type == EarnRules.FOCUS) "Time for the real world" else "Counted by your phone",
                 style = AsrType.Field.copy(fontSize = 16.sp),
                 color = AsrColors.TextPrimary,
             )
             Spacer(Modifier.height(7.dp))
             Text(
-                if (walk) {
+                when (type) {
                     // True, and worth saying plainly: the step counter is a
                     // running total the sensor hub keeps whether or not this
                     // app is running, so nothing is lost by leaving.
-                    "You can lock your phone or leave this screen. Steps keep counting."
-                } else {
-                    "Incoming calls and notifications won’t affect your session. " +
-                        "We’ll notify you when your ${EarnRules.FOCUS_MINUTES} minutes are complete."
+                    EarnRules.WALK -> "You can lock your phone or leave this screen. Steps keep counting."
+                    // These two are measured by the background service as
+                    // the readings arrive, in batches: the count can lag a
+                    // pocketed phone by a few seconds, never lose anything.
+                    EarnRules.RUN ->
+                        "Keep the phone on you and lock it. Steps at a running pace keep counting; " +
+                            "we’ll notify you when your run is done."
+                    EarnRules.STAIRS ->
+                        "Keep the phone on you and lock it. Floors climbed on foot keep counting, " +
+                            "all day if need be; we’ll notify you when you have them."
+                    else ->
+                        "Incoming calls and notifications won’t affect your session. " +
+                            "We’ll notify you when your ${EarnRules.FOCUS_MINUTES} minutes are complete."
                 },
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,
@@ -1714,7 +1753,7 @@ private fun ChooseActivityPreview() {
         ChooseActivityScreen(
             app = PactApp("com.zhiliaoapp.musically", "TikTok", 20),
             earnedSoFar = 0,
-            options = earnOptions(stepsAvailable = true, cameraAvailable = true),
+            options = earnOptions(stepsAvailable = true, cameraAvailable = true, barometerAvailable = true),
             onBack = {},
             onStart = {},
             errorMessage = null,

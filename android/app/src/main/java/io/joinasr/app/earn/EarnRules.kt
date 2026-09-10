@@ -34,6 +34,16 @@ object EarnRules {
     const val PLANK_SECONDS = 45
     const val WALL_SIT_SECONDS = 45
 
+    /**
+     * A run: steps taken at a running cadence, a thousand of them, which is
+     * six or seven minutes of jogging. Cadence is the whole of the proof;
+     * there is no GPS in this app.
+     */
+    const val RUN_STEPS = 1_000
+
+    /** A climb: floors, from the barometer while the step counter moves. */
+    const val STAIR_FLOORS = 10
+
     /** What any one of them is worth. Figma 21 and 24: "+10 minutes". */
     const val REWARD_MINUTES = 10
 
@@ -62,14 +72,25 @@ object EarnRules {
     const val PLANK = "plank"
     const val WALL_SIT = "wall_sit"
 
+    const val RUN = "run_steps"
+    const val STAIRS = "stairs"
+
     /** The activities the camera counts or times, on the camera screen. */
     val CAMERA_TYPES: Set<String> = setOf(PUSHUPS, PLANK, WALL_SIT)
+
+    /** The activities the foreground service measures from the motion sensors, screen on or off. */
+    val MOTION_TYPES: Set<String> = setOf(RUN, STAIRS)
+
+    /** Everything that reads the step counter, and so needs ACTIVITY_RECOGNITION on API 29+. */
+    val STEP_TYPES: Set<String> = setOf(WALK) + MOTION_TYPES
 
     fun targetFor(type: String): Int = when (type) {
         WALK -> WALK_STEPS
         PUSHUPS -> PUSHUP_REPS
         PLANK -> PLANK_SECONDS
         WALL_SIT -> WALL_SIT_SECONDS
+        RUN -> RUN_STEPS
+        STAIRS -> STAIR_FLOORS
         else -> FOCUS_MINUTES
     }
 }

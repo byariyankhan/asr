@@ -25,6 +25,7 @@ import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.data.LocalSignOut
 import io.joinasr.app.diagnostics.Crash
 import io.joinasr.app.analytics.Analytics
+import io.joinasr.app.earn.MotionMonitor
 import io.joinasr.app.earn.PhoneFreeMonitor
 import io.joinasr.app.earn.EarnStore
 import io.joinasr.app.permissions.Permissions
@@ -75,6 +76,7 @@ class EnforcementService : Service() {
     private lateinit var outcomes: OutcomeStore
     private lateinit var witnesses: WitnessStore
     private lateinit var phoneFree: PhoneFreeMonitor
+    private lateinit var motion: MotionMonitor
     private lateinit var earn: EarnStore
     private lateinit var sync: Sync
 
@@ -241,6 +243,8 @@ class EnforcementService : Service() {
 
         phoneFree = PhoneFreeMonitor(this)
         phoneFree.start()
+        motion = MotionMonitor(this)
+        motion.start()
         scope.launch { loop() }
     }
 
@@ -253,6 +257,7 @@ class EnforcementService : Service() {
 
     override fun onDestroy() {
         if (::phoneFree.isInitialized) phoneFree.stop()
+        if (::motion.isInitialized) motion.stop()
         runCatching { unregisterReceiver(screenWatcher) }
         // A window this service put up outlives nothing. onDestroy is on
         // the main thread, which is the thread the window belongs to.

@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -144,6 +146,10 @@ object Permissions {
      */
     fun hasCameraHardware(context: Context): Boolean =
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+
+    /** Whether there is a barometer to read a climb from. Most phones; not all. */
+    fun hasBarometer(context: Context): Boolean =
+        context.getSystemService<SensorManager>()?.getDefaultSensor(Sensor.TYPE_PRESSURE) != null
 
     fun hasNotifications(context: Context): Boolean {
         val manager = context.getSystemService<NotificationManager>() ?: return false
