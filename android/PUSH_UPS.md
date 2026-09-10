@@ -76,7 +76,9 @@ Built for somebody on the floor, half a metre from the screen, hands busy:
   departure from `docs/DESIGN.md`'s 38-44 display range, for a number read
   from a plank), with a row of seven dots above it and the next thing to
   do on a strip along the bottom. Everything for the standing reader
-  (title, reward, placement, progress card, exits) is below.
+  (reward, placement, progress card, exits) is below; there is no title
+  over them, because the strip, the reward card and the placement card
+  between them already say what to do, what for, and where.
 - The frame's colour says what the counter sees: grey for nobody, green
   while counting, a green wash at the bottom of every rep, amber for a
   body that is not in a plank, and a flash for every counted rep. The

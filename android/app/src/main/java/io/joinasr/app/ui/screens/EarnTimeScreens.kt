@@ -863,7 +863,6 @@ fun PushUpProgressScreen(
     var started by remember(activity.id, attempt) { mutableStateOf(false) }
     var cameraProblem by remember(activity.id, attempt) { mutableStateOf<String?>(null) }
     var paused by remember(activity.id) { mutableStateOf(false) }
-    var bodySeen by remember(activity.id) { mutableStateOf(false) }
     var confirmingGiveUp by remember(activity.id) { mutableStateOf(false) }
     val feedback = rememberRepFeedback()
     val scope = rememberCoroutineScope()
@@ -936,7 +935,6 @@ fun PushUpProgressScreen(
                                 val seenNow = counter.view
                                 if (view == PushUpCounter.View.NONE && seenNow != PushUpCounter.View.NONE) {
                                     feedback.found()
-                                    bodySeen = true
                                 }
                                 if (counted) {
                                     feedback.rep()
@@ -1042,27 +1040,10 @@ fun PushUpProgressScreen(
             }
         }
 
-        // For the person still standing, phone in hand.
-        Spacer(Modifier.height(18.dp))
-        Text("EARN TIME", style = AsrType.Eyebrow, color = AsrColors.Accent)
-        Spacer(Modifier.height(10.dp))
-        Text(
-            when {
-                activity.progress > 0 -> "${activity.remaining} to go."
-                bodySeen -> "Go."
-                else -> "Put the phone on the floor."
-            },
-            style = AsrType.display(30),
-            color = AsrColors.TextPrimary,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Face the camera. Each time your chest comes down and back up counts one. " +
-                "${activity.target} push-ups earn ${activity.rewardMinutes} minutes for ${activity.appLabel}.",
-            style = AsrType.Field,
-            color = AsrColors.TextSecondary,
-        )
-
+        // For the person still standing, phone in hand. No heading: the
+        // strip on the picture says what to do next, the reward card says
+        // what it is for, and the placement card says where the phone goes.
+        // A title over all three said the same thing a third time.
         Spacer(Modifier.height(18.dp))
         RewardContext(activity)
 
