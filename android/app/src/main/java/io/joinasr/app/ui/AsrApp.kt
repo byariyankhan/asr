@@ -1177,7 +1177,7 @@ fun AsrApp(
                                     // Figma 24.
                                     EarnedScreen(
                                         activity = done,
-                                        availableNow = earnedToday.forPackage(done.packageName),
+                                        earnedToday = earnedToday.forPackage(done.packageName),
                                         onUseNow = {
                                             earnViewModel.acknowledgeEarned()
                                             earningFor = null
