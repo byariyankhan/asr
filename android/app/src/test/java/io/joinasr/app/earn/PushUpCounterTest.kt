@@ -295,6 +295,30 @@ class PushUpCounterTest {
         assertEquals(1, counter.hold(face(0.10f), 4_000))
     }
 
+    @Test fun `a mouth flickering in and out of view is not a push-up`() {
+        val counter = PushUpCounter()
+        val turned = face(0.06f, eyesToMouth = 0.10f)
+        val turnedNoMouth = turned.copy(
+            mouthLeft = turned.mouthLeft.copy(visibility = 0.1f),
+            mouthRight = turned.mouthRight.copy(visibility = 0.1f),
+        )
+        counter.hold(turned, 0)
+        assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        // The mouth drops out of the model's confidence and comes back,
+        // twice: the face has not moved, and the count must not either.
+        repeat(2) { round ->
+            counter.hold(turnedNoMouth, 1_000L + round * 2_000)
+            assertEquals(PushUpCounter.Phase.UP, counter.phase)
+            assertEquals(0, counter.hold(turned, 2_000L + round * 2_000))
+            assertEquals(PushUpCounter.Phase.UP, counter.phase)
+        }
+        assertEquals(0, counter.reps)
+        // And a real rep afterwards still counts.
+        counter.hold(face(0.11f, eyesToMouth = 0.18f), 6_000)
+        assertEquals(PushUpCounter.Phase.DOWN, counter.phase)
+        assertEquals(1, counter.hold(turned, 7_000))
+    }
+
     @Test fun `a face with no mouth in view is measured across the eyes`() {
         val counter = PushUpCounter()
         val eyesOnly = { gap: Float ->

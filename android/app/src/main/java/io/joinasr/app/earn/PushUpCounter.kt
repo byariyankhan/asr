@@ -183,6 +183,8 @@ class PushUpCounter(
     private var topScale: Float? = null
     private var smoothedScale: Float? = null
     private var downSince: Long? = null
+    /** Eyes-to-mouth over eye gap, as last seen: what the mouth is worth when it is not. */
+    private var mouthOverEyes: Float? = null
     private var candidateView: View? = null
     private var candidateViewFrames = 0
     private var lastRepAt: Long? = null
@@ -203,7 +205,7 @@ class PushUpCounter(
         // plank". A body with no face and no plank is somebody standing.
         val seen = when {
             arm != null && torso != null && torso <= maxTorsoTiltDegrees -> View.SIDE
-            pose != null && faceSize(pose) != null -> View.FRONT
+            pose != null && hasFace(pose) -> View.FRONT
             arm != null && torso != null -> View.SIDE
             else -> View.NONE
         }
@@ -226,6 +228,7 @@ class PushUpCounter(
             armed = false
             topScale = null
             smoothedScale = null
+            mouthOverEyes = null
             downSince = null
             candidate = null
             candidateFrames = 0
@@ -250,7 +253,8 @@ class PushUpCounter(
     }
 
     private fun front(pose: PushUpPose, nowMillis: Long): Boolean {
-        val raw = faceSize(pose) ?: return settle(Phase.NO_BODY, nowMillis)
+        val raw = faceSize(pose)
+        if (raw <= 0f) return settle(Phase.NO_BODY, nowMillis)
         // Light smoothing: the model's points shiver by a percent or two
         // frame to frame, and a threshold should not; heavier than this
         // and the count lags a fast set by half a rep.
@@ -323,29 +327,37 @@ class PushUpCounter(
         }
     }
 
+    /** A face the model is sure of: both eyes. Where it points is not asked. */
+    private fun hasFace(pose: PushUpPose): Boolean =
+        pose.leftEye.visibility >= minVisibility && pose.rightEye.visibility >= minVisibility
+
     /**
-     * How big the face is in the picture, or null with no face the model
-     * is sure of: both eyes are needed. The larger of two measures, across
-     * the eyes and from the eyes to the mouth, because turning the head
-     * shrinks the first and bowing it shrinks the second, and a person
-     * doing push-ups looks at the floor, at the wall, anywhere but the
-     * phone. Whichever way the phone lies, both are plain distances.
+     * How big the face is in the picture. The larger of two measures,
+     * across the eyes and from the eyes to the mouth, because turning the
+     * head shrinks the first and bowing it shrinks the second, and a
+     * person doing push-ups looks at the floor, at the wall, anywhere but
+     * the phone. Whichever way the phone lies, both are plain distances.
+     *
+     * When the mouth is not seen, the eyes-to-mouth line is what it was
+     * last worth in eye gaps, scaled by the eye gap now. A mouth that
+     * flickers in and out of the model's confidence therefore changes
+     * nothing; a size that jumped with it would have read as a rep.
      */
-    private fun faceSize(pose: PushUpPose): Float? {
-        if (pose.leftEye.visibility < minVisibility || pose.rightEye.visibility < minVisibility) return null
+    private fun faceSize(pose: PushUpPose): Float {
         val eyes = hypot(pose.leftEye.x - pose.rightEye.x, pose.leftEye.y - pose.rightEye.y)
-        val eyesToMouth = if (
-            pose.mouthLeft.visibility >= minVisibility && pose.mouthRight.visibility >= minVisibility
-        ) {
+        if (eyes <= 0f) return 0f
+        val mouthSeen = pose.mouthLeft.visibility >= minVisibility && pose.mouthRight.visibility >= minVisibility
+        if (mouthSeen) {
             val eyeX = (pose.leftEye.x + pose.rightEye.x) / 2f
             val eyeY = (pose.leftEye.y + pose.rightEye.y) / 2f
             val mouthX = (pose.mouthLeft.x + pose.mouthRight.x) / 2f
             val mouthY = (pose.mouthLeft.y + pose.mouthRight.y) / 2f
-            hypot(eyeX - mouthX, eyeY - mouthY)
-        } else {
-            0f
+            // Taken as seen, not averaged: an average lags a turn of the
+            // head in both directions, and the lag read as a rep.
+            mouthOverEyes = hypot(eyeX - mouthX, eyeY - mouthY) / eyes
         }
-        return maxOf(eyes, eyesToMouth).takeIf { it > 0f }
+        val eyesToMouth = eyes * (mouthOverEyes ?: 0f)
+        return maxOf(eyes, eyesToMouth)
     }
 
     private class Arm(val shoulder: Landmark, val elbow: Landmark, val wrist: Landmark) {
