@@ -62,12 +62,14 @@ class RunCounter(
  * A floor is taken as 2.8 m, a little under a typical storey, so that ten
  * real floors do not come out as nine through the smoothing's lag or a
  * building with low ceilings; the error is in the person's favour.
- * Only a rise made on foot counts: a step has to have arrived within
- * [stepRecencyMillis], which is what keeps a lift from being a climb. A
- * rise without steps, or a descent, moves the reference and credits
- * nothing, so the person who takes the lift up and the stairs down earns
- * nothing, and the one who takes the stairs up after the lift earns only
- * the stairs.
+ * Only a rise made on foot counts: stepping has to be going on as the
+ * rise is seen, meaning at least [stepsForOnFoot] steps in the last
+ * [stepWindowMillis] and one within [stepRecencyMillis]. One recent step
+ * would not do: somebody who walks into a lift has a step a few seconds
+ * old for the first floors of the ride. A rise without steps, or a
+ * descent, moves the reference and credits nothing, so the person who
+ * takes the lift up and the stairs down earns nothing, and the one who
+ * takes the stairs up after the lift earns only the stairs.
  *
  * The barometer is noisy by a few tenths of a metre and drifts with the
  * weather by less than a metre an hour; readings are smoothed and a rise
@@ -80,7 +82,9 @@ class RunCounter(
  */
 class StairsCounter(
     private val metresPerFloor: Float = 2.8f,
-    private val stepRecencyMillis: Long = 8_000L,
+    private val stepRecencyMillis: Long = 2_500L,
+    private val stepWindowMillis: Long = 5_000L,
+    private val stepsForOnFoot: Int = 3,
     private val deadbandMetres: Float = 0.8f,
     private val smoothing: Float = 0.3f,
 ) {
@@ -94,14 +98,24 @@ class StairsCounter(
 
     private var smoothed: Float? = null
     private var reference: Float? = null
-    private var lastStepAt: Long? = null
+    /** When the recent steps arrived, oldest first; trimmed to [stepWindowMillis]. */
+    private val recentSteps = ArrayDeque<Long>()
     private var lastTotal: Int? = null
 
     /** One reading of the step counter's total. */
     fun observeSteps(total: Int, atMillis: Long) {
         val last = lastTotal
         lastTotal = total
-        if (last != null && total > last) lastStepAt = atMillis
+        if (last == null || total <= last) return
+        // A batch can report several steps in one reading; each is a step.
+        repeat((total - last).coerceAtMost(stepsForOnFoot)) { recentSteps.addLast(atMillis) }
+    }
+
+    /** Stepping going on at [atMillis]: enough steps lately, and one just now. */
+    private fun onFoot(atMillis: Long): Boolean {
+        while (recentSteps.isNotEmpty() && atMillis - recentSteps.first() > stepWindowMillis) recentSteps.removeFirst()
+        val latest = recentSteps.lastOrNull() ?: return false
+        return recentSteps.size >= stepsForOnFoot && atMillis - latest <= stepRecencyMillis
     }
 
     /** One reading of the barometer, in hectopascals. Returns the floors this reading credited, usually zero. */
@@ -114,7 +128,7 @@ class StairsCounter(
             return 0
         }
         val rise = level - base
-        val onFoot = lastStepAt?.let { atMillis - it <= stepRecencyMillis } == true
+        val onFoot = onFoot(atMillis)
         when {
             rise >= deadbandMetres && onFoot -> {
                 ascentMetres += rise

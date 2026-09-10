@@ -106,8 +106,9 @@ class MotionMonitor(private val context: Context) {
         }
     }
 
-    /** Judges every reading older than [SETTLE_MILLIS], oldest first. */
+    /** Judges every reading older than [SETTLE_MILLIS], oldest first; first, whether there is still time. */
     private suspend fun drain() {
+        if (expireIfOverdue()) return
         if (pending.isEmpty()) return
         val cutoff = SystemClock.elapsedRealtime() - SETTLE_MILLIS
         val ready = pending.filter { it.atMillis <= cutoff }.sortedBy { it.atMillis }
@@ -174,16 +175,26 @@ class MotionMonitor(private val context: Context) {
     }
 
     /**
-     * Units earned, onto the activity. The server fails an activity whose
-     * deadline passed and would refuse its completion, so one that ran out
-     * of time is stood down here rather than awarded and refused after.
+     * The server fails an activity whose deadline passed and would refuse
+     * its completion, so one that ran out of time is stood down here rather
+     * than awarded and refused after. Checked on every tick, not only when
+     * something is earned: a run that never reached a running pace would
+     * otherwise sit active, sensors on, until somebody gave it up by hand.
+     * True if the activity was stood down.
      */
+    private suspend fun expireIfOverdue(): Boolean {
+        val activity = running ?: return false
+        if (!activity.expired(System.currentTimeMillis())) return false
+        stopListening()
+        pending.clear()
+        running = null
+        store.clearActive(activity.id)
+        return true
+    }
+
+    /** Units earned, onto the activity. */
     private suspend fun credit(activity: EarnActivity, earned: Int) {
         if (earned <= 0) return
-        if (activity.expired(System.currentTimeMillis())) {
-            store.clearActive(activity.id)
-            return
-        }
         val updated = activity.copy(progress = (activity.progress + earned).coerceAtMost(activity.target))
         if (!updated.isComplete) {
             store.update(updated)

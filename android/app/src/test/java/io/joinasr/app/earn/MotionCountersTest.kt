@@ -93,6 +93,20 @@ class MotionCountersTest {
         assertEquals(2, counter.climb(30_000, 12f, 18.5f, 30_000, onFoot = true, startSteps = 101))
     }
 
+    @Test fun `walking into a lift leaves a recent step, and the ride still earns nothing`() {
+        val counter = StairsCounter()
+        counter.observePressure(hpaAt(0f), 0)
+        // Walking up to the lift: a step every 600 ms for ten seconds.
+        var steps = 0
+        for (i in 1..16) counter.observeSteps(++steps, i * 600L)
+        counter.observePressure(hpaAt(0f), 9_600)
+        // Doors close; three seconds later it rises fifteen metres in twenty.
+        assertEquals(0, counter.climb(12_600, 0f, 15f, 20_000, onFoot = false, startSteps = steps))
+        assertEquals(0f, counter.ascentMetres, 0.01f)
+        // Out of the lift and up two flights on foot: only those.
+        assertEquals(2, counter.climb(40_000, 15f, 21.5f, 30_000, onFoot = true, startSteps = steps))
+    }
+
     @Test fun `going down earns nothing and coming back up earns only the way back`() {
         val counter = StairsCounter()
         counter.observeSteps(0, 0)

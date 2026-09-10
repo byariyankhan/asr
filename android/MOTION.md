@@ -47,11 +47,16 @@ starts the window over.
 
 **Stairs** (`StairsCounter`): the barometer's reading becomes an altitude
 by the standard atmosphere, smoothed a little; a rise of 0.8 m or more
-since the reference is banked as ascent *if a step arrived within the
-last eight seconds*, and moves the reference either way. A rise without
-steps (a lift) and a descent move the reference and bank nothing, so the
-lift up and the stairs down earn nothing, and the stairs up after the
-lift earn only the stairs. A floor is 2.8 m, a little under a typical
+since the reference is banked as ascent *if stepping is going on as it is
+seen* (three steps in the last five seconds and one in the last two and
+a half), and moves the reference either way. One recent step would not
+do: somebody who walks into a lift has a step a few seconds old for the
+first floors of the ride. A rise without steps (a lift) and a descent
+move the reference and bank nothing, so the lift up and the stairs down
+earn nothing, and the stairs up after the lift earn only the stairs. A
+run or a climb that reaches its 12-hour deadline is stood down by the
+monitor on its next tick, sensors off, the same way the view model
+stands down an overdue walk. A floor is 2.8 m, a little under a typical
 storey, so ten real floors do not come out as nine through the
 smoothing's lag or a building with low ceilings. Readings are absolute,
 so the phone may be anywhere in the building when the activity starts,
