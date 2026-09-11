@@ -144,8 +144,10 @@ rule from `HoldPositions`:
   (drawn lower than its shoulder without being under anything) does not
   count (on the hands the elbows are halfway to the floor, on the
   forearms on it, and the photographs put them 0.16 to 0.48 of the line
-  below it; lying flat, from a phone on the floor, they are on the line).
-  A straight line is a straight line from wherever the camera looks,
+  below it; lying flat, from a phone on the floor, they are on the line;
+  no arm seen whole is no plank, since from the side or from ahead the
+  near arm is under the shoulder in plain view). A straight line is a
+  straight line from wherever the camera looks,
   which is what lets the same rule serve the side view and the diagonal.
 
   The numbers come from running the app's own model over photographs

@@ -256,8 +256,9 @@ object HoldPositions {
      * count. On the hands the elbows are halfway to the floor, on the
      * forearms on it, and in the photographs the model puts them 0.16 to
      * 0.48 of the line below it; lying flat, from a phone on the floor,
-     * they are on the line. With no arm seen whole the slope decides on
-     * its own.
+     * they are on the line. No arm seen whole is no plank: from the side
+     * or from ahead the near arm is under the shoulder in plain view, and
+     * a body whose arms the model cannot find has not shown it is held up.
      */
     fun plank(pose: BodyPose): Boolean {
         val side = BodySide.of(pose) ?: return false
@@ -273,7 +274,8 @@ object HoldPositions {
         val elbowBelow = listOf(pose.leftShoulder to pose.leftElbow, pose.rightShoulder to pose.rightElbow)
             .filter { (shoulder, elbow) -> shoulder.visibility >= MIN_VISIBILITY && elbow.visibility >= MIN_VISIBILITY }
             .maxOfOrNull { (_, elbow) -> PoseGeometry.belowLine(elbow, side.shoulder, side.ankle) }
-        return elbowBelow == null || elbowBelow >= MIN_ELBOW_BELOW
+            ?: return false
+        return elbowBelow >= MIN_ELBOW_BELOW
     }
 
     private const val MAX_HIP_SAG = 0.05f

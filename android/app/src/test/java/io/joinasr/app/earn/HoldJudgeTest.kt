@@ -7,7 +7,12 @@ import org.junit.Test
 
 class HoldJudgeTest {
 
-    /** A body seen from the left side, given as the four points the hold rules read. */
+    /**
+     * A body seen from the left side, given as the four points the hold
+     * rules read, with the near elbow a little forward of the shoulder
+     * and 0.12 of the picture below it, as an arm holding the body up
+     * from a phone on the floor comes out.
+     */
     private fun body(
         shoulder: Pair<Float, Float>,
         hip: Pair<Float, Float>,
@@ -18,10 +23,11 @@ class HoldJudgeTest {
         fun at(p: Pair<Float, Float>) = Landmark(p.first, p.second, visibility)
         val ghost = Landmark(0.5f, 0.5f, 0.2f)
         val face = Landmark(0.2f, 0.45f, 0.9f)
+        val elbow = Landmark(shoulder.first + 0.02f, shoulder.second + 0.12f, visibility)
         return BodyPose(
             nose = face, leftEye = face, rightEye = face.copy(visibility = 0.3f),
             mouthLeft = face, mouthRight = face,
-            leftShoulder = at(shoulder), leftElbow = ghost, leftWrist = ghost, leftHip = at(hip),
+            leftShoulder = at(shoulder), leftElbow = elbow, leftWrist = ghost, leftHip = at(hip),
             rightShoulder = ghost, rightElbow = ghost, rightWrist = ghost, rightHip = ghost,
             leftKnee = at(knee), rightKnee = ghost, leftAnkle = at(ankle), rightAnkle = ghost,
         )
@@ -354,9 +360,13 @@ class HoldJudgeTest {
         assertFalse(HoldPositions.plank(steep.copy(leftElbow = Landmark(0.42f, 0.42f, 0.9f))))
         assertTrue(HoldPositions.plank(steep.copy(leftElbow = Landmark(0.25f, 0.42f, 0.9f))))
         // An elbow the model sees on the far side, hung off a shoulder it only guessed at, says
-        // nothing either way: the near arm, or failing that the slope, decides.
+        // nothing either way: the near arm decides.
         assertTrue(HoldPositions.plank(plank.copy(rightElbow = Landmark(0.55f, 0.48f, 0.9f))))
         assertFalse(HoldPositions.plank(flat.copy(rightElbow = Landmark(0.28f, 0.9f, 0.9f))))
+        // No arm seen whole: a body that has not shown it is held up is not timed, however straight
+        // and sloping its line.
+        assertFalse(HoldPositions.plank(plank.copy(leftElbow = BodyPose.UNSEEN)))
+        assertFalse(HoldPositions.plank(plank.copy(leftElbow = BodyPose.UNSEEN, rightElbow = Landmark(0.55f, 0.7f, 0.9f))))
     }
 
     @Test fun `the phone stood close in front of the face is not a body to judge, plank or no plank`() {
