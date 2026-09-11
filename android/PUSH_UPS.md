@@ -134,15 +134,19 @@ rule from `HoldPositions`:
   below the shoulder line. A body on its feet or a chair has its hips a
   torso below the shoulders, which is the one thing this view sees
   plainly. And the arms hold the body up: an elbow the model can see
-  hangs at least 0.45 of a shoulder width below its shoulder, which it
-  does on the hands (halfway to the floor) and on the forearms (on it)
-  and does not for a body lying face down with its head raised to look
-  at the phone, whose shoulders are a hand above the floor; no elbow
-  seen is no plank. Without hips the face, shoulders and arms decide,
-  which lets a standing person with their head bowed, their hips out of
-  the picture and their elbows held low through; the copy asks for the
-  hips in. A kneeling plank passes, as it did from the side; that is the
-  easy end.
+  hangs at least 0.45 of a shoulder width below its shoulder, or a wrist
+  at least a whole width. On the forearms the elbows are on the floor, a
+  width and more down; on the hands they are halfway down, which from a
+  phone within half a metre comes out under the elbow line by
+  perspective, so the wrists decide there (on the floor under the
+  shoulders, an arm's length down, 1.2 widths and more). A body lying
+  face down with its head raised to look at the phone has shoulders a
+  hand above the floor and, wherever the arms are, elbows barely below
+  them and wrists under a width; no elbow or wrist seen is no plank.
+  Without hips the face, shoulders and arms decide, which lets a
+  standing person with their head bowed, their hips out of the picture
+  and their arms held low through; the copy asks for the hips in. A
+  kneeling plank passes, as it did from the side; that is the easy end.
 - **Plank**, from the side (`HoldPositions.plankSide`), still accepted
   when that is how the phone is placed: shoulder, hip and ankle on one
   side of the body all seen, the shoulder-to-ankle line sloping down to
@@ -185,7 +189,11 @@ break pauses the clock rather than resetting it. A change of phase has to
 hold for 400 ms before it is believed, so a hip the model loses for a
 frame is not a break; the settling time before a hold is believed is not
 counted, and the time before a break is believed is, which is the smaller
-error and the kinder one. Every fifth second ticks and pulses, and the
+error and the kinder one. Time is counted frame to frame, and a gap
+longer than a second between frames is the camera stopped (the app in
+the background, the screen locked) and counts for nothing; a slow phone
+running the model at two or three frames a second is under that line,
+and its clock keeps time. Every fifth second ticks and pulses, and the
 last one; every second would be a metronome. Tested without a camera in
 `HoldJudgeTest`.
 

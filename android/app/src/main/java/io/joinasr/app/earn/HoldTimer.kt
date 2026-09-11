@@ -15,13 +15,16 @@ package io.joinasr.app.earn
  * Time is counted frame to frame, and only between frames that are close
  * together: a gap longer than [maxFrameGapMillis] is the source having
  * stopped (the app sent to the background, the screen locked) and is
- * worth nothing, however long it was.
+ * worth nothing, however long it was. A second is the line: a slow phone
+ * running the pose model at two or three frames a second is still a
+ * source, and a clock that dropped its gaps would run slow for exactly
+ * the people whose phones are slow; a screen locked is seconds away.
  *
  * Not thread-safe: drive it from one thread, with a monotonic clock.
  */
 class HoldTimer(
     private val settleMillis: Long = 400L,
-    private val maxFrameGapMillis: Long = 500L,
+    private val maxFrameGapMillis: Long = 1_000L,
 ) {
     /** Whether the hold is believed to be on, as of the last frame. */
     var holding: Boolean = false
