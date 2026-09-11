@@ -120,16 +120,63 @@ the next thing to do as a title and a line. The push-up counter is one
 (`PushUpJudge` wraps it); the two holds are `HoldJudge` with a position
 rule from `HoldPositions`:
 
-- **Plank**, from the side: shoulder, hip and ankle on one side of the
-  body all seen, the shoulder-to-ankle line sloping down to the feet by
-  6° to 45° (lying flat is under, sitting up is over), and the hip within
-  14% of that line's length from it (sagging or piked hips are off it;
-  sitting with the legs out has the hips far below it). Forearms or hands
-  are not asked about. A kneeling plank passes; that is the easy end.
-- **Wall sit**, from the side: the shoulder-to-hip line at least 55° from
-  horizontal, the hip-to-knee line within 30° of it, and the knee between
-  65° and 125°. A chair would pass too. The camera cannot see what is
-  behind the legs, and the mechanism is honesty.
+- **Plank**, head-on (`HoldPositions.plankFront`): the phone stood
+  upright on the floor a step ahead of the hands, screen facing the
+  person, which keeps it in portrait like the rest of the app and needs
+  no room. That view sees the face, the shoulders, and the hips behind
+  them, small; the legs are behind the torso and are not asked about.
+  The rule: both eyes and both shoulders seen; the shoulders level within
+  30°; the eyes no more than 0.3 of a shoulder width above the shoulder
+  line (the head hangs in line with the spine in a plank; standing,
+  kneeling up or sitting puts the eyes well above the shoulders); and the
+  hips, when the model has them, between the shoulders across the picture
+  (within 0.6 of a width of centre) and no more than 0.35 of a width
+  below the shoulder line. A body on its feet or a chair has its hips a
+  torso below the shoulders, which is the one thing this view sees
+  plainly. And the arms hold the body up: an elbow the model can see
+  hangs at least 0.45 of a shoulder width below its shoulder, which it
+  does on the hands (halfway to the floor) and on the forearms (on it)
+  and does not for a body lying face down with its head raised to look
+  at the phone, whose shoulders are a hand above the floor; no elbow
+  seen is no plank. Without hips the face, shoulders and arms decide,
+  which lets a standing person with their head bowed, their hips out of
+  the picture and their elbows held low through; the copy asks for the
+  hips in. A kneeling plank passes, as it did from the side; that is the
+  easy end.
+- **Plank**, from the side (`HoldPositions.plankSide`), still accepted
+  when that is how the phone is placed: shoulder, hip and ankle on one
+  side of the body all seen, the shoulder-to-ankle line sloping down to
+  the feet by 6° to 45° (lying flat is under, sitting up is over), and
+  the hip within 14% of that line's length from it (sagging or piked hips
+  are off it; sitting with the legs out has the hips far below it).
+  Forearms or hands are not asked about. `plank` is either. The plank's
+  body predicate (`hasBody`) accepts a face with both shoulders, so the
+  head-on view coaches "Get into a plank"; the wall sit's
+  (`wallSitBody`) wants, head-on, all eight points it reads, and
+  side-on a whole side shoulder to ankle, so a body with a foot or a
+  knee cropped is "Looking for you" with the shoulders-to-feet line,
+  not "Slide down the wall".
+- **Wall sit**, head-on (`HoldPositions.wallSitFront`): the phone stood
+  upright on the floor or a low stool a couple of steps in front of the
+  wall, no higher than the knees, with the person in the picture from
+  shoulders to feet. Eight points: both shoulders, hips, knees and
+  ankles. The shoulders level within 30° and between 0.35 and 1.5 torsos
+  apart (under is side-on, over is a torso folded down towards the lens);
+  the back upright (shoulders above the hips, at least 60° from
+  horizontal); each knee close under its hip across the picture (within
+  half a torso) and, seen from low down, level with the hip or above it
+  (a knee nearer the lens than the hip at the same height is drawn
+  higher; standing and a half squat put the knees below); and each shin
+  dropping from knee to ankle, at least 0.45 of a torso long and within
+  35° of vertical (a cross-legged sitter's ankles are up by the knees).
+  A phone above the hips looks down on the thighs and draws the knees
+  below the hips, which is why the copy says low. A chair passes, as it
+  did from the side.
+- **Wall sit**, from the side (`HoldPositions.wallSitSide`), still
+  accepted: the shoulder-to-hip line at least 55° from horizontal, the
+  hip-to-knee line within 30° of it, and the knee between 65° and 125°.
+  A chair would pass too. The camera cannot see what is behind the legs,
+  and the mechanism is honesty. `wallSit` is either.
 
 Both are timed, not counted: the clock runs while the position holds and
 stops while it does not, and whole seconds are handed to the activity as
@@ -142,9 +189,10 @@ error and the kinder one. Every fifth second ticks and pulses, and the
 last one; every second would be a metronome. Tested without a camera in
 `HoldJudgeTest`.
 
-Both are side-view only: the phone propped on its side a few steps away,
-low, with the whole body in the picture. From the floor under the face
-the model cannot see legs, and a plank cannot be told from kneeling.
+Both placement cards now put the phone upright, in portrait, in front
+of the person: the plank's "about a step ahead of where your hands go",
+the wall sit's "a couple of steps in front of the wall, shoulders to
+feet in the picture". The side view is the note under the steps on each.
 
 ## The meditation
 
@@ -255,6 +303,13 @@ These need a phone; JVM tests prove the rule, not the camera.
    seven push-ups at a normal pace: the count reaches seven, the reward
    screen appears, the selected app has +10. Repeat with the phone propped
    on its side a few steps away, whole body in view from the side.
+   For the plank: stand the phone upright a step ahead of your hands,
+   facing you, and hold a plank: the frame goes green and the clock runs;
+   kneel up, sit back or stand and it stops. The same with the phone on
+   its side across the room. For the wall sit: stand the phone upright on
+   the floor a couple of steps in front of the wall and slide down it:
+   green, and the clock runs; stand up, or stop half way, and it stops.
+   The same from the side.
 3. Do push-ups standing against a wall, kneeling, or seated: nothing
    counts and the coaching line says why.
 4. Bounce the arms quickly from the down position; do half push-ups; hover

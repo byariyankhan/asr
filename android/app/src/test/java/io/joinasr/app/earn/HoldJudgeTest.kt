@@ -28,6 +28,77 @@ class HoldJudgeTest {
     }
 
     private val plank = body(0.3f to 0.5f, 0.55f to 0.58f, 0.68f to 0.62f, 0.8f to 0.66f)
+
+    /**
+     * A body seen head-on from a phone stood upright on the floor ahead of
+     * the hands: a face low in the picture, shoulders [width] across on
+     * the line [shoulderY], the eyes [eyesAbove] shoulder widths above
+     * that line (negative: below it), and the hips, when seen, [hipsBelow]
+     * widths below it and [hipsAcross] widths off centre.
+     */
+    private fun front(
+        eyesAbove: Float,
+        hipsBelow: Float = -0.25f,
+        hipsAcross: Float = 0f,
+        hipVisibility: Float = 0.7f,
+        width: Float = 0.4f,
+        shoulderY: Float = 0.55f,
+    ): BodyPose {
+        val eyeY = shoulderY - eyesAbove * width
+        val hipY = shoulderY + hipsBelow * width
+        val hipX = 0.5f + hipsAcross * width
+        val ghost = Landmark(0.5f, 0.5f, 0.2f)
+        fun at(x: Float, y: Float, v: Float = 0.9f) = Landmark(x, y, v)
+        return BodyPose(
+            nose = at(0.5f, eyeY + 0.03f), leftEye = at(0.54f, eyeY), rightEye = at(0.46f, eyeY),
+            mouthLeft = at(0.52f, eyeY + 0.06f), mouthRight = at(0.48f, eyeY + 0.06f),
+            leftShoulder = at(0.5f + width / 2f, shoulderY), leftElbow = at(0.72f, 0.8f), leftWrist = at(0.7f, 0.95f),
+            leftHip = at(hipX + 0.04f, hipY, hipVisibility),
+            rightShoulder = at(0.5f - width / 2f, shoulderY), rightElbow = at(0.28f, 0.8f), rightWrist = at(0.3f, 0.95f),
+            rightHip = at(hipX - 0.04f, hipY, hipVisibility),
+            leftKnee = ghost, rightKnee = ghost, leftAnkle = ghost, rightAnkle = ghost,
+        )
+    }
+
+    /** Head down in line with the back, hips up behind the shoulders. */
+    private val plankFront = front(eyesAbove = -0.15f)
+
+    /**
+     * A body facing a phone stood low in front of it: shoulders 0.3 wide
+     * on 0.30, hips on 0.55 (a torso of 0.25), and each leg as given,
+     * knee then ankle, for the left side and mirrored for the right.
+     */
+    private fun facingLegs(knee: Pair<Float, Float>, ankle: Pair<Float, Float>, shoulderY: Float = 0.30f): BodyPose {
+        val ghost = Landmark(0.5f, 0.5f, 0.2f)
+        fun at(x: Float, y: Float) = Landmark(x, y, 0.9f)
+        fun mirror(p: Pair<Float, Float>) = at(1f - p.first, p.second)
+        return BodyPose(
+            nose = at(0.5f, shoulderY - 0.1f), leftEye = at(0.52f, shoulderY - 0.12f), rightEye = at(0.48f, shoulderY - 0.12f),
+            mouthLeft = at(0.51f, shoulderY - 0.08f), mouthRight = at(0.49f, shoulderY - 0.08f),
+            leftShoulder = at(0.65f, shoulderY), leftElbow = ghost, leftWrist = ghost, leftHip = at(0.58f, 0.55f),
+            rightShoulder = at(0.35f, shoulderY), rightElbow = ghost, rightWrist = ghost, rightHip = at(0.42f, 0.55f),
+            leftKnee = at(knee.first, knee.second), rightKnee = mirror(knee),
+            leftAnkle = at(ankle.first, ankle.second), rightAnkle = mirror(ankle),
+        )
+    }
+
+    /** Thighs towards the camera, knees drawn a touch above the hips from low down, shins straight to the feet. */
+    private val wallSitFront = facingLegs(knee = 0.60f to 0.52f, ankle = 0.60f to 0.78f)
+
+    /** On the feet: knees a thigh below the hips. */
+    private val standingFacing = facingLegs(knee = 0.58f to 0.78f, ankle = 0.58f to 1.0f)
+
+    /** A half squat: the knees below the hips, the shins still down. */
+    private val halfSquatFacing = facingLegs(knee = 0.60f to 0.66f, ankle = 0.60f to 0.90f)
+
+    /** Cross-legged on the floor: knees out to the sides, ankles up by them. */
+    private val crossLeggedFacing = facingLegs(knee = 0.78f to 0.60f, ankle = 0.55f to 0.66f)
+
+    /** Standing facing the phone: eyes well above the shoulders, hips a torso below them. */
+    private val standingFront = front(eyesAbove = 0.6f, hipsBelow = 1.4f)
+
+    /** Sitting up facing the phone, as for a meditation. */
+    private val sittingFront = front(eyesAbove = 0.5f, hipsBelow = 1.2f)
     private val lyingFlat = body(0.3f to 0.7f, 0.55f to 0.7f, 0.68f to 0.7f, 0.8f to 0.7f)
     private val standing = body(0.5f to 0.2f, 0.5f to 0.5f, 0.5f to 0.7f, 0.5f to 0.9f)
     private val sittingLegsOut = body(0.3f to 0.3f, 0.35f to 0.62f, 0.6f to 0.66f, 0.8f to 0.7f)
@@ -35,6 +106,7 @@ class HoldJudgeTest {
     private val wallSit = body(0.4f to 0.3f, 0.4f to 0.55f, 0.6f to 0.55f, 0.6f to 0.8f)
 
     @Test fun `a straight body sloping down to the feet is a plank`() {
+        assertTrue(HoldPositions.plankSide(plank))
         assertTrue(HoldPositions.plank(plank))
     }
 
@@ -43,6 +115,74 @@ class HoldJudgeTest {
         assertFalse(HoldPositions.plank(standing))
         assertFalse(HoldPositions.plank(sittingLegsOut))
         assertFalse(HoldPositions.plank(saggingHips))
+    }
+
+    @Test fun `head-on from the floor, a head down in line with the back over hips behind it is a plank`() {
+        assertTrue(HoldPositions.plankFront(plankFront))
+        assertTrue(HoldPositions.plank(plankFront))
+        // Hips the model has not found: the face and shoulders decide.
+        assertTrue(HoldPositions.plank(front(eyesAbove = -0.1f, hipVisibility = 0.2f)))
+        // Eyes level with the shoulders, hips level with them: still a plank.
+        assertTrue(HoldPositions.plank(front(eyesAbove = 0.1f, hipsBelow = 0.2f)))
+    }
+
+    @Test fun `head-on, lying face down with the head up is not a plank, nor are arms the camera cannot see`() {
+        // Shoulders a hand above the floor, so the elbows, wherever the arms are, are barely below them.
+        val lying = plankFront.copy(
+            leftElbow = Landmark(0.75f, 0.62f, 0.9f), rightElbow = Landmark(0.25f, 0.62f, 0.9f),
+            leftWrist = Landmark(0.72f, 0.7f, 0.9f), rightWrist = Landmark(0.28f, 0.7f, 0.9f),
+        )
+        assertFalse(HoldPositions.plank(lying))
+        assertFalse(HoldPositions.plank(plankFront.copy(leftElbow = BodyPose.UNSEEN, rightElbow = BodyPose.UNSEEN)))
+        // One elbow seen, on the floor: enough.
+        assertTrue(HoldPositions.plank(plankFront.copy(rightElbow = BodyPose.UNSEEN)))
+    }
+
+    @Test fun `head-on, standing and sitting are not a plank`() {
+        assertFalse(HoldPositions.plank(standingFront))
+        assertFalse(HoldPositions.plank(sittingFront))
+        // Head bowed to shoulder level while standing: the hips give it away.
+        assertFalse(HoldPositions.plank(front(eyesAbove = 0.2f, hipsBelow = 1.4f)))
+        // Hips off to one side: a body turned away, not one receding behind its shoulders.
+        assertFalse(HoldPositions.plank(front(eyesAbove = -0.1f, hipsAcross = 0.9f)))
+        // Lying on one side in front of the phone: the shoulders one above the other.
+        val onOneSide = plankFront.copy(
+            leftShoulder = Landmark(0.5f, 0.35f, 0.9f),
+            rightShoulder = Landmark(0.5f, 0.75f, 0.9f),
+        )
+        assertFalse(HoldPositions.plank(onOneSide))
+    }
+
+    @Test fun `head-on from low down, thighs at the camera over shins to the feet is a wall sit`() {
+        assertTrue(HoldPositions.wallSitFront(wallSitFront))
+        assertTrue(HoldPositions.wallSit(wallSitFront))
+        // Knees level with the hips, the phone at hip height: still a wall sit.
+        assertTrue(HoldPositions.wallSit(facingLegs(knee = 0.60f to 0.56f, ankle = 0.60f to 0.80f)))
+    }
+
+    @Test fun `head-on, standing, a half squat, cross-legged and a slouch are not a wall sit`() {
+        assertFalse(HoldPositions.wallSit(standingFacing))
+        assertFalse(HoldPositions.wallSit(halfSquatFacing))
+        assertFalse(HoldPositions.wallSit(crossLeggedFacing))
+        // Leaning right over: the shoulders come down towards the hips.
+        assertFalse(HoldPositions.wallSit(facingLegs(knee = 0.60f to 0.52f, ankle = 0.60f to 0.78f, shoulderY = 0.50f)))
+        // Feet out of the picture: the shins cannot be seen to drop, so not yet.
+        assertFalse(HoldPositions.wallSit(wallSitFront.copy(leftAnkle = BodyPose.UNSEEN, rightAnkle = BodyPose.UNSEEN)))
+    }
+
+    @Test fun `a face with its shoulders is a body for the plank, and not a body for the wall sit`() {
+        assertTrue(HoldPositions.hasBody(standingFront))
+        assertFalse(HoldPositions.wallSitBody(standingFront))
+        assertTrue(HoldPositions.wallSitBody(wallSitFront))
+        assertTrue(HoldPositions.wallSitBody(wallSit))
+        // Head-on with one foot out of the picture: not yet a body to judge, whatever the other side shows.
+        assertFalse(HoldPositions.wallSitBody(wallSitFront.copy(rightAnkle = BodyPose.UNSEEN)))
+        assertFalse(HoldPositions.wallSitBody(wallSitFront.copy(leftKnee = BodyPose.UNSEEN)))
+        // Side-on, the far side is guessed through the body and is not asked for.
+        assertTrue(HoldPositions.wallSitBody(wallSit.copy(rightKnee = BodyPose.UNSEEN, rightAnkle = BodyPose.UNSEEN)))
+        assertFalse(HoldPositions.hasBody(front(eyesAbove = 0.6f, hipVisibility = 0.2f).copy(
+            leftShoulder = BodyPose.UNSEEN, rightShoulder = BodyPose.UNSEEN,
+        )))
     }
 
     @Test fun `a plank the other way round in the picture is still a plank`() {
@@ -58,6 +198,7 @@ class HoldJudgeTest {
     }
 
     @Test fun `back upright, thigh level, knee square is a wall sit`() {
+        assertTrue(HoldPositions.wallSitSide(wallSit))
         assertTrue(HoldPositions.wallSit(wallSit))
     }
 

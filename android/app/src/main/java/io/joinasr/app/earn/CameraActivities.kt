@@ -96,16 +96,18 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
         noun = "seconds",
         permissionTitle = "Time your plank.",
         unitLabel = "SECONDS",
-        placementLine = "Phone propped on its side, a few steps away",
-        verification = "Your phone finds your shoulders, hips and ankles in each frame and runs " +
-            "the clock while they make a straight line. The frame is then dropped.",
+        placementLine = "Phone upright on the floor, a step ahead of your hands",
+        verification = "Your phone finds your face, shoulders and hips in each frame and runs the " +
+            "clock while your head is down in line with your shoulders and your hips are up behind " +
+            "them. The frame is then dropped.",
         timed = true,
         tickEvery = 5,
         placement = listOf(
-            "Prop the phone on its side a few steps away, low, with your whole body in the picture.",
-            "Get into a plank, forearms or hands. The clock runs while you hold it and stops when you drop.",
+            "Stand the phone upright on the floor about a step ahead of where your hands go, screen facing you. Lean it on a wall, a book, a water bottle.",
+            "Get into a plank facing it, forearms or hands, head down in line with your back. The clock runs while you hold it and stops when you drop.",
         ),
-        placementNote = "Rest if you need to. The seconds you have done are kept; the clock picks up when you are back in position.",
+        placementNote = "Rest if you need to. The seconds you have done are kept; the clock picks up when you are back in position. " +
+            "A phone propped on its side across the room, seeing your whole body, works too.",
         judge = {
             HoldJudge(
                 position = HoldPositions::plank,
@@ -113,9 +115,9 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
                 coach = { phase, _ ->
                     when (phase) {
                         PoseJudge.Phase.NO_BODY ->
-                            "Looking for you" to "Prop the phone on its side a few steps away, your whole body in the picture."
+                            "Looking for you" to "Stand the phone upright on the floor a step ahead of your hands, facing you."
                         PoseJudge.Phase.NOT_IN_POSITION ->
-                            "Get into a plank" to "Forearms or hands on the floor, body straight from shoulders to heels."
+                            "Get into a plank" to "Up on your forearms or hands, head down in line with your back, hips up behind you."
                         else ->
                             "Hold it" to "Hips level, body straight. The clock is running."
                     }
@@ -128,26 +130,31 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
         noun = "seconds",
         permissionTitle = "Time your wall sit.",
         unitLabel = "SECONDS",
-        placementLine = "Phone propped on its side, a few steps away",
+        placementLine = "Phone upright on the floor, a couple of steps in front of you",
         verification = "Your phone finds your shoulders, hips, knees and ankles in each frame and runs " +
-            "the clock while your back is upright and your thighs are level. The frame is then dropped.",
+            "the clock while your back is upright, your thighs are level and your shins drop straight " +
+            "to your feet. The frame is then dropped.",
         timed = true,
         tickEvery = 5,
         placement = listOf(
-            "Prop the phone on its side a few steps away, with your whole body in the picture from the side.",
-            "Back flat against a wall, slide down until your knees are at a right angle. The clock runs while you hold it.",
+            "Stand the phone upright on the floor a couple of steps in front of the wall, screen facing you, with you in the picture from shoulders to feet.",
+            "Back flat against the wall, slide down until your thighs are level and your knees are over your feet. The clock runs while you hold it.",
         ),
-        placementNote = "Rest if you need to. The seconds you have done are kept; the clock picks up when you are back down.",
+        placementNote = "Rest if you need to. The seconds you have done are kept; the clock picks up when you are back down. " +
+            "A phone propped on its side to see you from the side works too.",
         judge = {
             HoldJudge(
                 position = HoldPositions::wallSit,
-                hasBody = HoldPositions::hasBody,
+                // Every point the view needs, or there is nothing to judge:
+                // a body with a knee or a foot cropped is "Looking for you",
+                // not "Slide down the wall".
+                hasBody = HoldPositions::wallSitBody,
                 coach = { phase, _ ->
                     when (phase) {
                         PoseJudge.Phase.NO_BODY ->
-                            "Looking for you" to "Prop the phone on its side a few steps away, your whole body in the picture."
+                            "Looking for you" to "Stand the phone upright on the floor in front of you, shoulders to feet in the picture."
                         PoseJudge.Phase.NOT_IN_POSITION ->
-                            "Slide down the wall" to "Back against the wall, thighs level with the floor, knees at a right angle."
+                            "Slide down the wall" to "Back on the wall, thighs level, knees over your feet, and all of you from shoulders to feet in the picture."
                         else ->
                             "Hold it" to "Thighs level, back on the wall. The clock is running."
                     }
@@ -160,15 +167,15 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
         noun = "seconds",
         permissionTitle = "Time your meditation.",
         unitLabel = "SECONDS",
-        placementLine = "Phone propped up in front of you, a few steps away",
-        verification = "Your phone finds your head, shoulders and hips in each frame and runs the " +
-            "clock while you sit upright, facing it, and keep still. The frame is then dropped.",
+        placementLine = "Phone upright in front of you, a couple of steps away",
+        verification = "Your phone finds your head, shoulders, hips and knees in each frame and runs the " +
+            "clock while you sit upright, facing it, and keep still. Standing does not count. The frame is then dropped.",
         timed = true,
         continuous = true,
         tickEvery = 60,
         placement = listOf(
-            "Prop the phone up in front of you, a few steps away, with your head, shoulders and hips in the picture.",
-            "Sit, on the floor or a chair, and be still. The clock runs while you are; eyes can close, and a tick marks each minute.",
+            "Stand the phone upright in front of you, a couple of steps away and no higher than your chest, with you in the picture from head to knees.",
+            "Sit cross-legged on the floor or on a chair, facing it, and be still. The clock runs while you are; eyes can close, and a tick marks each minute.",
         ),
         placementNote = "It has to be ${EarnRules.MEDITATION_SECONDS / 60} minutes in one sitting. A scratch or a cough is fine; " +
             "getting up, or leaving this screen, starts the clock over.",

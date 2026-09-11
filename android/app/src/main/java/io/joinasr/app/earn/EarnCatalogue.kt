@@ -127,11 +127,12 @@ fun earnOptions(
         title = "Hold a plank for ${EarnRules.PLANK_SECONDS} seconds",
         target = "${EarnRules.PLANK_SECONDS} seconds, timed on camera",
         icon = EarnIcon.PLANK,
-        explanation = "Prop your phone on its side a few steps away and get into a plank, on your " +
-            "forearms or your hands. The clock runs while you hold it. Rest if you need to: " +
-            "the seconds you have done are kept.",
+        explanation = "Stand your phone upright on the floor about a step ahead of your hands, " +
+            "facing you, and get into a plank, on your forearms or your hands. The clock runs " +
+            "while you hold it. Rest if you need to: the seconds you have done are kept.",
         verification = "The front camera and an on-device pose model: the clock runs while your " +
-            "shoulders, hips and ankles make a straight line.",
+            "head is down in line with your shoulders and your hips are up behind them, not " +
+            "standing, kneeling up or sitting.",
         privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
             "judged, and nothing from the camera leaves the phone.",
         recommended = false,
@@ -146,11 +147,12 @@ fun earnOptions(
         title = "Hold a wall sit for ${EarnRules.WALL_SIT_SECONDS} seconds",
         target = "${EarnRules.WALL_SIT_SECONDS} seconds, timed on camera",
         icon = EarnIcon.WALL_SIT,
-        explanation = "Back against a wall, slide down until your knees are at a right angle, and " +
-            "hold it. Prop your phone on its side a few steps away, looking at you from the side. " +
-            "Rest if you need to: the seconds you have done are kept.",
-        verification = "The front camera and an on-device pose model: the clock runs while your " +
-            "back is upright and your thighs are level with the floor.",
+        explanation = "Stand your phone upright on the floor a couple of steps in front of the wall, " +
+            "facing you. Back against the wall, slide down until your knees are at a right angle, and " +
+            "hold it. Rest if you need to: the seconds you have done are kept.",
+        verification = "The front camera and an on-device pose model: the clock runs while it sees you " +
+            "from shoulders to feet with your back upright, your thighs level and your shins straight " +
+            "down to your feet; standing or a half squat does not count.",
         privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
             "judged, and nothing from the camera leaves the phone.",
         recommended = false,
@@ -225,13 +227,13 @@ fun earnOptions(
         title = "Meditate for ${EarnRules.MEDITATION_SECONDS / 60} minutes",
         target = "${EarnRules.MEDITATION_SECONDS / 60} minutes sitting still, in one go, on camera",
         icon = EarnIcon.MEDITATION,
-        explanation = "Prop the phone up in front of you, sit, and be still: eyes closed or open, as " +
-            "you like. The clock runs while the camera sees you sitting upright and still, and it has " +
-            "to be ${EarnRules.MEDITATION_SECONDS / 60} minutes in one sitting. A scratch or a cough " +
-            "is fine; getting up, or moving about, starts it over.",
-        verification = "The front camera and an on-device pose model: the clock runs while your head, " +
-            "shoulders and hips are in the picture, your back is upright, you face the phone and you " +
-            "keep still. It cannot know whether you meditated; it knows you sat there.",
+        explanation = "Stand the phone upright in front of you, sit cross-legged or on a chair, and be " +
+            "still: eyes closed or open, as you like. The clock runs while the camera sees you sitting " +
+            "upright and still, and it has to be ${EarnRules.MEDITATION_SECONDS / 60} minutes in one " +
+            "sitting. A scratch or a cough is fine; getting up, or moving about, starts it over.",
+        verification = "The front camera and an on-device pose model: the clock runs while it sees you " +
+            "from head to knees, sitting, back upright, facing the phone and still. Standing does not " +
+            "count. It cannot know whether you meditated; it knows you sat there.",
         privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
             "judged, and nothing from the camera leaves the phone.",
         recommended = false,
