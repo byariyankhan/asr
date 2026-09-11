@@ -1,64 +1,152 @@
 # Meditation (earn time)
 
-Ten minutes with a breathing guide on the screen and the phone lying
-still, for the same +10 minutes. Server type `meditation`, rule
-`{ "target_min": 10, "reward_min": 10, "daily_cap_min": 30 }`; on the
-phone the target is kept in seconds (600), like the holds, so the clock
+Seven minutes sitting still in front of the camera, in one go, for the
+same +10 minutes. Server type `meditation`, rule
+`{ "target_min": 7, "reward_min": 10, "daily_cap_min": 30 }`; on the
+phone the target is kept in seconds (420), like the holds, so the clock
 on the screen moves.
 
 ## What is proved, and what is not
 
-Nothing on a phone can tell whether somebody meditated. What it can tell
-is that the phone was put down and left alone for ten minutes with the
-guide up, which is the shape of the thing and is what the sheet says:
-"It cannot know whether you meditated; it knows the phone was put down
-and left." The founder's choice over a camera eyes-closed check, which
-would have been stronger proof at the cost of a second model in the APK
-and the camera on for the length of it.
+Nothing on a phone can tell whether somebody meditated. What the camera
+can tell is that somebody sat upright in front of it, facing it, and
+kept still for seven minutes without getting up, which is the shape of
+the thing and is what the sheet says: "It cannot know whether you
+meditated; it knows you sat there."
+
+The first version of this activity had the phone lying still on a table
+under a breathing guide, proved by the accelerometer. The founder
+replaced it: a phone left on a table proves nothing about the person,
+and anybody could put it down and walk off. The camera version asks
+more of the phone (the lens open for seven minutes, propped up) and of
+the person (be there, be still), and is the harder thing to fake.
 
 ## How it works
 
-`ui/screens/MeditationScreen.kt` shows a ring that swells for four
-seconds and settles for six, with "Breathe in" / "Breathe out" inside it
-and the time left under it, and gives a small haptic tap at each turn
-(`RepFeedback.breath`) so the eyes can close. The screen stays on for the
-length of it.
+The screen is the push-up screen (`CameraActivityScreen`) with a
+`CameraSpec` for the meditation (`earn/CameraActivities.kt`), so the
+placement card, the coaching strip, the exits and the receipt are the
+same as a plank's. The judge is `earn/MeditationJudge.kt`, pure Kotlin,
+tested without a camera in `MeditationJudgeTest`. Each frame it asks two
+things of the pose:
 
-The proof is `earn/StillnessJudge.kt`, pure Kotlin, tested in
-`StillnessJudgeTest`: the accelerometer, listened to only while the
-screen is resumed. A sample is still when the acceleration vector has
-moved less than 0.35 m/s² since the last sample, which a phone on a table
-or a lap does not exceed and a phone in a hand does. The `HoldTimer`
-behind the plank does the timing: a change is believed after a second
-(a bump is not a pick-up), whole seconds go to the activity through
-`EarnViewModel.onCounted` as they complete, and a gap in the samples
-longer than a second (the screen locked, another app in front) is worth
-nothing. Picking the phone up pauses the clock and the ring goes grey
-with "Put the phone down"; putting it back resumes. Leaving with the
-back chevron keeps the seconds; "Give up this session" asks once.
+- **Seated, facing the phone** (`SeatedPose`): the nose and both
+  shoulders seen; both hips seen (the picture must reach that far down,
+  or sitting up cannot be told from slumping; the coaching says "Move
+  back a little"); the shoulders level within 25° and at least 0.35 of a
+  torso apart (a body side-on or lying on its side is neither); the
+  shoulders above the hips with the line between them at least 60° from
+  horizontal (slumped or lying back is not). The legs are not asked
+  about: from the front, in two dimensions, a chair with the phone a
+  little above it projects exactly like a standing leg, and a rule that
+  called that standing would refuse a real sitter the whole seven
+  minutes.
+- **Still** (`BodyMotion`): over the last second the nose may drift by
+  0.2 of a torso and the point between the shoulders by 0.12, measured
+  in torso lengths (shoulders to hips) so the rule is the same near the
+  phone and across the room and the model's own jitter, a few pixels, is
+  a small fraction of it at any distance. A breath, a slow sway and a
+  nod are under; a head turned to look at something, a shift on the
+  cushion and getting up are over.
+- **In the seat**: where the hips were when the clock started is the
+  seat, and hips more than 0.6 of a torso from it have got up, however
+  still the body now is; that is out of position until the sitting
+  starts over, when the seat is wherever it sits next. Getting up from
+  a chair or a cushion moves the hips by a torso and more.
 
-The view model awards the minutes on the six-hundredth second, exactly
-as it does for the camera activities, and the receipt plays the finish
-chime.
+Both together are the position, and a `HoldJudge` times it exactly as it
+times a plank: a change of phase has to hold for 400 ms before it is
+believed, whole seconds go to the activity through `EarnViewModel.onCounted`
+as they complete, and a gap in the frames longer than 500 ms is worth
+nothing. Every sixtieth second ticks and pulses, so a person with their
+eyes closed knows a minute went by, and the last one does.
+
+### In one go
+
+The one way this differs from the holds: the ask is seven minutes in one
+sitting, and a break starts the count over rather than pausing it
+(`CameraSpec.continuous`). The judge believes a break after three
+seconds out of position, or three seconds without a frame: a scratch, a
+cough, a model that lost the hips for a moment cost nothing but the
+seconds themselves; getting up, walking off, or the camera closing cost
+the sitting. On that frame `PoseJudge.brokeOff` is true once, the screen
+gives the small "found you" tap and tells the view model
+(`onStartedOver`), which puts the activity's progress back to zero and
+leaves it running, so the next sitting starts from 0:00 on the same
+screen rather than from the chooser. Leaving the screen is a break too:
+the count goes to zero when the screen goes (so the dashboard never
+offers to "Continue 3:00/7:00" a sitting that cannot be continued) and
+again when a fresh judge finds progress to its name, whether the camera
+was retried or the absence pause was resumed. "Finish later" says so
+("Leaving starts the sitting over") instead of promising the seconds are
+saved.
+
+The view model awards the minutes on the four-hundred-and-twentieth
+second, as it does for every camera activity, and the receipt shows
+"7:00" at floor size with the finish chime before the card.
+
+## Anti-cheat, and its limits
+
+- A phone on a table with nobody in front of it: nothing. The judge
+  needs a face, shoulders and hips.
+- Sitting for four minutes, going to make tea, sitting for three more:
+  nothing. Two sittings are not a meditation; the count started over.
+- Standing up mid-sitting and standing still: the hips left the seat,
+  and three seconds later the count starts over. Standing still in front
+  of the phone from the start, for seven minutes: passes. The camera
+  cannot tell a chair from standing from every angle, and somebody who
+  stood still that long has done the harder thing.
+- The phone knocked mid-sitting so the picture shifts by more than 0.6
+  of a torso: the hips appear to have left the seat, and the sitting
+  starts over. A nudge does less than that; a phone knocked over ends
+  the sitting anyway.
+- Lying on the sofa with the phone propped to look at you: the shoulders
+  are one above the other, or the torso is horizontal; not the position.
+  Lying on the back with the phone held above you would pass the torso
+  rule, and is left to honesty.
+- Sitting still and reading a book, or watching television: passes. The
+  camera sees a person sitting still, which is what was asked; that it
+  is also what a meditation looks like is the point of the mechanism,
+  and the rest is honesty, as it is for a plank on the knees.
+- A photograph or a paused video propped in front of the camera: passes.
+  A liveness check was considered and left out: the model's own jitter on
+  a still picture looks, frame to frame, like the breathing of a still
+  person, and a rule strict enough to fail the picture would fail real
+  meditators. A face-liveness model would be a second model in the APK
+  and a different camera pipeline; not worth it for a +10 that a
+  phone-free session gives for less.
 
 ## What it does not do
 
-- No sound, no music, no voice: a tap at each turn of the breath and
-  nothing else. The phone is meant to be left alone.
-- No check that the person is there. Somebody who puts the phone down
-  and walks away earns the same ten minutes, as they would from a
-  phone-free session. The mechanism is honesty.
-- No new permission. The accelerometer needs none.
-- No record of the session leaves the phone but its completion.
+- No sound, no music, no voice: a tick a minute, and the finish chime.
+- No new permission: the camera one, already asked for push-ups.
+- No photo or video is saved; every frame is dropped after it is judged,
+  and nothing from the camera leaves the phone but that the meditation
+  was completed. Same as `PUSH_UPS.md`.
+- No record of when the sittings broke off leaves the phone either.
+- A meditation begun on the still-phone release and still active after
+  the update comes back as a fresh camera sitting (`EarnStore.upgraded`):
+  target 420, progress 0. On the server, a rule still at ten minutes
+  (written by the previous release between the migrate step and the
+  container swap) is read as seven when it becomes an activity's target
+  (`currentRule` in `pacts.ts`).
 
 ## Device acceptance checks
 
-1. Choose Meditate: the guide appears; put the phone flat and the ring
-   turns green and starts breathing, with a tap at each turn. The clock
-   counts up.
-2. Pick the phone up: "Put the phone down", the ring greys, the clock
-   stops within a second. Put it down: it resumes where it was.
-3. Lock the phone or switch apps mid-session, come back: the count is
-   where it was, nothing was credited for the time away.
-4. Let it run to ten minutes: the finish chime, the receipt, +10 on the
-   app.
+1. Choose Meditate: the camera permission screen (if not yet granted)
+   reads "7 MINUTES", then the camera screen with the placement card.
+2. Prop the phone up a few steps away, sit facing it with hips in the
+   picture: the frame goes green, "Sit still", and the clock counts up
+   as m:ss. A tick and a pulse at 1:00.
+3. Scratch your nose, cough: the clock stops for a moment and goes on
+   from where it was. Turn to look at something for a second: "Settle";
+   look back and be still: the clock goes on.
+4. Stand up and stay standing: "Sit back down", and after three seconds
+   the clock is at 0:00. Stand up and sit straight back down: the clock
+   goes on from where it was. "Give up this sitting" and "Finish later:
+   leaving starts the sitting over" read as such.
+5. Leave with the back chevron mid-sitting and reopen: 0:00.
+6. Sit for seven minutes: "7:00 ✓ DONE", the finish chime, the receipt,
+   +10 on the app.
+7. Prop the phone so only the head and shoulders are in the picture:
+   "Move back a little", and no seconds until the hips are in.

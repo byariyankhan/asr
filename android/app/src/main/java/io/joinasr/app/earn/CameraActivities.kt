@@ -1,5 +1,7 @@
 package io.joinasr.app.earn
 
+import java.util.Locale
+
 /**
  * What the camera screen needs to know to run one activity: the judge
  * that watches the poses, the words for its units, and where the phone
@@ -21,6 +23,12 @@ class CameraSpec(
     val verification: String,
     /** True when the units are seconds held rather than reps. */
     val timed: Boolean,
+    /**
+     * True when the target has to be done in one go: a break, or leaving
+     * the screen, starts the count over. False when a break pauses it and
+     * the units done so far are kept.
+     */
+    val continuous: Boolean = false,
     /** Every how many units the phone ticks and pulses. */
     val tickEvery: Int,
     /** The numbered steps on the placement card. */
@@ -30,6 +38,38 @@ class CameraSpec(
     private val judge: () -> PoseJudge,
 ) {
     fun newJudge(): PoseJudge = judge()
+
+    /** [units] as the screen says them: "6" push-ups, "32" seconds, "4:15" of a meditation. */
+    fun format(units: Int): String =
+        if (timed && EarnRules.targetFor(type) >= 60) String.format(Locale.US, "%d:%02d", units / 60, units % 60) else "$units"
+
+    /** Under the live count: "of 7 push-ups", "of 45 seconds", "of 7 minutes, in one sitting". */
+    val ofTarget: String
+        get() {
+            val target = EarnRules.targetFor(type)
+            return if (timed && target >= 60 && target % 60 == 0) {
+                "of ${target / 60} minutes" + if (continuous) ", in one $session" else ""
+            } else {
+                "of $target $noun"
+            }
+        }
+
+    /** What is left, as the reward card's title: "3 to go", "12 seconds to go", "4:15 to go". */
+    fun toGo(remaining: Int): String = when {
+        timed && EarnRules.targetFor(type) >= 60 -> "${format(remaining)} to go"
+        timed -> "$remaining seconds to go"
+        else -> "$remaining to go"
+    }
+
+    /** What one go at it is called on the exits: a "set" of push-ups, a "sitting" of a meditation. */
+    val session: String get() = if (continuous) "sitting" else "set"
+
+    /** The target on the permission screen, with the label for it: "7" and "PUSH-UPS", "7" and "MINUTES". */
+    val targetShown: Pair<String, String>
+        get() {
+            val target = EarnRules.targetFor(type)
+            return if (timed && target >= 60 && target % 60 == 0) "${target / 60}" to "MINUTES" else "$target" to unitLabel
+        }
 }
 
 /** The spec for a camera activity, or null for one the camera has no part in. */
@@ -114,6 +154,25 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
                 },
             )
         },
+    )
+    EarnRules.MEDITATION -> CameraSpec(
+        type = type,
+        noun = "seconds",
+        permissionTitle = "Time your meditation.",
+        unitLabel = "SECONDS",
+        placementLine = "Phone propped up in front of you, a few steps away",
+        verification = "Your phone finds your head, shoulders and hips in each frame and runs the " +
+            "clock while you sit upright, facing it, and keep still. The frame is then dropped.",
+        timed = true,
+        continuous = true,
+        tickEvery = 60,
+        placement = listOf(
+            "Prop the phone up in front of you, a few steps away, with your head, shoulders and hips in the picture.",
+            "Sit, on the floor or a chair, and be still. The clock runs while you are; eyes can close, and a tick marks each minute.",
+        ),
+        placementNote = "It has to be ${EarnRules.MEDITATION_SECONDS / 60} minutes in one sitting. A scratch or a cough is fine; " +
+            "getting up, or leaving this screen, starts the clock over.",
+        judge = { MeditationJudge() },
     )
     else -> null
 }

@@ -36,6 +36,22 @@ class EarnStoreTest {
         assertEquals(10, store.earnedToday().forPackage("selected.app"))
     }
 
+    @Test fun `a meditation from the still-phone release comes back as a fresh camera sitting`() = runTest {
+        val store = EarnStore(PreferenceDataStoreFactory.create(scope = backgroundScope) {
+            folder.newFile("earned.preferences_pb")
+        })
+        val old = activity().copy(type = EarnRules.MEDITATION, target = 600, progress = 240)
+        store.start(old)
+        val restored = store.currentActive()!!
+        assertEquals(EarnRules.MEDITATION_SECONDS, restored.target)
+        assertEquals(0, restored.progress)
+        assertEquals(old.id, restored.id)
+        // One on today's rule is left as it is.
+        val current = activity(id = "two").copy(type = EarnRules.MEDITATION, target = EarnRules.MEDITATION_SECONDS, progress = 30)
+        store.start(current)
+        assertEquals(current, store.currentActive())
+    }
+
     @Test fun `completion receipt expires when the local day changes`() = runTest {
         var day = "2026-09-08"
         val store = EarnStore(

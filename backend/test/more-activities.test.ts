@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { sql } from "kysely";
 import { newId } from "@/lib/uuid";
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -35,7 +36,7 @@ describe.skipIf(!DATABASE_URL)("the activities added after push-ups", async () =
           run_steps: { target: 1000, reward_min: 10, daily_cap_min: 30 },
           stairs: { target: 10, reward_min: 10, daily_cap_min: 30 },
           cycling: { target: 3000, reward_min: 10, daily_cap_min: 30 },
-          meditation: { target_min: 10, reward_min: 10, daily_cap_min: 30 },
+          meditation: { target_min: 7, reward_min: 10, daily_cap_min: 30 },
         },
       },
     });
@@ -59,7 +60,7 @@ describe.skipIf(!DATABASE_URL)("the activities added after push-ups", async () =
       ["run_steps", 1000, "com.google.android.youtube"],
       ["stairs", 10, undefined],
       ["cycling", 3000, "com.google.android.youtube"],
-      ["meditation", 10, "com.instagram.android"],
+      ["meditation", 7, "com.instagram.android"],
     ];
     for (const [type, target, app] of expected) {
       const { activity, created } = await createActivity(userId, pactId, {
@@ -74,6 +75,24 @@ describe.skipIf(!DATABASE_URL)("the activities added after push-ups", async () =
       const done = await completeActivity(userId, activity.id, { event_id: newId(), occurred_at: iso(new Date()) });
       expect(done.event).toMatchObject({ type: "activity_completed", minutes: 10 });
     }
+  });
+
+  it("a meditation rule still at ten minutes, written by the release before the camera, is priced at seven", async () => {
+    // What the previous API writes for a pact created between the migrate
+    // step and the container swap: 0016 has run, and the rule says ten.
+    await db
+      .updateTable("pact")
+      .set({ snapshot: sql`jsonb_set(snapshot, '{activities,meditation,target_min}', '10'::jsonb)` })
+      .where("id", "=", pactId)
+      .execute();
+    const { activity } = await createActivity(userId, pactId, {
+      id: newId(),
+      type: "meditation",
+      started_at: iso(new Date()),
+      deadline_at: iso(new Date(Date.now() + 3_600_000)),
+      app_package: "com.google.android.youtube",
+    });
+    expect(activity).toMatchObject({ type: "meditation", target: 7, reward_min: 10 });
   });
 
   it("a pact from a phone that sent only the old rules gets the new ones, priced like its walk", async () => {
@@ -104,7 +123,7 @@ describe.skipIf(!DATABASE_URL)("the activities added after push-ups", async () =
       run_steps: { target: 1000, reward_min: 15, daily_cap_min: 45 },
       stairs: { target: 10, reward_min: 15, daily_cap_min: 45 },
       cycling: { target: 3000, reward_min: 15, daily_cap_min: 45 },
-      meditation: { target_min: 10, reward_min: 15, daily_cap_min: 45 },
+      meditation: { target_min: 7, reward_min: 15, daily_cap_min: 45 },
     });
     const { activity } = await createActivity(other, pact.id, {
       id: newId(),

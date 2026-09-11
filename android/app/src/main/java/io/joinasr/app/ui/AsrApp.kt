@@ -79,7 +79,6 @@ import io.joinasr.app.legal.LegalTexts
 import io.joinasr.app.ui.screens.LegalScreen
 import io.joinasr.app.ui.screens.LocationAccessScreen
 import io.joinasr.app.ui.screens.LogInScreen
-import io.joinasr.app.ui.screens.MeditationScreen
 import io.joinasr.app.ui.screens.NotificationsScreen
 import io.joinasr.app.ui.screens.PersonDetailScreen
 import io.joinasr.app.ui.screens.PersonalDetailsScreen
@@ -320,7 +319,7 @@ fun AsrApp(
         stepsOnceGranted = granted
     }
     // The same pair for the camera, between choosing a camera activity and
-    // the grant; cameraWanted is which one, since three share the lens.
+    // the grant; cameraWanted is which one, since four share the lens.
     var askingForCamera by remember { mutableStateOf(false) }
     var cameraWanted by remember { mutableStateOf<String?>(null) }
     var cameraOnceGranted by remember { mutableStateOf(false) }
@@ -1343,19 +1342,7 @@ fun AsrApp(
                                             earningFor = null
                                         },
                                         onCounted = earnViewModel::onCounted,
-                                    )
-                                } else if (running != null && !activityMinimised && running.isMeditation) {
-                                    MeditationScreen(
-                                        activity = running,
-                                        onBack = {
-                                            activityMinimised = true
-                                            earningFor = null
-                                        },
-                                        onEnd = {
-                                            earnViewModel.cancel()
-                                            earningFor = null
-                                        },
-                                        onCounted = earnViewModel::onCounted,
+                                        onStartedOver = earnViewModel::onStartedOver,
                                     )
                                 } else if (running != null && !activityMinimised) {
                                     // Figma 23.

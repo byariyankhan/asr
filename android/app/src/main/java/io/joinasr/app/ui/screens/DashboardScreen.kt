@@ -47,6 +47,7 @@ import io.joinasr.app.apps.InstalledApps
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.earn.EarnActivity
 import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.cameraSpec
 import io.joinasr.app.enforcement.Pact
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.permissions.PermissionState
@@ -529,7 +530,10 @@ private fun UsageRow(
             // so -- the lock on the icon already says it -- but the one
             // thing there is left to do about it.
             locked && !capped -> EarnButton(
-                label = continuing?.let { "Continue ${it.progress}/${it.target}" }
+                label = continuing?.let {
+                    val spec = cameraSpec(it.type)
+                    "Continue ${spec?.format(it.progress) ?: it.progress}/${spec?.format(it.target) ?: it.target}"
+                }
                     ?: "Earn +${EarnRules.REWARD_MINUTES}m",
                 onClick = onEarnTime,
             )

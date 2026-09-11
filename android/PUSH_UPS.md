@@ -146,6 +146,17 @@ Both are side-view only: the phone propped on its side a few steps away,
 low, with the whole body in the picture. From the floor under the face
 the model cannot see legs, and a plank cannot be told from kneeling.
 
+## The meditation
+
+The fourth camera activity, and the one that is not exercise: seven
+minutes sitting upright in front of the phone, facing it, keeping still,
+in one go. Same screen, same `CameraSpec`, a judge of its own
+(`MeditationJudge`) whose position is seated-and-still rather than a
+shape, and the one difference in the timing: a break starts the count
+over rather than pausing it (`CameraSpec.continuous`, `PoseJudge.brokeOff`,
+`EarnViewModel.onStartedOver`). `android/MEDITATION.md` has the rules and
+what they do and do not prove.
+
 ## What it does not do
 
 - It cannot tell whose push-ups they are. Neither can the step counter

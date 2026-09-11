@@ -1,7 +1,7 @@
 import { sql } from "kysely";
 import { db, isUniqueViolation } from "./db/client";
 import { queueWitnessNotifications } from "./notifications";
-import { requireOwnedPact } from "./pacts";
+import { currentRule, requireOwnedPact } from "./pacts";
 import { conflict, notFound } from "@/lib/http";
 import type { ActivityComplete, ActivityCreate, Snapshot } from "@/lib/schemas";
 import { addDays, phoneZone } from "@/lib/time";
@@ -26,7 +26,8 @@ export const activityColumns = [
 type Rule = { reward_min: number; daily_cap_min: number; target?: number; target_min?: number; wait_min?: number };
 
 function ruleFor(snapshot: Snapshot, type: ActivityCreate["type"]): Rule | undefined {
-  return snapshot.activities[type];
+  const rule = snapshot.activities[type];
+  return rule && currentRule(type, rule);
 }
 
 /**
