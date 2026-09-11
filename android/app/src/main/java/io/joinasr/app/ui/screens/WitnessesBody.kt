@@ -73,23 +73,12 @@ fun ColumnScope.WitnessesBody(
     // toward being watched when it is none.
     val joined = witnesses.filter { it.accepted }
 
+    // No summary above the list. A card counting the people listed under
+    // it, a badge saying they are active when only active people are
+    // listed, and a sentence explaining what a witness is for said three
+    // times what the rows say once; the founder took them out.
     Spacer(Modifier.height(20.dp))
-    SummaryCard(joined = joined)
-
-    Spacer(Modifier.height(26.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            "Your witnesses",
-            style = AsrType.display(22),
-            color = AsrColors.TextPrimary,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            if (joined.isEmpty()) "none yet" else "${joined.size} active",
-            style = AsrType.Label.copy(fontSize = 13.sp),
-            color = AsrColors.TextSecondary,
-        )
-    }
+    Text("Your witnesses", style = AsrType.display(22), color = AsrColors.TextPrimary)
 
     Spacer(Modifier.height(14.dp))
     if (joined.isEmpty()) {
@@ -115,60 +104,6 @@ fun ColumnScope.WitnessesBody(
     Spacer(Modifier.height(16.dp))
     LockNote()
     Spacer(Modifier.height(24.dp))
-}
-
-@Composable
-private fun SummaryCard(joined: List<Witness>) {
-    val count = joined.size
-    val shape = RoundedCornerShape(20.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(AsrColors.Surface, shape)
-            .border(1.dp, AsrColors.FieldBorder, shape)
-            .padding(17.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(count.toString(), style = AsrType.display(36), color = AsrColors.TextPrimary)
-            Spacer(Modifier.width(14.dp))
-            Text(
-                "ACTIVE WITNESSES",
-                style = AsrType.Eyebrow.copy(fontSize = 12.sp),
-                color = AsrColors.TextTertiary,
-                modifier = Modifier.weight(1f),
-            )
-            StatusPill(text = if (count > 0) "ACTIVE" else "NONE YET", highlighted = count > 0)
-        }
-        Spacer(Modifier.height(12.dp))
-        Text(
-            when (count) {
-                0 -> "Nobody is watching this challenge yet."
-                1 -> "${joined.single().mention.replaceFirstChar { it.uppercase() }} will be told if you break the pact."
-                else -> "They'll be told if you break the pact."
-            },
-            style = AsrType.Field.copy(fontSize = 14.sp),
-            color = AsrColors.TextSecondary,
-        )
-    }
-}
-
-@Composable
-private fun StatusPill(text: String, highlighted: Boolean) {
-    Box(
-        modifier = Modifier
-            .height(28.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (highlighted) AsrColors.AccentMuted else AsrColors.Background)
-            .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text,
-            style = AsrType.Eyebrow.copy(fontSize = 10.sp),
-            color = if (highlighted) AsrColors.Accent else AsrColors.TextSecondary,
-        )
-    }
 }
 
 @Composable
@@ -233,8 +168,6 @@ private fun WitnessCard(witness: Witness) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.width(10.dp))
-        StatusPill("ACTIVE", highlighted = true)
     }
 }
 
