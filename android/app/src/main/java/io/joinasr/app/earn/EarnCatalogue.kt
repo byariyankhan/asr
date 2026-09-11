@@ -33,7 +33,6 @@ data class EarnOption(
     val verification: String,
     /** What is and is not collected, when a sensor is involved. */
     val privacy: String?,
-    val recommended: Boolean,
     /** Why this phone cannot offer it, or null when it can. */
     val unavailableReason: String?,
     /** The first line of the receipt: "Your walk is complete." */
@@ -80,7 +79,6 @@ fun earnOptions(
             "Distance is estimated from steps.",
         privacy = "No location or GPS. No movement history: only the difference in the step " +
             "count since you started.",
-        recommended = stepsAvailable,
         unavailableReason = if (stepsAvailable) null else {
             "This phone has no step counter, so a walk cannot be measured."
         },
@@ -99,7 +97,6 @@ fun earnOptions(
         privacy = "Only whether the phone is locked, and that stays on the phone. Nothing " +
             "about what is on it. Your witnesses and Asr's server learn that the session " +
             "was completed, not when you unlocked.",
-        recommended = false,
         unavailableReason = null,
         done = "Your phone-free session is complete.",
     ),
@@ -115,7 +112,6 @@ fun earnOptions(
             "comes down to the phone and back up is one.",
         privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
             "judged, and nothing from the camera leaves the phone.",
-        recommended = false,
         unavailableReason = if (cameraAvailable) null else {
             "This phone has no camera, so push-ups cannot be counted."
         },
@@ -135,7 +131,6 @@ fun earnOptions(
             "standing, kneeling up or sitting.",
         privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
             "judged, and nothing from the camera leaves the phone.",
-        recommended = false,
         unavailableReason = if (cameraAvailable) null else {
             "This phone has no camera, so a plank cannot be timed."
         },
@@ -155,7 +150,6 @@ fun earnOptions(
             "down to your feet; standing or a half squat does not count.",
         privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
             "judged, and nothing from the camera leaves the phone.",
-        recommended = false,
         unavailableReason = if (cameraAvailable) null else {
             "This phone has no camera, so a wall sit cannot be timed."
         },
@@ -173,7 +167,6 @@ fun earnOptions(
             "140 steps a minute or more is running, and its steps count. No GPS.",
         privacy = "No location or GPS. No route: only the pace of your steps, on the phone, and " +
             "the count that came of it.",
-        recommended = false,
         unavailableReason = if (stepsAvailable) null else {
             "This phone has no step counter, so a run cannot be measured."
         },
@@ -191,7 +184,6 @@ fun earnOptions(
             "with the step counter: a rise made while stepping is a climb, a rise without steps is a lift.",
         privacy = "No location or GPS. Only air pressure and steps, on the phone, and the floors " +
             "that came of them.",
-        recommended = false,
         unavailableReason = when {
             !stepsAvailable -> "This phone has no step counter, so a climb cannot be measured."
             !barometerAvailable -> "This phone has no barometer, so a climb cannot be measured."
@@ -212,7 +204,6 @@ fun earnOptions(
             "car-like braking, no running on the step counter, no mock location. Each fix is then dropped.",
         privacy = "Location is read on the phone to measure the ride and never sent. No route or " +
             "place is saved; the server learns that the ride was completed, nothing about where.",
-        recommended = false,
         unavailableReason = when {
             !gpsAvailable -> "This phone has no GPS, so a ride cannot be measured."
             !stepsAvailable -> "This phone has no step counter, which a ride needs to tell it from a run."
@@ -236,7 +227,6 @@ fun earnOptions(
             "count. It cannot know whether you meditated; it knows you sat there.",
         privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
             "judged, and nothing from the camera leaves the phone.",
-        recommended = false,
         unavailableReason = if (cameraAvailable) null else {
             "This phone has no camera, so a meditation cannot be timed."
         },

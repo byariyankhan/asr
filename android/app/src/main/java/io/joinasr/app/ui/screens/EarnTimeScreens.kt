@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -207,8 +206,8 @@ private fun ActivityGrid(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         options.chunked(GRID_COLUMNS).forEach { row ->
-            // Sized to the tallest tile, so a badge or a longer name on
-            // one does not leave its neighbours shorter.
+            // Sized to the tallest tile, so a longer name on one does not
+            // leave its neighbours shorter.
             Row(
                 modifier = Modifier.height(IntrinsicSize.Max),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -230,12 +229,11 @@ private fun ActivityGrid(
 private const val GRID_COLUMNS = 3
 
 /**
- * One activity, at a glance. Always tappable: a dimmed tile opens the same
- * sheet, where the reason it cannot be started is written out, instead of
- * a dead square the person has to guess about.
- *
- * The badge row at the top is there on every tile, empty or not, so the
- * three icons sit on one line and the tiles come out the same height.
+ * One activity, at a glance: icon, name, reward. Always tappable: a dimmed
+ * tile opens the same sheet, where the reason it cannot be started is
+ * written out, instead of a dead square the person has to guess about.
+ * Nothing is recommended over anything else; the founder took the badge
+ * off, and the tiles got shorter with it.
  */
 @Composable
 private fun ActivityTile(
@@ -252,33 +250,24 @@ private fun ActivityTile(
             .background(AsrColors.Surface)
             .border(1.dp, AsrColors.FieldBorder, shape)
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 8.dp)
-            .padding(top = 10.dp, bottom = 14.dp),
+            .padding(horizontal = 8.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // A minimum, not a fixed height: the pill's text follows the
-        // system font scale, and a row it cannot fit would clip it.
-        Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.Center) {
-            if (option.recommended && !dimmed) {
-                SmallPill("RECOMMENDED", AsrColors.Accent, AsrColors.AccentMuted, fontSize = 8.sp)
-            }
-        }
-        Spacer(Modifier.height(6.dp))
         Box(
             modifier = Modifier
-                .size(46.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .background(if (dimmed) AsrColors.Field else AsrColors.AccentMuted),
             contentAlignment = Alignment.Center,
         ) {
             EarnIconView(
                 icon = option.icon,
                 colour = if (dimmed) AsrColors.TextTertiary else AsrColors.Accent,
-                size = 26.dp,
+                size = 22.dp,
                 moving = !dimmed,
             )
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             option.name,
             style = AsrType.Label.copy(fontSize = 13.sp),
@@ -287,10 +276,10 @@ private fun ActivityTile(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(3.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             "+${EarnRules.REWARD_MINUTES}m",
-            style = AsrType.Legal.copy(fontSize = 12.sp),
+            style = AsrType.Legal.copy(fontSize = 11.sp),
             color = if (dimmed) AsrColors.TextTertiary else AsrColors.Accent,
         )
     }
@@ -427,10 +416,6 @@ private fun ActivitySheet(
                         style = AsrType.Field.copy(fontSize = 14.sp),
                         color = AsrColors.TextPrimary,
                     )
-                }
-                if (option.recommended && option.available) {
-                    Spacer(Modifier.width(10.dp))
-                    SmallPill("RECOMMENDED", AsrColors.Accent, AsrColors.AccentMuted)
                 }
             }
 
