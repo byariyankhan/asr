@@ -32,8 +32,7 @@ export const auth = betterAuth({
     minPasswordLength: MIN_PASSWORD,
     resetPasswordTokenExpiresIn: 60 * 60,
     async sendResetPassword({ user, token }) {
-      const mail = resetPasswordEmail(token);
-      await sendEmail(user.email, mail.subject, mail.text);
+      await sendEmail(user.email, resetPasswordEmail(token));
     },
   },
   emailVerification: {
@@ -46,8 +45,7 @@ export const auth = betterAuth({
     sendOnSignUp: false,
     autoSignInAfterVerification: true,
     async sendVerificationEmail({ user, token }) {
-      const mail = verifyEmail(token);
-      await sendEmail(user.email, mail.subject, mail.text);
+      await sendEmail(user.email, verifyEmail(token));
     },
   },
   session: {

@@ -14,8 +14,7 @@ export const POST = route(async (request) => {
   const caller = await requireCaller(request, RATE_LIMITS.emailChange);
   const input = emailChange.parse(await readJson(request));
   const me = await changeEmail(caller.userId, input.new_email, input.password, signInCheck(auth.api), async (oldEmail, newEmail) => {
-    const mail = emailChangedNotice(newEmail);
-    await sendEmail(oldEmail, mail.subject, mail.text);
+    await sendEmail(oldEmail, emailChangedNotice(newEmail));
   });
   return json(me);
 });

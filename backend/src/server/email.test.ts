@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { inviteEmail } from "./email";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  emailFailureLine,
+  inviteEmail,
+  maskAddresses,
+  resetPasswordEmail,
+  sendEmail,
+} from "./email";
 
 /**
  * The emailed invitation said "their phone" and "if they keep it" about
@@ -29,5 +35,86 @@ describe("inviteEmail", () => {
     expect(mail.subject).toBe("Ariyan wants you as a witness");
     expect(mail.text).toContain("Ariyan (your brother) is making a pact");
     expect(mail.text).toContain(url);
+  });
+});
+
+const TOKEN = "cbd8d4a2f1e14f0e9a3b7c6d5e4f3a2b";
+
+/**
+ * A refused send used to leave nothing at all. Resend rejecting the From
+ * address looked exactly like Resend accepting it -- the API answered the
+ * same 200 either way, the app said "check your email" either way, and no
+ * record anywhere said which had happened. These describe the line a
+ * failure leaves now, and the things that line must never carry.
+ */
+describe("the line a failed send leaves", () => {
+  it("keeps the domain, which explains the bounce, and drops the person", () => {
+    expect(maskAddresses("ariyan@gmail.com")).toBe("***@gmail.com");
+    expect(maskAddresses("Asr <noreply@joinasr.com>")).toBe("Asr <***@joinasr.com>");
+    expect(maskAddresses("a@x.com and b@y.com")).toBe("***@x.com and ***@y.com");
+    expect(maskAddresses("nothing to hide in here")).toBe("nothing to hide in here");
+  });
+
+  it("names the kind, the domain, and what the provider said", () => {
+    const line = JSON.parse(
+      emailFailureLine("reset", "ariyan@gmail.com", "The joinasr.com domain is not verified."),
+    );
+    expect(line.event).toBe("email_failed");
+    expect(line.kind).toBe("reset");
+    expect(line.to).toBe("***@gmail.com");
+    expect(line.error).toContain("not verified");
+    expect(Number.isNaN(Date.parse(line.at))).toBe(false);
+  });
+
+  it("masks an address the provider quoted back at us", () => {
+    const line = JSON.parse(
+      emailFailureLine("invite", "someone@example.com", "Invalid `to` field: someone@example.com"),
+    );
+    expect(line.error).toBe("Invalid `to` field: ***@example.com");
+  });
+
+  it("never carries the reset token, the body, or the subject", () => {
+    const mail = resetPasswordEmail(TOKEN);
+    expect(mail.text).toContain(TOKEN); // the token really is in the message
+    const line = emailFailureLine(mail.kind, "ariyan@gmail.com", "connect ETIMEDOUT");
+    expect(line).not.toContain(TOKEN);
+    expect(line).not.toContain(mail.subject);
+    expect(line).not.toContain("/reset/");
+  });
+});
+
+describe("sending with no key configured", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("prints the whole message in development, which is how a reset link is opened locally", async () => {
+    vi.stubEnv("RESEND_API_KEY", "");
+    vi.stubEnv("NODE_ENV", "development");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await sendEmail("ariyan@gmail.com", resetPasswordEmail(TOKEN));
+    expect(result).toEqual({ ok: false, error: "email_not_configured" });
+    expect(String(info.mock.calls[0]?.[0])).toContain(TOKEN);
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("in production writes the failure down, and never the body", async () => {
+    vi.stubEnv("RESEND_API_KEY", "");
+    vi.stubEnv("NODE_ENV", "production");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await sendEmail("ariyan@gmail.com", resetPasswordEmail(TOKEN));
+    expect(result).toEqual({ ok: false, error: "email_not_configured" });
+    expect(info).not.toHaveBeenCalled();
+    const written = String(error.mock.calls[0]?.[0]);
+    expect(JSON.parse(written)).toMatchObject({
+      event: "email_failed",
+      kind: "reset",
+      to: "***@gmail.com",
+      error: "email_not_configured",
+    });
+    expect(written).not.toContain(TOKEN);
   });
 });
