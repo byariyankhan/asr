@@ -80,7 +80,7 @@ PY
     echo "# Without RESEND_API_KEY the app logs emails instead of sending them."
     echo "RESEND_API_KEY="
     echo "# Play Billing: empty means /v1/subscription/verify answers 503."
-    echo "PLAY_PACKAGE_NAME=io.joinasr.app"
+    echo "PLAY_PACKAGE_NAME=com.joinasr.app"
     echo "PLAY_SERVICE_ACCOUNT_JSON_B64="
     echo "PLAY_PUBSUB_SECRET="
     echo "# Cloudflare R2, for profile photos. Empty means POST /v1/me/avatar"

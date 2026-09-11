@@ -125,7 +125,7 @@ The script it runs is idempotent and refuses to overwrite an existing
    falls back to the default server when none does: it refuses to run
    unless nginx really serves `api.joinasr.com`, and afterwards it proves
    no site file but `asr-api` changed. The first bootstrap that reached
-   this step had `api.joinasr.com` still written in the site file, and
+   this step had the wrong hostname still written in the site file, and
    certbot deployed Asr's certificate into Bookween's.
 7. **Schedules the nightly backup** at 02:30 by writing `/etc/cron.d/asr-backup`
    (Bookween's is at 02:00, scheduled the same way).
@@ -276,17 +276,26 @@ somebody edits them by hand.
    certbot --nginx -d joinasr.com -d www.joinasr.com
    ```
 
-3. **The application's own idea of its name.** In `/opt/asr/.env`:
+3. **The application's own idea of its name.** Four lines in `/opt/asr/.env`:
 
    ```
    BETTER_AUTH_URL=https://api.joinasr.com
    PUBLIC_SITE_URL=https://joinasr.com
    EMAIL_FROM=Asr <noreply@joinasr.com>
+   PLAY_PACKAGE_NAME=com.joinasr.app
    ```
 
-   Then `docker compose up -d --force-recreate api`. These three are what put
-   the domain into invitation links, password-reset links and the From line;
-   the code's defaults match, but the file wins and the file is old.
+   Then `docker compose up -d --force-recreate api`. The first three put the
+   domain into invitation links, password-reset links and the From line; the
+   code's defaults match, but the file wins and the file is old. The fourth
+   is what `/.well-known/assetlinks.json` names, so it has to be the
+   application id the APK is actually built with -- left at the old one, every
+   invitation link opens a browser instead of the app.
+
+   The Bootstrap workflow cannot do this for you. It writes named *secrets*
+   into `.env`, and these are not secrets; `EMAIL_FROM` would be refused by
+   its own validation besides, since the value has spaces and angle brackets
+   in it.
 4. **Resend.** Verify `joinasr.com` as a sending domain and publish the DKIM
    and SPF records it gives you. Until this is done, every password-reset
    email fails: the API key is fine, the From address is not.

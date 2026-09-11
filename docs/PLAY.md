@@ -56,7 +56,7 @@ branch.
    | Field | Value |
    |---|---|
    | App name | `Asr: Protect Your Time & Focus` |
-   | Package name | `io.joinasr.app` |
+   | Package name | `com.joinasr.app` |
    | Default language | English (United States) |
    | App or game | App |
    | Free or paid | Free |
@@ -85,10 +85,13 @@ branch.
 Three of the answers above are permanent, and two of those are permanent in
 a way that is easy to miss.
 
-- **The package name.** `io.joinasr.app` cannot be changed, and cannot be
-  reused even if the app is deleted. It is only a name, though: Google never
-  checks that we own `joinasr.com`, so letting the domain go one day would
-  leave the package name looking dated and nothing worse.
+- **The package name.** `com.joinasr.app` cannot be changed, and cannot be
+  reused even if the app is deleted. It was `io.joinasr.app` until the domain
+  moved, and renaming it was free only because nothing had been published
+  yet; after the first upload it would have been impossible. It is only a
+  name, though: Google never checks that we own `joinasr.com`, so letting the
+  domain go one day would leave the package name looking dated and nothing
+  worse.
 - **Free.** An app published free cannot be made paid later (paid to free is
   allowed). Anything charged for has to be an in-app purchase.
 - **The domain, in practice.** `api.joinasr.com` is compiled into every APK

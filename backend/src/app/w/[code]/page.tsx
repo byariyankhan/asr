@@ -36,7 +36,7 @@ const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.com").replac
  * the listing exists nothing here changes.
  */
 function playUrl(code: string): string {
-  const pkg = process.env.PLAY_PACKAGE_NAME || "io.joinasr.app";
+  const pkg = process.env.PLAY_PACKAGE_NAME || "com.joinasr.app";
   const referrer = encodeURIComponent(`w=${code}`);
   return `https://play.google.com/store/apps/details?id=${pkg}&referrer=${referrer}`;
 }
@@ -59,7 +59,7 @@ function playUrl(code: string): string {
  * splice in: peekInvite has already refused anything that is not a code.
  */
 function appUrl(code: string, fallback: string): string {
-  const pkg = process.env.PLAY_PACKAGE_NAME || "io.joinasr.app";
+  const pkg = process.env.PLAY_PACKAGE_NAME || "com.joinasr.app";
   const host = SITE().replace(/^https?:\/\//, "");
   return `intent://${host}/w/${code}#Intent;scheme=https;package=${pkg};S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
 }

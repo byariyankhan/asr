@@ -15,7 +15,7 @@ import { EFFECTIVE, privacy, terms, type LegalSection } from "./legal";
  */
 const KOTLIN = path.resolve(
   __dirname,
-  "../../../android/app/src/main/java/io/joinasr/app/legal/LegalTexts.kt",
+  "../../../android/app/src/main/java/com/joinasr/app/legal/LegalTexts.kt",
 );
 
 type Parsed = { eyebrow: string; title: string; sections: LegalSection[] };

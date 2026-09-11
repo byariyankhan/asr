@@ -6,13 +6,13 @@
 # class and looks it up reflectively. R8 cannot see that link.
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**
--keepclassmembers class io.joinasr.app.** {
+-keepclassmembers class com.joinasr.app.** {
     *** Companion;
 }
--keepclasseswithmembers class io.joinasr.app.** {
+-keepclasseswithmembers class com.joinasr.app.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--if @kotlinx.serialization.Serializable class io.joinasr.app.**
+-if @kotlinx.serialization.Serializable class com.joinasr.app.**
 -keep, allowobfuscation, allowoptimization class <1>
 
 # OkHttp ships rules of its own; these silence the two optional dependencies

@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 const FINGERPRINT = /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/;
 
 export async function GET() {
-  const pkg = process.env.PLAY_PACKAGE_NAME?.trim() || "io.joinasr.app";
+  const pkg = process.env.PLAY_PACKAGE_NAME?.trim() || "com.joinasr.app";
   const fingerprints = (process.env.ANDROID_CERT_SHA256 ?? "")
     .split(/[,\s]+/)
     .map((value) => value.trim().toUpperCase())

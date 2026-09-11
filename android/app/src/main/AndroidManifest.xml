@@ -193,7 +193,7 @@
             android:name=".enforcement.BlockActivity"
             android:exported="false"
             android:launchMode="singleTask"
-            android:taskAffinity="io.joinasr.app.block"
+            android:taskAffinity="com.joinasr.app.block"
             android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:theme="@style/Theme.Asr" />

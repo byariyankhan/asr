@@ -1,0 +1,190 @@
+package com.joinasr.app.sync
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import com.joinasr.app.enforcement.Pact
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val Context.syncStore: DataStore<Preferences> by preferencesDataStore(name = "asr_sync")
+
+/**
+ * Something that happened on the phone and the server has not been told
+ * about yet.
+ *
+ * [id] is generated when the thing happens, not when it is sent, so a retry
+ * after a week of no signal is still the same event to the server rather
+ * than a second breach.
+ */
+@Serializable
+data class PendingEvent(
+    val id: String,
+    val type: String,
+    val reason: String? = null,
+    val appPackage: String? = null,
+    val minutes: Int? = null,
+    val occurredAtMillis: Long,
+    /**
+     * Which challenge it happened in, by the start time that identifies a
+     * pact on this phone. Null only on an event queued by a build before
+     * this field existed; [Outbox] treats one of those as nobody's.
+     */
+    val pactStartedAtMillis: Long? = null,
+)
+
+/**
+ * Which queued events belong to which challenge.
+ *
+ * The outbox is one queue and the phone can hold two challenges' worth of
+ * it: a give-up that happened offline, then a new challenge started the
+ * same afternoon, then a limit reached in it. Drained as one list against
+ * one id, the new challenge's breach was filed under the old one -- and
+ * before that, nothing was sent at all, because creating the new pact
+ * answered 409 while the old one was still open on the server, and the
+ * event that would have closed it was sitting behind that very refusal.
+ */
+object Outbox {
+
+    /** The events that happened in [pact], and no other. */
+    fun forPact(queued: List<PendingEvent>, pact: Pact): List<PendingEvent> =
+        queued.filter { it.pactStartedAtMillis == pact.startedAtMillis }
+
+    /**
+     * Whether nothing queued belongs to another challenge, which is the
+     * condition for adopting an active pact the server already has as
+     * [pact]'s own. An event of unknown origin counts as another's: the
+     * cautious answer, since adopting wrongly files this challenge's
+     * breaches against the last one.
+     */
+    fun clearOfOthers(queued: List<PendingEvent>, pact: Pact): Boolean =
+        queued.none { it.pactStartedAtMillis != pact.startedAtMillis }
+}
+
+/**
+ * What this phone knows about the server's copy of things.
+ *
+ * Kept apart from [com.joinasr.app.enforcement.PactStore] on purpose. That
+ * store is the pact, and enforcement reads it on a phone with no signal in
+ * flight mode; this one is bookkeeping about a network that may be down for
+ * a week. Mixing them would put a failed request in the path of a limit.
+ */
+class SyncStore(context: Context) {
+
+    private val store = context.applicationContext.syncStore
+
+    /**
+     * This install's own id, made once and kept. The server is idempotent on
+     * it, so reinstalling makes a new device row and reinstalling twice does
+     * not make three.
+     */
+    suspend fun installId(): String {
+        store.data.first()[INSTALL_ID]?.let { return it }
+        val made = Uuid7.next()
+        var winner = made
+        store.edit { preferences ->
+            // Another caller may have written one between the read and here.
+            val existing = preferences[INSTALL_ID]
+            if (existing == null) preferences[INSTALL_ID] = made else winner = existing
+        }
+        return winner
+    }
+
+    suspend fun deviceId(): String? = store.data.first()[DEVICE_ID]
+
+    /**
+     * The push token the server has already been given, so a heartbeat
+     * every six hours is not also a write of a value that has not changed.
+     */
+    suspend fun pushToken(): String? = store.data.first()[PUSH_TOKEN]
+
+    suspend fun savePushToken(value: String?) {
+        if (value == null) return
+        store.edit { it[PUSH_TOKEN] = value }
+    }
+
+    /**
+     * Forgets the device row and its token, on sign-out. The install id
+     * stays: it is this installation's identity, not this person's, and
+     * keeping it means signing back in updates one row instead of leaving a
+     * dead one behind.
+     */
+    suspend fun clearDevice() {
+        store.edit {
+            it.remove(DEVICE_ID)
+            it.remove(PUSH_TOKEN)
+        }
+    }
+
+    suspend fun saveDeviceId(id: String) {
+        store.edit { it[DEVICE_ID] = id }
+    }
+
+    /**
+     * The server's id for the pact that started at [startedAtMillis], or
+     * null when this phone has not managed to create it yet. Keyed by the
+     * start time so a stale id from a previous challenge can never be
+     * reported against the current one.
+     */
+    suspend fun remotePactId(startedAtMillis: Long): String? {
+        val preferences = store.data.first()
+        if (preferences[PACT_STARTED_AT] != startedAtMillis) return null
+        return preferences[PACT_ID]
+    }
+
+    suspend fun saveRemotePact(id: String, startedAtMillis: Long) {
+        store.edit {
+            it[PACT_ID] = id
+            it[PACT_STARTED_AT] = startedAtMillis
+        }
+    }
+
+    suspend fun pending(): List<PendingEvent> = store.data.map { decode(it[OUTBOX]) }.first()
+
+    suspend fun enqueue(event: PendingEvent) {
+        store.edit { preferences ->
+            val queue = decode(preferences[OUTBOX])
+            if (queue.any { it.id == event.id }) return@edit
+            preferences[OUTBOX] = json.encodeToString(queue + event)
+        }
+    }
+
+    suspend fun drop(id: String) {
+        store.edit { preferences ->
+            val queue = decode(preferences[OUTBOX])
+            preferences[OUTBOX] = json.encodeToString(queue.filterNot { it.id == id })
+        }
+    }
+
+    /**
+     * An outbox that cannot be read is an empty one. Throwing here would
+     * take down the loop that reports breaches, which is a worse outcome
+     * than losing a queued event nothing can decode anyway.
+     */
+    private fun decode(stored: String?): List<PendingEvent> {
+        if (stored.isNullOrBlank()) return emptyList()
+        return runCatching { json.decodeFromString<List<PendingEvent>>(stored) }
+            .getOrDefault(emptyList())
+    }
+
+    private companion object {
+        val INSTALL_ID = stringPreferencesKey("install_id")
+        val DEVICE_ID = stringPreferencesKey("device_id")
+        val PUSH_TOKEN = stringPreferencesKey("push_token")
+        val PACT_ID = stringPreferencesKey("pact_id")
+        val PACT_STARTED_AT = longPreferencesKey("pact_started_at")
+        val OUTBOX = stringPreferencesKey("outbox")
+
+        val json = Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
+    }
+}

@@ -27,7 +27,7 @@ if (firebaseConfigured) {
 }
 
 android {
-    namespace = "io.joinasr.app"
+    namespace = "com.joinasr.app"
     // 36 because Play requires it of a new app since 31 August 2026, and
     // this app reaches Play after that. What Android 16 changes for apps
     // that target it is already the case here: both activities draw
@@ -41,7 +41,7 @@ android {
         // Fixed for the life of the app: Play will not let a published
         // package name change, and Play Billing verification on the server
         // checks purchases against exactly this string (PLAY_PACKAGE_NAME).
-        applicationId = "io.joinasr.app"
+        applicationId = "com.joinasr.app"
         minSdk = 26
         targetSdk = 36
         // Play refuses an upload whose versionCode is not higher than the

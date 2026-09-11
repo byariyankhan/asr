@@ -1,0 +1,364 @@
+package com.joinasr.app.enforcement
+
+import com.joinasr.app.apps.AppEntry
+import com.joinasr.app.challenge.ChallengeDuration
+import com.joinasr.app.limits.DailyLimit
+import com.joinasr.app.usage.UsageSnapshot
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class EnforcementTest {
+
+    private val defaultDaysForOldPacts = ChallengeDuration.DEFAULT_DAYS
+
+    private val instagram = "com.instagram.android"
+    private val youtube = "com.google.android.youtube"
+    private val messages = "com.google.android.apps.messaging"
+
+    private val pact = Pact(
+        apps = listOf(
+            PactApp(instagram, "Instagram", limitMinutes = 20),
+            PactApp(youtube, "YouTube", limitMinutes = 45),
+        ),
+        startedAtMillis = 1_772_150_400_000L,
+    )
+
+    private val now = 1_772_193_720_000L
+
+    private fun snapshot(foreground: String?, vararg used: Pair<String, Int>) = UsageSnapshot(
+        minutesByPackage = used.toMap(),
+        foregroundPackage = foreground,
+        dayStartMillis = 1_772_150_400_000L,
+    )
+
+    @Test
+    fun `no pact means nothing to enforce`() {
+        val seen = snapshot(instagram, instagram to 999)
+        assertEquals(Decision.Allow, Enforcement.decide(null, seen))
+    }
+
+    @Test
+    fun `an empty pact is nothing to enforce, not an error`() {
+        val empty = Pact(apps = emptyList(), startedAtMillis = 0)
+        assertFalse(empty.isEnforceable)
+        val seen = snapshot(instagram, instagram to 999)
+        assertEquals(Decision.Allow, Enforcement.decide(empty, seen))
+    }
+
+    @Test
+    fun `an app nobody put under a limit is never blocked`() {
+        // Not a detail: the picker refuses to offer Messages, and if a pact
+        // somehow named it the loop must still leave it alone.
+        val seen = snapshot(messages, messages to 500)
+        assertEquals(Decision.Allow, Enforcement.decide(pact, seen))
+    }
+
+    @Test
+    fun `an app over its limit but not open is left alone`() {
+        // There is nothing to block. Covering the screen while somebody is
+        // reading their messages would punish them for a limit they are not
+        // currently exceeding.
+        val seen = snapshot(messages, instagram to 300)
+        assertEquals(Decision.Allow, Enforcement.decide(pact, seen))
+    }
+
+    @Test
+    fun `nothing in the foreground is nothing to do`() {
+        assertEquals(Decision.Allow, Enforcement.decide(pact, snapshot(null, instagram to 300)))
+    }
+
+    @Test
+    fun `under the limit is allowed`() {
+        assertEquals(Decision.Allow, Enforcement.decide(pact, snapshot(instagram, instagram to 19)))
+    }
+
+    @Test
+    fun `the limit is spent when it is reached, not a minute later`() {
+        // Twenty minutes of a twenty minute limit is all of it. Waiting for
+        // twenty-one would give everybody a free minute and make the number
+        // on the block screen a lie.
+        val decision = Enforcement.decide(pact, snapshot(instagram, instagram to 20))
+        val expected = Decision.Block(
+            PactApp(instagram, "Instagram", 20),
+            usedMinutes = 20,
+            limitMinutes = 20,
+        )
+        assertEquals(expected, decision)
+    }
+
+    @Test
+    fun `past the limit blocks and reports what was actually used`() {
+        // Being over can happen: the phone was asleep, the service was
+        // killed, the person granted access late. The screen should say the
+        // true number rather than the limit.
+        val decision = Enforcement.decide(pact, snapshot(youtube, youtube to 61)) as Decision.Block
+        assertEquals("YouTube", decision.app.label)
+        assertEquals(45, decision.app.limitMinutes)
+        assertEquals(61, decision.usedMinutes)
+    }
+
+    @Test
+    fun `an app with no recorded time is at zero, not blocked`() {
+        assertEquals(Decision.Allow, Enforcement.decide(pact, snapshot(instagram)))
+    }
+
+    @Test
+    fun `the loop idles unless a watched app is in front`() {
+        assertEquals(Enforcement.IDLE_MILLIS, Enforcement.pollDelayMillis(pact, snapshot(null)))
+        assertEquals(
+            Enforcement.IDLE_MILLIS,
+            Enforcement.pollDelayMillis(pact, snapshot(messages, messages to 10)),
+        )
+        assertEquals(
+            Enforcement.IDLE_MILLIS,
+            Enforcement.pollDelayMillis(null, snapshot(instagram)),
+        )
+    }
+
+    /**
+     * The hole this closes: the delay used to be chosen from the app in
+     * front right now, so somebody sitting on their home screen with a spent
+     * limit got the idle delay -- and opening that app bought them whatever
+     * was left of fifteen seconds before the loop next looked. Every time
+     * they opened it, all day.
+     */
+    @Test
+    fun `a spent limit is watched from the home screen, because it is one tap away`() {
+        val spent = snapshot(null, instagram to 20)
+        assertEquals(Enforcement.CLOSE_MILLIS, Enforcement.pollDelayMillis(pact, spent))
+
+        // Same while some other, unwatched app is in front.
+        val elsewhere = snapshot(messages, instagram to 20, messages to 3)
+        assertEquals(Enforcement.CLOSE_MILLIS, Enforcement.pollDelayMillis(pact, elsewhere))
+    }
+
+    @Test
+    fun `earned minutes put a spent app back to idle`() {
+        val spent = snapshot(null, instagram to 20)
+        // Fifteen minutes walked for: the limit is not spent any more, and
+        // there is nothing waiting to be blocked on the next tap.
+        assertEquals(
+            Enforcement.IDLE_MILLIS,
+            Enforcement.pollDelayMillis(pact, spent, mapOf(instagram to 15)),
+        )
+    }
+
+    @Test
+    fun `it watches loosely with time to spare and closely near the limit`() {
+        assertEquals(
+            Enforcement.WATCHING_MILLIS,
+            Enforcement.pollDelayMillis(pact, snapshot(instagram, instagram to 5)),
+        )
+        // Two minutes left: close enough that a five second gap could let
+        // somebody past their limit before the screen appears.
+        assertEquals(
+            Enforcement.CLOSE_MILLIS,
+            Enforcement.pollDelayMillis(pact, snapshot(instagram, instagram to 18)),
+        )
+        assertEquals(
+            Enforcement.CLOSE_MILLIS,
+            Enforcement.pollDelayMillis(pact, snapshot(instagram, instagram to 40)),
+        )
+    }
+
+    @Test
+    fun `close watching is fast enough that the limit cannot be overshot much`() {
+        // The design accepts that the block screen arrives a moment after
+        // the app does. This pins how big a moment: at most one second of
+        // slack once the loop is watching closely.
+        assertTrue(Enforcement.CLOSE_MILLIS <= 1_000L)
+        assertTrue(Enforcement.CLOSE_MILLIS < Enforcement.WATCHING_MILLIS)
+        assertTrue(Enforcement.WATCHING_MILLIS < Enforcement.IDLE_MILLIS)
+    }
+
+    @Test
+    fun `a pact survives being written down and read back`() {
+        // The pact is stored as JSON. If this ever fails, every live
+        // challenge on every phone stops being enforced at once.
+        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+        val written = json.encodeToString(Pact.serializer(), pact)
+        val restored = json.decodeFromString<Pact>(written)
+        assertEquals(pact, restored)
+        assertEquals(Pact.CURRENT_VERSION, restored.version)
+    }
+
+    @Test
+    fun `a pact from a newer build still loads`() {
+        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+        val fromTheFuture = """
+            {"apps":[{"packageName":"$instagram","label":"Instagram","limitMinutes":20,
+            "somethingNew":true}],"startedAtMillis":1,"version":9,"alsoNew":"x"}
+        """.trimIndent()
+        val restored = json.decodeFromString<Pact>(fromTheFuture)
+        assertEquals(1, restored.apps.size)
+        assertEquals(9, restored.version)
+    }
+
+    @Test
+    fun `a duration no screen in this app can produce is not enforceable`() {
+        val app = listOf(PactApp(instagram, "Instagram", 20))
+        assertFalse(Pact(app, 0, durationDays = 0).isEnforceable)
+        assertFalse(Pact(app, 0, durationDays = 1000).isEnforceable)
+        assertTrue(Pact(app, 0, durationDays = 14).isEnforceable)
+    }
+
+    @Test
+    fun `a pact stored before durations existed still loads and still runs`() {
+        // Every field but this one was written by an earlier build. Refusing
+        // it would end a live challenge on upgrade.
+        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+        val old = """
+            {"apps":[{"packageName":"$instagram","label":"Instagram","limitMinutes":20}],
+            "startedAtMillis":1,"version":1}
+        """.trimIndent()
+        val restored = json.decodeFromString<Pact>(old)
+        assertEquals(defaultDaysForOldPacts, restored.durationDays)
+        assertTrue(restored.isEnforceable)
+    }
+
+    @Test
+    fun `a limit no screen in this app can produce is not enforceable`() {
+        // Nothing legitimate writes these. If one appears, the pact is
+        // corrupt and enforcing it would block somebody on a number they
+        // never chose.
+        assertFalse(Pact(listOf(PactApp(instagram, "Instagram", 0)), 0).isEnforceable)
+        assertFalse(Pact(listOf(PactApp(instagram, "Instagram", 100_000)), 0).isEnforceable)
+        assertFalse(Pact(listOf(PactApp("", "Instagram", 20)), 0).isEnforceable)
+        assertTrue(Pact(listOf(PactApp(instagram, "Instagram", 20)), 0).isEnforceable)
+    }
+
+    @Test
+    fun `building one from the setup flow keeps every app and its limit`() {
+        val built = Pact.from(
+            apps = listOf(AppEntry(instagram, "Instagram"), AppEntry(youtube, "YouTube")),
+            limits = mapOf(instagram to 15, youtube to 45),
+            durationDays = 21,
+            startedAtMillis = 7,
+        )
+        assertEquals(mapOf(instagram to 15, youtube to 45), built.limitsByPackage)
+        assertEquals("YouTube", built.appFor(youtube)?.label)
+        assertNull(built.appFor(messages))
+        assertEquals(7L, built.startedAtMillis)
+        assertEquals(21, built.durationDays)
+    }
+
+    @Test
+    fun `an app that somehow arrives without a limit gets the default, not zero`() {
+        // Zero would block it the instant it opened.
+        val built = Pact.from(listOf(AppEntry(instagram, "Instagram")), emptyMap(), 14, 0)
+        assertEquals(DailyLimit.DEFAULT_MINUTES, built.apps.single().limitMinutes)
+        assertTrue(built.isEnforceable)
+    }
+
+    // ---- over the limit: reported, never a failure ----
+
+    @Test
+    fun `reaching a limit puts the app on the list`() {
+        val seen = snapshot(instagram, instagram to 20)
+        assertEquals(listOf(instagram), Enforcement.overLimit(pact, seen).map { it.packageName })
+    }
+
+    @Test
+    fun `under the limit is not on it`() {
+        val seen = snapshot(instagram, instagram to 19)
+        assertTrue(Enforcement.overLimit(pact, seen).isEmpty())
+    }
+
+    /**
+     * The whole reason this replaced `breach`. A limit spent forty minutes
+     * deep is the same fact as a limit just spent -- a spent limit -- and
+     * failing a thirty-day challenge over the difference punished people for
+     * this app's own missed polls and for time spent before they promised
+     * anything.
+     */
+    @Test
+    fun `being far past a limit is the same fact as reaching it`() {
+        val just = Enforcement.overLimit(pact, snapshot(instagram, instagram to 20))
+        val far = Enforcement.overLimit(pact, snapshot(instagram, instagram to 400))
+        assertEquals(just, far)
+    }
+
+    @Test
+    fun `an app no longer in front is still over its limit`() {
+        val seen = snapshot(messages, instagram to 40)
+        assertEquals(listOf(instagram), Enforcement.overLimit(pact, seen).map { it.packageName })
+    }
+
+    @Test
+    fun `an app outside the pact is not counted`() {
+        val seen = snapshot(messages, messages to 900)
+        assertTrue(Enforcement.overLimit(pact, seen).isEmpty())
+    }
+
+    @Test
+    fun `no pact has nothing over a limit`() {
+        val seen = snapshot(instagram, instagram to 999)
+        assertTrue(Enforcement.overLimit(null, seen).isEmpty())
+    }
+
+    @Test
+    fun `an unenforceable pact has nothing over a limit`() {
+        val empty = Pact(apps = emptyList(), startedAtMillis = 0)
+        val seen = snapshot(instagram, instagram to 999)
+        assertTrue(Enforcement.overLimit(empty, seen).isEmpty())
+    }
+
+    @Test
+    fun `every app over its limit is listed, not just the first`() {
+        val seen = snapshot(youtube, instagram to 100, youtube to 100)
+        assertEquals(
+            setOf(instagram, youtube),
+            Enforcement.overLimit(pact, seen).map { it.packageName }.toSet(),
+        )
+    }
+
+    // ---- earned time ----
+
+    @Test
+    fun `earned minutes raise today's allowance`() {
+        val seen = snapshot(instagram, instagram to 25)
+        val earned = mapOf(instagram to 10)
+        assertEquals(Decision.Allow, Enforcement.decide(pact, seen, earned))
+    }
+
+    @Test
+    fun `earned minutes run out too`() {
+        val seen = snapshot(instagram, instagram to 30)
+        val earned = mapOf(instagram to 10)
+        val decision = Enforcement.decide(pact, seen, earned) as Decision.Block
+        assertEquals(30, decision.limitMinutes)
+        assertEquals(30, decision.usedMinutes)
+    }
+
+    @Test
+    fun `earned time for one app does not raise another's limit`() {
+        val seen = snapshot(youtube, youtube to 46)
+        val earned = mapOf(instagram to 30)
+        assertTrue(Enforcement.decide(pact, seen, earned) is Decision.Block)
+    }
+
+    @Test
+    fun `being over is measured against the raised limit`() {
+        val earned = mapOf(instagram to 10)
+        assertTrue(Enforcement.overLimit(pact, snapshot(instagram, instagram to 29), earned).isEmpty())
+        assertEquals(
+            listOf(instagram),
+            Enforcement.overLimit(pact, snapshot(instagram, instagram to 30), earned)
+                .map { it.packageName },
+        )
+    }
+
+    @Test
+    fun `the close watch window follows the raised limit`() {
+        val earned = mapOf(instagram to 10)
+        val far = snapshot(instagram, instagram to 20)
+        assertEquals(Enforcement.WATCHING_MILLIS, Enforcement.pollDelayMillis(pact, far, earned))
+        val near = snapshot(instagram, instagram to 29)
+        assertEquals(Enforcement.CLOSE_MILLIS, Enforcement.pollDelayMillis(pact, near, earned))
+    }
+}
