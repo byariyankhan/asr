@@ -31,29 +31,37 @@ export const pactColumns = [
 // Witnesses who opted in hear that it started.
 /**
  * The activities every challenge gets whether or not the phone asked for
- * them, and what each asks. Added in migration 0014 to every pact then on
- * the ledger; this is the same thing for a pact created afterwards by a
- * phone that does not know them yet, so a challenge started the day
+ * them, and what each asks. Added in migrations 0014 and 0015 to every
+ * pact then on the ledger; this is the same thing for a pact created
+ * afterwards by a phone that does not know them yet, so a challenge started the day
  * before the app update is not a challenge without a plank for 90 days.
  * The snapshot is still locked: this only fills in what is missing, with
  * the price the phone did put on its walk (or its focus session), and
  * never changes a rule the phone sent.
  */
-type LaterActivity = "plank" | "wall_sit" | "run_steps" | "stairs";
-const LATER_ACTIVITY_TARGETS: Array<[LaterActivity, number]> = [
-  ["plank", 45],
-  ["wall_sit", 45],
-  ["run_steps", 1000],
-  ["stairs", 10],
+type CountedLater = "plank" | "wall_sit" | "run_steps" | "stairs" | "cycling";
+type TimedLater = "meditation";
+const LATER_COUNTED: Array<[CountedLater, number]> = [
+  ["plank", 45], // seconds
+  ["wall_sit", 45], // seconds
+  ["run_steps", 1000], // steps
+  ["stairs", 10], // floors
+  ["cycling", 3000], // metres
+];
+const LATER_TIMED: Array<[TimedLater, number]> = [
+  ["meditation", 10], // minutes
 ];
 
 export function withLaterActivities(snapshot: Snapshot): Snapshot {
   const priced = snapshot.activities.walk_steps ?? snapshot.activities.focus_session;
   if (!priced) return snapshot;
   const activities: Snapshot["activities"] = { ...snapshot.activities };
-  for (const [type, target] of LATER_ACTIVITY_TARGETS) {
-    if (activities[type]) continue;
-    activities[type] = { target, reward_min: priced.reward_min, daily_cap_min: priced.daily_cap_min };
+  const price = { reward_min: priced.reward_min, daily_cap_min: priced.daily_cap_min };
+  for (const [type, target] of LATER_COUNTED) {
+    if (!activities[type]) activities[type] = { target, ...price };
+  }
+  for (const [type, target_min] of LATER_TIMED) {
+    if (!activities[type]) activities[type] = { target_min, ...price };
   }
   return { ...snapshot, activities };
 }

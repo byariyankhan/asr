@@ -86,6 +86,10 @@ export const snapshot = z.object({
       run_steps: activityRule.extend({ target: z.number().int().min(100).max(50_000) }).optional(),
       // Floors climbed: the barometer's drop while the step counter moves.
       stairs: activityRule.extend({ target: z.number().int().min(1).max(200) }).optional(),
+      // Metres ridden at a cycling speed, from GPS on the phone.
+      cycling: activityRule.extend({ target: z.number().int().min(500).max(100_000) }).optional(),
+      // Minutes of a guided breathing session with the phone lying still.
+      meditation: activityRule.extend({ target_min: z.number().int().min(1).max(120) }).optional(),
       waiting_period: activityRule.extend({ wait_min: z.number().int().min(1).max(60) }).optional(),
     })
     .default({}),
@@ -236,6 +240,8 @@ export const ACTIVITY_TYPES = [
   "wall_sit",
   "run_steps",
   "stairs",
+  "cycling",
+  "meditation",
   "waiting_period",
 ] as const;
 
