@@ -1,6 +1,7 @@
 package io.joinasr.app.ui
 
 import android.Manifest
+import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -41,6 +43,9 @@ import io.joinasr.app.PendingInvite
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.RideService
+import io.joinasr.app.earn.cameraSpec
+import io.joinasr.app.earn.earnOptions
 import io.joinasr.app.earn.EarnViewModel
 import io.joinasr.app.enforcement.PactViewModel
 import io.joinasr.app.ui.components.AsrBottomNav
@@ -53,6 +58,8 @@ import io.joinasr.app.ui.screens.ChallengeStartedScreen
 import io.joinasr.app.ui.screens.ChallengeDurationScreen
 import io.joinasr.app.ui.screens.ActivityProgressScreen
 import io.joinasr.app.ui.screens.ActivityTrackingScreen
+import io.joinasr.app.ui.screens.CameraAccessScreen
+import io.joinasr.app.ui.screens.CameraActivityScreen
 import io.joinasr.app.challenge.ChallengeProgress
 import io.joinasr.app.ui.screens.ChallengeEndedScreen
 import io.joinasr.app.ui.screens.GiveUpScreen
@@ -70,6 +77,7 @@ import io.joinasr.app.ui.screens.ForgotPasswordScreen
 import io.joinasr.app.ui.screens.HelpAndSupportScreen
 import io.joinasr.app.legal.LegalTexts
 import io.joinasr.app.ui.screens.LegalScreen
+import io.joinasr.app.ui.screens.LocationAccessScreen
 import io.joinasr.app.ui.screens.LogInScreen
 import io.joinasr.app.ui.screens.NotificationsScreen
 import io.joinasr.app.ui.screens.PersonDetailScreen
@@ -294,15 +302,91 @@ fun AsrApp(
     LaunchedEffect(activeActivity?.id) { activityMinimised = false }
     // True while Figma 22 is showing, between choosing a walk and the grant.
     var askingForSteps by remember { mutableStateOf(false) }
-    // Set when the grant comes back yes, so the walk starts without the
-    // person having to press the same row twice.
-    var walkOnceGranted by remember { mutableStateOf(false) }
+    // Set when the grant comes back yes, so the walk (or run, or climb:
+    // stepsWanted says which) starts without the person having to press
+    // the same row twice.
+    var stepsOnceGranted by remember { mutableStateOf(false) }
+    var stepsWanted by remember { mutableStateOf(EarnRules.WALK) }
 
+    // Re-read on resume as well, because a ride revoked in Settings and
+    // re-granted there arrives through no callback.
+    var stepsGranted by remember { mutableStateOf(Permissions.hasActivityRecognition(context)) }
     val askForSteps = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         askingForSteps = false
-        walkOnceGranted = granted
+        stepsGranted = granted
+        stepsOnceGranted = granted
+    }
+    // The same pair for the camera, between choosing a camera activity and
+    // the grant; cameraWanted is which one, since four share the lens.
+    var askingForCamera by remember { mutableStateOf(false) }
+    var cameraWanted by remember { mutableStateOf<String?>(null) }
+    var cameraOnceGranted by remember { mutableStateOf(false) }
+    // A refusal is said, not swallowed: the chooser names it, and once
+    // Android has stopped showing the dialog (two refusals) the camera
+    // screen's button goes to the app's page in Settings instead, the way
+    // notifications already do. A silent nothing is not an answer.
+    var cameraRefused by remember { mutableStateOf(false) }
+    var cameraDeniedForGood by remember { mutableStateOf(false) }
+    // Read into state rather than asked on every composition, because a
+    // grant made on the app's Settings page arrives through no callback:
+    // the resume below re-reads it, and the screens follow.
+    var cameraGranted by remember { mutableStateOf(Permissions.hasCamera(context)) }
+    val askForCamera = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        askingForCamera = false
+        cameraOnceGranted = granted
+        cameraRefused = !granted
+        if (!granted) {
+            val activity = context as? Activity
+            cameraDeniedForGood = activity != null &&
+                !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA)
+        } else {
+            cameraDeniedForGood = false
+        }
+    }
+    val allowCamera: () -> Unit = {
+        if (cameraDeniedForGood) {
+            runCatching { context.startActivity(Permissions.appDetailsIntent(context)) }
+        } else {
+            askForCamera.launch(Manifest.permission.CAMERA)
+        }
+    }
+    // And the same again for location, between choosing cycling and the
+    // grant. Precise location is what a ride needs; Android 12 lets the
+    // person grant the approximate half alone, which reads here as a
+    // refusal with the Settings page as the way to the precise half.
+    var askingForLocation by remember { mutableStateOf(false) }
+    var rideOnceGranted by remember { mutableStateOf(false) }
+    var locationRefused by remember { mutableStateOf(false) }
+    var locationDeniedForGood by remember { mutableStateOf(false) }
+    var locationGranted by remember { mutableStateOf(Permissions.hasPreciseLocation(context)) }
+    val askForLocation = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        val granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        askingForLocation = false
+        locationGranted = granted
+        rideOnceGranted = granted
+        locationRefused = !granted
+        if (!granted) {
+            val activity = context as? Activity
+            locationDeniedForGood = activity != null &&
+                !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            locationDeniedForGood = false
+        }
+    }
+    val allowLocation: () -> Unit = {
+        if (locationDeniedForGood) {
+            runCatching { context.startActivity(Permissions.appDetailsIntent(context)) }
+        } else {
+            askForLocation.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+            )
+        }
     }
 
     // Notifications, asked of a witness rather than of everybody at launch.
@@ -387,6 +471,27 @@ fun AsrApp(
     // exactly the moment somebody returns from granting one.
     LifecycleResumeEffect(Unit) {
         protection = PermissionState.read(context)
+        cameraGranted = Permissions.hasCamera(context)
+        if (cameraGranted) {
+            // Back from Settings with the camera allowed: the refusal is
+            // over, and the activity chosen before the trip starts now.
+            cameraRefused = false
+            cameraDeniedForGood = false
+            if (askingForCamera) {
+                askingForCamera = false
+                cameraOnceGranted = true
+            }
+        }
+        stepsGranted = Permissions.hasActivityRecognition(context)
+        locationGranted = Permissions.hasPreciseLocation(context)
+        if (locationGranted) {
+            locationRefused = false
+            locationDeniedForGood = false
+            if (askingForLocation) {
+                askingForLocation = false
+                rideOnceGranted = true
+            }
+        }
         onPauseOrDispose {}
     }
 
@@ -467,7 +572,14 @@ fun AsrApp(
                 onLinkHandled()
             }
             is DeepLink.Earn -> {
-                earningFor = opened.packageName
+                // One activity at a time, as on the dashboard: a set put
+                // aside with the back chevron comes back rather than a
+                // chooser whose rows would do nothing.
+                if (activeActivity != null) {
+                    activityMinimised = false
+                } else {
+                    earningFor = opened.packageName
+                }
                 tab = AsrTab.Home
                 onLinkHandled()
             }
@@ -483,12 +595,55 @@ fun AsrApp(
         Toast.makeText(context, "$label is in your challenge.", Toast.LENGTH_SHORT).show()
     }
 
-    LaunchedEffect(walkOnceGranted, earningFor, pactState) {
-        if (!walkOnceGranted) return@LaunchedEffect
-        walkOnceGranted = false
+    LaunchedEffect(stepsOnceGranted, earningFor, pactState) {
+        if (!stepsOnceGranted) return@LaunchedEffect
+        stepsOnceGranted = false
+        // A ride reads steps too (to tell a run from a ride), so it asks
+        // for steps first and location second; a ride already running
+        // that lost the step permission wants its service back.
+        if (stepsWanted == EarnRules.RIDE) {
+            if (!locationGranted) {
+                askingForLocation = true
+                return@LaunchedEffect
+            }
+            if (activeActivity?.isRide == true) {
+                RideService.start(context)
+                return@LaunchedEffect
+            }
+        }
         val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
         val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
-        earnViewModel.start(pact, app, EarnRules.WALK)
+        earnViewModel.start(pact, app, stepsWanted)
+    }
+    // A ride reopened with both permissions in hand gets its service
+    // back: the service stops itself after half an hour of nothing, or
+    // Android may have killed it, and the screen is the moment to resume.
+    // Starting a service that is already running is a no-op.
+    LaunchedEffect(activeActivity?.id, activityMinimised, stepsGranted, locationGranted) {
+        val ride = activeActivity?.takeIf { it.isRide } ?: return@LaunchedEffect
+        if (activityMinimised || !stepsGranted || !locationGranted) return@LaunchedEffect
+        RideService.start(context)
+    }
+    LaunchedEffect(cameraOnceGranted, earningFor, pactState) {
+        if (!cameraOnceGranted) return@LaunchedEffect
+        cameraOnceGranted = false
+        val type = cameraWanted ?: return@LaunchedEffect
+        val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
+        val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
+        earnViewModel.start(pact, app, type)
+    }
+    LaunchedEffect(rideOnceGranted, earningFor, pactState) {
+        if (!rideOnceGranted) return@LaunchedEffect
+        rideOnceGranted = false
+        // A ride already running (the permission revoked and re-granted
+        // mid-way) wants its service back, not a second ride.
+        if (activeActivity?.isRide == true) {
+            RideService.start(context)
+            return@LaunchedEffect
+        }
+        val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
+        val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
+        earnViewModel.start(pact, app, EarnRules.RIDE)
     }
 
     // What actually drives an activity forward.
@@ -498,20 +653,16 @@ fun AsrApp(
     // screen is up loses nothing, and the difference from the baseline is
     // still right when somebody comes back.
     //
-    // A focus session is the clock. It cannot be beaten by leaving this
-    // screen: the enforcement loop cancels the session the moment a
-    // controlled app comes to the front, which is the only place on the
-    // phone that can see it happen.
+    // The camera activities are counted on the camera screen itself
+    // (CameraActivityScreen), which is the only place the camera is open.
+    //
+    // Phone-free focus sessions, runs and climbs are owned by
+    // EnforcementService, even when this UI is stopped or destroyed.
+    // Compose must never award their time.
     LaunchedEffect(activeActivity?.id) {
         val running = activeActivity ?: return@LaunchedEffect
         if (running.isWalk) {
             earnViewModel.steps.readings().collect { earnViewModel.onSteps(it) }
-        } else {
-            while (true) {
-                val elapsed = System.currentTimeMillis() - running.startedAtMillis
-                earnViewModel.onFocusMinutes((elapsed / 60_000L).toInt())
-                delay(1_000)
-            }
         }
     }
 
@@ -668,6 +819,15 @@ fun AsrApp(
     // screen used to ignore the button altogether.
     val invitationOpen = code != null && (signedIn || !inviteDeferred) && !needsProfile
     val earnAppNow = (pactState as? PactState.Active)?.pact?.let { pact -> earningFor?.let(pact::appFor) }
+    // The chooser shows the earn error. Anywhere else -- a set put aside
+    // with "Finish later" and stood down for running out of time, say --
+    // the message would otherwise vanish with the set it explains.
+    LaunchedEffect(earnError, earnAppNow) {
+        val message = earnError ?: return@LaunchedEffect
+        if (earnAppNow != null) return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        earnViewModel.clearError()
+    }
     val backAction: (() -> Unit)? = when {
         resetToken != null -> ({
             resetToken = null
@@ -714,6 +874,8 @@ fun AsrApp(
             earningFor = null
         })
         tab == AsrTab.Home && askingForSteps -> ({ askingForSteps = false })
+        tab == AsrTab.Home && askingForCamera -> ({ askingForCamera = false })
+        tab == AsrTab.Home && askingForLocation -> ({ askingForLocation = false })
         tab == AsrTab.Home && earnAppNow != null -> ({
             earningFor = null
             earnViewModel.clearError()
@@ -1068,7 +1230,13 @@ fun AsrApp(
                     addingApp = false
                     pactViewModel.clearAddAppError()
                     askingForSteps = false
-                    walkOnceGranted = false
+                    stepsOnceGranted = false
+                    askingForCamera = false
+                    cameraOnceGranted = false
+                    cameraRefused = false
+                    askingForLocation = false
+                    rideOnceGranted = false
+                    locationRefused = false
                     showingNotifications = false
                     showingProtectionLost = false
                     fixingProtection = false
@@ -1106,7 +1274,7 @@ fun AsrApp(
                                     // Figma 24.
                                     EarnedScreen(
                                         activity = done,
-                                        availableNow = earnedToday.forPackage(done.packageName),
+                                        earnedToday = earnedToday.forPackage(done.packageName),
                                         onUseNow = {
                                             earnViewModel.acknowledgeEarned()
                                             earningFor = null
@@ -1122,6 +1290,60 @@ fun AsrApp(
                                             earningFor = null
                                         },
                                     )
+                                } else if (running != null && !activityMinimised && running.isCamera &&
+                                    !cameraGranted
+                                ) {
+                                    // Revoked in Settings mid-set. Ask again
+                                    // rather than open a camera that will
+                                    // refuse; the activity and its count wait.
+                                    CameraAccessScreen(
+                                        spec = cameraSpec(running.type)!!,
+                                        onBack = { activityMinimised = true },
+                                        onAllow = allowCamera,
+                                        onSkip = { activityMinimised = true },
+                                        openSettings = cameraDeniedForGood,
+                                    )
+                                } else if (running != null && !activityMinimised && running.isRide &&
+                                    !stepsGranted
+                                ) {
+                                    // The step permission revoked mid-ride: the
+                                    // service has stopped itself; ask again.
+                                    ActivityTrackingScreen(
+                                        type = EarnRules.RIDE,
+                                        onBack = { activityMinimised = true },
+                                        onAllow = {
+                                            stepsWanted = EarnRules.RIDE
+                                            askForSteps.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                                        },
+                                        onSkip = { activityMinimised = true },
+                                    )
+                                } else if (running != null && !activityMinimised && running.isRide &&
+                                    !locationGranted
+                                ) {
+                                    // Revoked in Settings mid-ride: the service has
+                                    // stopped itself; ask again, and a grant restarts
+                                    // it for the same ride.
+                                    LocationAccessScreen(
+                                        onBack = { activityMinimised = true },
+                                        onAllow = allowLocation,
+                                        onSkip = { activityMinimised = true },
+                                        openSettings = locationDeniedForGood,
+                                    )
+                                } else if (running != null && !activityMinimised && running.isCamera) {
+                                    CameraActivityScreen(
+                                        activity = running,
+                                        spec = cameraSpec(running.type)!!,
+                                        onBack = {
+                                            activityMinimised = true
+                                            earningFor = null
+                                        },
+                                        onEnd = {
+                                            earnViewModel.cancel()
+                                            earningFor = null
+                                        },
+                                        onCounted = earnViewModel::onCounted,
+                                        onStartedOver = earnViewModel::onStartedOver,
+                                    )
                                 } else if (running != null && !activityMinimised) {
                                     // Figma 23.
                                     ActivityProgressScreen(
@@ -1135,9 +1357,25 @@ fun AsrApp(
                                             earningFor = null
                                         },
                                     )
+                                } else if (earnApp != null && askingForLocation) {
+                                    LocationAccessScreen(
+                                        onBack = { askingForLocation = false },
+                                        onAllow = allowLocation,
+                                        onSkip = { askingForLocation = false },
+                                        openSettings = locationDeniedForGood,
+                                    )
+                                } else if (earnApp != null && askingForCamera && cameraWanted != null) {
+                                    CameraAccessScreen(
+                                        spec = cameraSpec(cameraWanted!!)!!,
+                                        onBack = { askingForCamera = false },
+                                        onAllow = allowCamera,
+                                        onSkip = { askingForCamera = false },
+                                        openSettings = cameraDeniedForGood,
+                                    )
                                 } else if (earnApp != null && askingForSteps) {
                                     // Figma 22.
                                     ActivityTrackingScreen(
+                                        type = stepsWanted,
                                         onBack = { askingForSteps = false },
                                         onAllow = {
                                             askForSteps.launch(
@@ -1151,27 +1389,65 @@ fun AsrApp(
                                     ChooseActivityScreen(
                                         app = earnApp,
                                         earnedSoFar = earnedToday.forPackage(earnApp.packageName),
-                                        stepsAvailable = earnViewModel.steps.available,
+                                        options = earnOptions(
+                                            stepsAvailable = earnViewModel.steps.available,
+                                            cameraAvailable = Permissions.hasCameraHardware(context),
+                                            barometerAvailable = Permissions.hasBarometer(context),
+                                            accelerometerAvailable = Permissions.hasAccelerometer(context),
+                                            gpsAvailable = Permissions.hasGps(context),
+                                        ),
                                         onBack = {
                                             earningFor = null
                                             earnViewModel.clearError()
                                         },
-                                        onWalk = {
+                                        onStart = { option ->
                                             val pact = activePact
-                                            if (pact == null) {
-                                                earningFor = null
-                                            } else if (Permissions.hasActivityRecognition(context)) {
-                                                earnViewModel.start(pact, earnApp, EarnRules.WALK)
-                                            } else {
-                                                askingForSteps = true
+                                            when {
+                                                pact == null -> earningFor = null
+                                                // Anything on the step counter, and anything
+                                                // on the camera, needs a permission first; the
+                                                // screen that asks for it starts the activity
+                                                // once it is granted.
+                                                option.type in EarnRules.STEP_TYPES -> {
+                                                    stepsWanted = option.type
+                                                    if (Permissions.hasActivityRecognition(context)) {
+                                                        earnViewModel.start(pact, earnApp, option.type)
+                                                    } else {
+                                                        askingForSteps = true
+                                                    }
+                                                }
+                                                option.type in EarnRules.CAMERA_TYPES -> {
+                                                    cameraWanted = option.type
+                                                    if (cameraGranted) {
+                                                        cameraRefused = false
+                                                        earnViewModel.start(pact, earnApp, option.type)
+                                                    } else {
+                                                        askingForCamera = true
+                                                    }
+                                                }
+                                                option.type == EarnRules.RIDE -> {
+                                                    stepsWanted = EarnRules.RIDE
+                                                    when {
+                                                        !stepsGranted -> askingForSteps = true
+                                                        !locationGranted -> askingForLocation = true
+                                                        else -> {
+                                                            locationRefused = false
+                                                            earnViewModel.start(pact, earnApp, EarnRules.RIDE)
+                                                        }
+                                                    }
+                                                }
+                                                else -> earnViewModel.start(pact, earnApp, option.type)
                                             }
                                         },
-                                        onFocus = {
-                                            activePact?.let {
-                                                earnViewModel.start(it, earnApp, EarnRules.FOCUS)
-                                            }
+                                        errorMessage = earnError ?: when {
+                                            cameraRefused && !cameraGranted ->
+                                                "Camera access was refused, so nothing can be counted on camera. " +
+                                                    "Choose the activity again to allow it."
+                                            locationRefused && !locationGranted ->
+                                                "Precise location was refused, so a ride cannot be measured. " +
+                                                    "Choose Cycle again to allow it."
+                                            else -> null
                                         },
-                                        errorMessage = earnError,
                                     )
                                 } else if (about != null) {
                                     // Figma 25.
@@ -1180,8 +1456,6 @@ fun AsrApp(
                                     }
                                     ReactScreen(
                                         item = about,
-                                        personName = person?.user?.name,
-                                        gender = person?.user?.gender ?: about.aboutUser?.gender,
                                         chosen = about.eventId?.let { reactions[it] },
                                         busy = false,
                                         onBack = { reactingToId = null },
@@ -1252,6 +1526,7 @@ fun AsrApp(
                                         },
                                         unreadNotifications = unread,
                                         earnedMinutes = earnedToday.minutesByPackage,
+                                        runningActivity = activeActivity,
                                         onEarnTime = { app ->
                                             // One activity at a time: while one
                                             // runs, Earn shows it again rather

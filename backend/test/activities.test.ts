@@ -35,6 +35,11 @@ describe.skipIf(!DATABASE_URL)("activities and daily summary", async () => {
         activities: {
           walk_steps: { target: 3000, reward_min: 10, daily_cap_min: 20 },
           focus_session: { target_min: 20, reward_min: 10, daily_cap_min: 20 },
+          push_ups: { target: 7, reward_min: 10, daily_cap_min: 20 },
+          plank: { target: 45, reward_min: 10, daily_cap_min: 20 },
+          wall_sit: { target: 45, reward_min: 10, daily_cap_min: 20 },
+          run_steps: { target: 1000, reward_min: 10, daily_cap_min: 20 },
+          stairs: { target: 10, reward_min: 10, daily_cap_min: 20 },
         },
       },
     });
@@ -171,7 +176,7 @@ describe.skipIf(!DATABASE_URL)("activities and daily summary", async () => {
     // Instagram fill its cap of 20; a third activity for Instagram is
     // refused whichever kind it is, and YouTube still has its own.
     const start = new Date();
-    const activity = (type: "walk_steps" | "focus_session", app: string) =>
+    const activity = (type: "walk_steps" | "focus_session" | "push_ups", app: string) =>
       createActivity(userId, pactId, {
         id: newId(),
         type,
@@ -188,5 +193,32 @@ describe.skipIf(!DATABASE_URL)("activities and daily summary", async () => {
       message: "You have earned all the bonus time Instagram can have today.",
     });
     expect((await activity("walk_steps", "com.google.android.youtube")).created).toBe(true);
+  });
+
+  it("push-ups are an activity like the other two: same rules, same cap, same ledger", async () => {
+    const start = new Date();
+    const { activity, created } = await createActivity(userId, pactId, {
+      id: newId(),
+      type: "push_ups",
+      started_at: iso(start),
+      deadline_at: iso(new Date(start.getTime() + 3_600_000)),
+      app_package: "com.google.android.youtube",
+    });
+    expect(created).toBe(true);
+    // Reps, from the rule locked into the pact; never from the request.
+    expect(activity).toMatchObject({ type: "push_ups", target: 7, reward_min: 10, status: "pending" });
+    // YouTube had one walk today (10 of 20); this fills its cap.
+    await expect(
+      createActivity(userId, pactId, {
+        id: newId(),
+        type: "walk_steps",
+        started_at: iso(start),
+        deadline_at: iso(new Date(start.getTime() + 3_600_000)),
+        app_package: "com.google.android.youtube",
+      }),
+    ).rejects.toMatchObject({ code: "daily_cap_reached" });
+    const done = await completeActivity(userId, activity.id, { event_id: newId(), occurred_at: iso(new Date()) });
+    expect(done.created).toBe(true);
+    expect(done.event).toMatchObject({ type: "activity_completed", minutes: 10 });
   });
 });

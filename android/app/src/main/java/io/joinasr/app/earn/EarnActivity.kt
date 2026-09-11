@@ -15,11 +15,11 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class EarnActivity(
     val id: String,
-    /** [EarnRules.WALK] or [EarnRules.FOCUS]. */
+    /** [EarnRules.WALK], [EarnRules.FOCUS], or one of [EarnRules.CAMERA_TYPES] or [EarnRules.MOTION_TYPES]. */
     val type: String,
     val packageName: String,
     val appLabel: String,
-    /** Steps for a walk, minutes for a focus session. */
+    /** Steps for a walk or a run, minutes for a focus session, reps for push-ups, seconds for a hold, floors for a climb. */
     val target: Int,
     val rewardMinutes: Int,
     val startedAtMillis: Long,
@@ -31,10 +31,24 @@ data class EarnActivity(
      * -1 until the first sample arrives, which can take a moment.
      */
     val baselineSteps: Int = -1,
-    /** Steps taken, or whole minutes focused. Never above [target] on screen. */
+    /** Steps taken, whole minutes focused, reps counted, seconds held, or floors climbed. Never above [target] on screen. */
     val progress: Int = 0,
+    /** Local display hint only. The service never restores trust from this timestamp. */
+    val focusLockedSinceElapsed: Long? = null,
 ) {
     val isWalk: Boolean get() = type == EarnRules.WALK
+
+    /** Counted or timed by the camera, on the camera screen. */
+    val isCamera: Boolean get() = type in EarnRules.CAMERA_TYPES
+
+    /** Measured by the foreground service from the motion sensors: a run, a climb. */
+    val isMotion: Boolean get() = type in EarnRules.MOTION_TYPES
+
+    /** Measured by [RideService] from GPS: metres at a cycling speed. */
+    val isRide: Boolean get() = type == EarnRules.RIDE
+
+    /** Everything else: the keyguard-timed session. */
+    val isFocus: Boolean get() = !isWalk && !isCamera && !isMotion && !isRide
 
     val fraction: Float
         get() = if (target <= 0) 1f else (progress.toFloat() / target).coerceIn(0f, 1f)

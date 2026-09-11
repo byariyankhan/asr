@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -26,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -36,7 +40,6 @@ import io.joinasr.app.ui.components.AsrPrimaryButton
 import io.joinasr.app.ui.theme.AsrColors
 import io.joinasr.app.ui.theme.AsrTheme
 import io.joinasr.app.ui.theme.AsrType
-import io.joinasr.app.witness.Pronouns
 import io.joinasr.app.witness.Reaction
 import io.joinasr.app.witness.Reactions
 
@@ -48,18 +51,18 @@ import io.joinasr.app.witness.Reactions
  * API works and also the honest shape: a reaction is about a thing that
  * happened, not about a person.
  *
- * Everything on it comes from the notification the server sent — the title,
- * the body, the time. This screen writes no sentence of its own about what
- * somebody did, because the version that matters is the one they were
- * already sent.
+ * Three things and nothing else: what happened (the notification's own
+ * title and body, with a mark for breach or update and when it was), the
+ * reactions to choose from, and one button to send the one chosen. The
+ * screen writes no sentence of its own about what somebody did, because
+ * the version that matters is the one they were already sent; and it
+ * explains nothing about reactions, because somebody who has tapped a
+ * notification to react does not need telling that the reaction will be
+ * seen, or that they can pick one.
  */
 @Composable
 fun ReactScreen(
     item: InboxItem,
-    /** Their name, when this phone knows it from the supporting list. */
-    personName: String?,
-    /** Their gender, from their profile: what "visible to him" is built from. */
-    gender: String?,
     /** What was already sent for this event, if anything. */
     chosen: String?,
     busy: Boolean,
@@ -70,7 +73,6 @@ fun ReactScreen(
     val options = Reactions.forEvent(if (item.kind == "pact_broken") "broken" else item.kind)
     var picked by remember(item.id) { mutableStateOf(Reactions.of(chosen) ?: options.first()) }
     val breach = item.kind == "pact_broken"
-    val p = Pronouns.of(gender)
 
     Column(
         modifier = modifier
@@ -82,36 +84,35 @@ fun ReactScreen(
         Spacer(Modifier.height(20.dp))
         AsrBackChevron(onBack)
 
-        Spacer(Modifier.height(18.dp))
-        Text("ACCOUNTABILITY", style = AsrType.Eyebrow, color = AsrColors.Accent)
-        Spacer(Modifier.height(14.dp))
+        // What happened: the kind and the time on one line, then the
+        // notification's own words.
+        Spacer(Modifier.height(20.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SmallPill(
+                text = if (breach) "BREACH" else "UPDATE",
+                colour = if (breach) AsrColors.Warning else AsrColors.Accent,
+                fill = if (breach) AsrColors.WarningMuted else AsrColors.AccentMuted,
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(ago(item.createdAt), style = AsrType.Field, color = AsrColors.TextSecondary)
+        }
+        Spacer(Modifier.height(12.dp))
         Text(item.title, style = AsrType.display(32), color = AsrColors.TextPrimary)
-        Spacer(Modifier.height(10.dp))
-        Text(ago(item.createdAt), style = AsrType.Field, color = AsrColors.TextSecondary)
+        item.body?.takeIf { it.isNotBlank() }?.let {
+            Spacer(Modifier.height(16.dp))
+            EventCard(body = it, breach = breach)
+        }
 
-        Spacer(Modifier.height(22.dp))
-        EventCard(item = item, breach = breach)
-
-        Spacer(Modifier.height(18.dp))
-        VisibilityNote(p)
-
-        Spacer(Modifier.height(26.dp))
-        Text(
-            if (personName != null) "React to $personName" else "React",
-            style = AsrType.display(22),
-            color = AsrColors.TextPrimary,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Pick one. You can change it later.",
-            style = AsrType.Legal.copy(fontSize = 13.sp),
-            color = AsrColors.TextSecondary,
-        )
-
-        Spacer(Modifier.height(14.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
+        // The choices.
+        Spacer(Modifier.height(28.dp))
+        Text("REACT", style = AsrType.Eyebrow, color = AsrColors.Accent)
+        Spacer(Modifier.height(12.dp))
+        // One group of radio buttons to a screen reader, each saying its
+        // label and whether it is the one selected: with the button saying
+        // only "Send", the tiles are where the choice is confirmed.
+        Row(modifier = Modifier.fillMaxWidth().selectableGroup()) {
             for ((index, option) in options.withIndex()) {
-                if (index > 0) Spacer(Modifier.width(11.dp))
+                if (index > 0) Spacer(Modifier.width(10.dp))
                 Tile(
                     option = option,
                     selected = picked.value == option.value,
@@ -120,17 +121,17 @@ fun ReactScreen(
             }
         }
 
-        Spacer(Modifier.height(18.dp))
-        AdaptiveNote(breach = breach)
-
+        // The one action. The selected tile shows what is being sent; a
+        // screen reader is told on the button as well.
         Spacer(Modifier.height(24.dp))
         AsrPrimaryButton(
-            text = if (busy) "Sending…" else "Send ${picked.label.lowercase()} ${picked.emoji}",
+            text = if (busy) "Sending…" else "Send",
             onClick = { onSend(picked.value) },
             enabled = !busy,
+            modifier = Modifier.semantics { contentDescription = if (busy) "Sending ${picked.label}" else "Send ${picked.label}" },
         )
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(12.dp))
         Text(
             "Not now",
             style = AsrType.Label.copy(fontSize = 13.sp),
@@ -146,100 +147,37 @@ fun ReactScreen(
     }
 }
 
+/** The notification's body beside a mark for what kind of thing it was. */
 @Composable
-private fun EventCard(item: InboxItem, breach: Boolean) {
+private fun EventCard(body: String, breach: Boolean) {
     val shape = RoundedCornerShape(20.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(AsrColors.Surface, shape)
             .border(1.dp, AsrColors.FieldBorder, shape)
-            .padding(15.dp),
-        verticalAlignment = Alignment.Top,
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .size(40.dp)
+                .clip(RoundedCornerShape(14.dp))
                 .background(if (breach) AsrColors.WarningMuted else AsrColors.AccentMuted),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 if (breach) "!" else "✓",
-                style = AsrType.display(22),
+                style = AsrType.display(20),
                 color = if (breach) AsrColors.Warning else AsrColors.Accent,
             )
         }
         Spacer(Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                if (breach) "Challenge breached" else "Challenge update",
-                style = AsrType.RowTitle,
-                color = AsrColors.TextPrimary,
-            )
-            item.body?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    it,
-                    style = AsrType.Label.copy(fontSize = 14.sp),
-                    color = AsrColors.TextSecondary,
-                )
-            }
-        }
-        Spacer(Modifier.width(10.dp))
-        SmallPill(
-            text = if (breach) "BREACH" else "UPDATE",
-            colour = if (breach) AsrColors.Warning else AsrColors.Accent,
-            fill = if (breach) AsrColors.WarningMuted else AsrColors.AccentMuted,
-        )
-    }
-}
-
-@Composable
-private fun VisibilityNote(p: Pronouns) {
-    val shape = RoundedCornerShape(18.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(AsrColors.SurfaceSunken, shape)
-            .border(1.dp, AsrColors.FieldBorder, shape)
-            .padding(15.dp),
-    ) {
         Text(
-            "Your reaction is visible to ${p.them}",
-            style = AsrType.Field.copy(fontSize = 15.sp),
+            body,
+            style = AsrType.Label.copy(fontSize = 14.sp),
             color = AsrColors.TextPrimary,
-        )
-        Spacer(Modifier.height(7.dp))
-        Text(
-            "It appears with your profile photo on ${p.their} Witnesses page.",
-            style = AsrType.Legal.copy(fontSize = 13.sp),
-            color = AsrColors.TextSecondary,
-        )
-    }
-}
-
-@Composable
-private fun AdaptiveNote(breach: Boolean) {
-    val shape = RoundedCornerShape(16.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(AsrColors.Surface, shape)
-            .border(1.dp, AsrColors.FieldBorder, shape)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(if (breach) "👏" else "🍅", style = AsrType.display(20), color = AsrColors.TextPrimary)
-        Spacer(Modifier.width(12.dp))
-        Text(
-            if (breach) {
-                "Completed challenges show positive reactions like Clap."
-            } else {
-                "Breaches show the other set. Nobody gets a tomato for finishing."
-            },
-            style = AsrType.Legal.copy(fontSize = 13.sp),
-            color = AsrColors.TextSecondary,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -260,12 +198,13 @@ private fun Tile(
                 if (selected) AsrColors.Accent else AsrColors.FieldBorder,
                 RoundedCornerShape(18.dp),
             )
-            .clickable(role = Role.RadioButton, onClick = onClick)
-            .padding(vertical = 12.dp),
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = option.label }
+            .padding(vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(option.emoji, style = AsrType.display(28), color = AsrColors.TextPrimary)
-        Spacer(Modifier.height(9.dp))
+        Text(option.emoji, style = AsrType.display(30), color = AsrColors.TextPrimary)
+        Spacer(Modifier.height(8.dp))
         Text(
             option.label,
             style = AsrType.Legal.copy(fontSize = 11.sp),
@@ -286,8 +225,6 @@ private fun ReactPreview() {
                 body = "Rafi exceeded a locked app limit during his 14-day challenge.",
                 eventId = "e1",
             ),
-            personName = "Rafi",
-            gender = "male",
             chosen = null,
             busy = false,
             onBack = {},

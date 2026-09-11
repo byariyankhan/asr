@@ -28,29 +28,67 @@ private val Context.earnStore: DataStore<Preferences> by preferencesDataStore(na
  * earned minutes on every pass, which is the only reason this file exists:
  * time that is earned and not applied is a reward nobody receives.
  *
- * Earned minutes are stamped with the local date and read back through
- * [earnedToday], which returns nothing once the date has moved on. Bonus
- * time is for the day it was earned; carrying it forward would turn a walk
- * into a bank balance.
+ * Earned minutes and completion receipts are stamped with the local date.
+ * Once that date moves on, neither is exposed as today's state.
  */
-class EarnStore(context: Context) {
+class EarnStore internal constructor(
+    private val store: DataStore<Preferences>,
+    private val todayProvider: () -> String = { LocalDate.now(ZoneId.systemDefault()).toString() },
+) {
 
-    private val store = context.applicationContext.earnStore
+    constructor(context: Context) : this(context.applicationContext.earnStore)
 
     val active: Flow<EarnActivity?> = store.data.map { decodeActive(it[ACTIVE]) }
+
+    val completed: Flow<EarnActivity?> = combine(store.data, midnights()) { preferences, _ ->
+        val receipt = decodeActive(preferences[COMPLETED])
+        val receiptDay = preferences[COMPLETED_DAY]
+        if (receipt != null && receiptDay == today()) receipt else null
+    }
+
+    suspend fun acknowledgeCompleted() {
+        store.edit {
+            it.remove(COMPLETED)
+            it.remove(COMPLETED_DAY)
+        }
+    }
 
     suspend fun currentActive(): EarnActivity? = active.first()
 
     suspend fun start(activity: EarnActivity) {
-        store.edit { it[ACTIVE] = json.encodeToString(activity) }
+        store.edit {
+            it[ACTIVE] = json.encodeToString(activity)
+            it.remove(COMPLETED)
+            it.remove(COMPLETED_DAY)
+        }
     }
 
     suspend fun update(activity: EarnActivity) {
-        store.edit { it[ACTIVE] = json.encodeToString(activity) }
+        store.edit {
+            if (decodeActive(it[ACTIVE])?.id == activity.id) {
+                it[ACTIVE] = json.encodeToString(activity)
+            }
+        }
     }
 
-    suspend fun clearActive() {
-        store.edit { it.remove(ACTIVE) }
+    suspend fun clearActive(id: String? = null) {
+        store.edit {
+            if (id == null || decodeActive(it[ACTIVE])?.id == id) it.remove(ACTIVE)
+        }
+    }
+
+    /**
+     * Clear every bit of account-specific earn state before another account
+     * can use this installation. Clearing ACTIVE first also makes any late
+     * completion callback fail its id check instead of recreating a receipt.
+     */
+    suspend fun clearForSignOut() {
+        store.edit {
+            it.remove(ACTIVE)
+            it.remove(COMPLETED)
+            it.remove(COMPLETED_DAY)
+            it.remove(EARNED)
+        }
     }
 
     /**
@@ -79,31 +117,52 @@ class EarnStore(context: Context) {
 
     suspend fun earnedToday(): EarnedToday = earned.first()
 
-    /**
-     * Adds a reward, capped. The cap is checked here as well as on the
-     * server: a phone that has been offline all afternoon still must not
-     * hand somebody an hour of TikTok for one walk.
-     */
-    suspend fun award(packageName: String, minutes: Int) {
+    /** Claim and reward together: cancellation or duplicate ticks cannot award twice. */
+    suspend fun complete(activity: EarnActivity): Boolean {
+        var awarded = false
         store.edit { preferences ->
+            if (decodeActive(preferences[ACTIVE])?.id != activity.id) return@edit
+            if (!activity.isComplete) return@edit
             val today = today()
             val stored = decodeEarned(preferences[EARNED])
                 ?.takeIf { it.day == today }
                 ?: EarnedToday(today)
-            val already = stored.forPackage(packageName)
-            val capped = (already + minutes).coerceAtMost(EarnRules.DAILY_CAP_MINUTES)
+            val already = stored.forPackage(activity.packageName)
+            val capped = (already + activity.rewardMinutes).coerceAtMost(EarnRules.DAILY_CAP_MINUTES)
             preferences[EARNED] = json.encodeToString(
-                stored.copy(minutesByPackage = stored.minutesByPackage + (packageName to capped)),
+                stored.copy(minutesByPackage = stored.minutesByPackage + (activity.packageName to capped)),
             )
+            preferences[COMPLETED] = json.encodeToString(activity)
+            preferences[COMPLETED_DAY] = today
+            preferences.remove(ACTIVE)
+            awarded = true
         }
+        return awarded
     }
 
-    private fun today(): String = LocalDate.now(ZoneId.systemDefault()).toString()
+    private fun today(): String = todayProvider()
 
     private fun decodeActive(stored: String?): EarnActivity? {
         if (stored.isNullOrBlank()) return null
-        return runCatching { json.decodeFromString<EarnActivity>(stored) }.getOrNull()
+        return runCatching { json.decodeFromString<EarnActivity>(stored) }.getOrNull()?.let(::upgraded)
     }
+
+    /**
+     * An activity written by an earlier release, brought up to this one.
+     *
+     * The meditation used to be ten minutes with the phone lying still;
+     * it is seven on the camera now, and a sitting begun on the old rule
+     * cannot be finished on the new one: the camera screen would ask for
+     * 600 seconds of sitting against a card that says seven minutes. The
+     * target becomes today's and the progress goes, as it does for any
+     * interrupted sitting. Everything else is stored as it was.
+     */
+    private fun upgraded(activity: EarnActivity): EarnActivity =
+        if (activity.type == EarnRules.MEDITATION && activity.target != EarnRules.MEDITATION_SECONDS) {
+            activity.copy(target = EarnRules.MEDITATION_SECONDS, progress = 0)
+        } else {
+            activity
+        }
 
     private fun decodeEarned(stored: String?): EarnedToday? {
         if (stored.isNullOrBlank()) return null
@@ -112,6 +171,8 @@ class EarnStore(context: Context) {
 
     private companion object {
         val ACTIVE = stringPreferencesKey("active")
+        val COMPLETED = stringPreferencesKey("completed")
+        val COMPLETED_DAY = stringPreferencesKey("completed_day")
         val EARNED = stringPreferencesKey("earned")
 
         val json = Json {

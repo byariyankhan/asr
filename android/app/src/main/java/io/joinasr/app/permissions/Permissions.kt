@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -126,6 +128,45 @@ object Permissions {
             Manifest.permission.ACTIVITY_RECOGNITION,
         ) == PackageManager.PERMISSION_GRANTED
     }
+
+    /**
+     * The camera, for counting push-ups. An ordinary runtime permission on
+     * every API this app supports, asked for the first time somebody picks
+     * the push-up activity and never at launch, for the same reason as
+     * steps: it is not needed to run a challenge.
+     */
+    fun hasCamera(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Whether there is a camera to ask about. The manifest declares one as
+     * optional so a phone without any still installs; this is what keeps
+     * the push-up row off that phone's screen.
+     */
+    fun hasCameraHardware(context: Context): Boolean =
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+
+    /** Whether there is an accelerometer to tell a still phone by. Every phone; declared anyway. */
+    fun hasAccelerometer(context: Context): Boolean =
+        context.getSystemService<SensorManager>()?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null
+
+    /**
+     * Precise location, for measuring a ride. Precise and not approximate:
+     * Android 12 lets a person grant the coarse half alone, and a ride is
+     * metres at a speed, which the coarse half cannot give.
+     */
+    fun hasPreciseLocation(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /** Whether there is a GPS to measure a ride with. */
+    fun hasGps(context: Context): Boolean =
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LOCATION_GPS)
+
+    /** Whether there is a barometer to read a climb from. Most phones; not all. */
+    fun hasBarometer(context: Context): Boolean =
+        context.getSystemService<SensorManager>()?.getDefaultSensor(Sensor.TYPE_PRESSURE) != null
 
     fun hasNotifications(context: Context): Boolean {
         val manager = context.getSystemService<NotificationManager>() ?: return false

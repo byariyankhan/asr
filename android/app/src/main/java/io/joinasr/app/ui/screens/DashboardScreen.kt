@@ -45,7 +45,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.joinasr.app.daysLabel
 import io.joinasr.app.apps.InstalledApps
 import io.joinasr.app.challenge.ChallengeProgress
+import io.joinasr.app.earn.EarnActivity
 import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.cameraSpec
 import io.joinasr.app.enforcement.Pact
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.permissions.PermissionState
@@ -108,6 +110,12 @@ fun DashboardScreen(
     earnedMinutes: Map<String, Int>,
     /** Opens Figma 21 for one app, from the "Earn +10m" button on its row. */
     onEarnTime: (PactApp) -> Unit,
+    /**
+     * The activity in progress, if any. A set put aside mid-way is still
+     * that app's to finish, and its row says so rather than offering to
+     * start another.
+     */
+    runningActivity: EarnActivity? = null,
     /** Opens the picker that brings one more app under a limit, mid-challenge. */
     onAddApp: () -> Unit,
     modifier: Modifier = Modifier,
@@ -214,6 +222,7 @@ fun DashboardScreen(
                 icon = icons[app.packageName],
                 usedMinutes = state.minutesByPackage[app.packageName] ?: 0,
                 earnedMinutes = earnedMinutes[app.packageName] ?: 0,
+                continuing = runningActivity?.takeIf { it.packageName == app.packageName },
                 onEarnTime = { onEarnTime(app) },
             )
             Spacer(Modifier.height(10.dp))
@@ -476,6 +485,7 @@ private fun UsageRow(
     icon: ImageBitmap?,
     usedMinutes: Int,
     earnedMinutes: Int,
+    continuing: EarnActivity?,
     onEarnTime: () -> Unit,
 ) {
     val shape = RoundedCornerShape(16.dp)
@@ -519,7 +529,14 @@ private fun UsageRow(
             // The design's own answer to a spent limit: not a label saying
             // so -- the lock on the icon already says it -- but the one
             // thing there is left to do about it.
-            locked && !capped -> EarnButton(onClick = onEarnTime)
+            locked && !capped -> EarnButton(
+                label = continuing?.let {
+                    val spec = cameraSpec(it.type)
+                    "Continue ${spec?.format(it.progress) ?: it.progress}/${spec?.format(it.target) ?: it.target}"
+                }
+                    ?: "Earn +${EarnRules.REWARD_MINUTES}m",
+                onClick = onEarnTime,
+            )
 
             // Nothing left to offer. All of today's bonus is already spent,
             // and a button that refused every press would be worse than a
@@ -591,7 +608,7 @@ private fun AddAppRow(onClick: () -> Unit) {
 
 /** The green pill from Figma 13's TikTok row. */
 @Composable
-private fun EarnButton(onClick: () -> Unit) {
+private fun EarnButton(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .height(34.dp)
@@ -602,12 +619,13 @@ private fun EarnButton(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            "Earn +${EarnRules.REWARD_MINUTES}m",
+            label,
             style = AsrType.Label.copy(
                 fontSize = 12.sp,
                 fontWeight = AsrType.RowTitle.fontWeight,
             ),
             color = AsrColors.OnAccent,
+            maxLines = 1,
         )
     }
 }
@@ -697,6 +715,7 @@ private fun DashboardPreview() {
                 icon = null,
                 usedMinutes = 8,
                 earnedMinutes = 0,
+                continuing = null,
                 onEarnTime = {},
             )
             UsageRow(
@@ -704,6 +723,7 @@ private fun DashboardPreview() {
                 icon = null,
                 usedMinutes = 20,
                 earnedMinutes = 0,
+                continuing = null,
                 onEarnTime = {},
             )
             AddAppRow(onClick = {})

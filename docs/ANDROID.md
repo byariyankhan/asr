@@ -95,9 +95,10 @@ Figma 16 lists both halves, 17 shows what a witness may see, 19 is the
 inbox, 25 reacts to an event.
 
 **Earning time** (21–24) uses `TYPE_STEP_COUNTER` for walks, which the
-sensor hub keeps whether or not this app is running, and the enforcement
+sensor hub keeps whether or not this app is running, the enforcement
 loop itself for focus sessions — it is the only thing on the phone that can
-see a controlled app come to the front. Earned minutes raise today's
+see a controlled app come to the front — and the camera with an on-device
+pose model for push-ups (`android/PUSH_UPS.md`). Earned minutes raise today's
 allowance in `decide`, `pollDelayMillis` and `overLimit`, and never the pact.
 
 Storage is DataStore, not Room. The pact is one small immutable value read
@@ -471,11 +472,18 @@ missed.
 |---|---|---|
 | `walk_steps` | `TYPE_STEP_COUNTER` (needs `ACTIVITY_RECOGNITION` on API 29+) | Delta since activity start; capped at 200 steps/min to reject shaking |
 | `focus_session` | None: timer with screen-on and no controlled app foregrounded | Any controlled app foreground cancels the session |
+| `push_ups` | Front camera through CameraX, MediaPipe Pose Landmarker on-device (needs `CAMERA`) | Elbow straight → bent → straight in a plank, seven times; frames are dropped after inference. `android/PUSH_UPS.md` |
+| `plank` | Same camera and model | Phone upright on the floor two steps away, to the side or ahead and off to one side, whole body in the picture: one side seen shoulder to ankle, the hip on the shoulder-to-ankle line (no more than 0.05 of its length below, 0.15 above), the knee no more than 0.12 below it, the line sloping down to the feet by 8° to 50°, and a seen elbow at least a tenth of that line below it. Straight in front of the face is not judged: the model guesses the hidden hips and cannot tell a plank from sitting over the phone. Timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
+| `wall_sit` | Same camera and model | Head-on from a phone stood low in front: shoulders, hips, knees and ankles seen, back upright, each knee close under its hip and no lower than it, each shin dropping near-vertical to the foot; or from the side, back upright, thigh level, knee near a right angle. Timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
+| `run_steps` | `TYPE_STEP_COUNTER`, read by the foreground service in 10-second batches | Steps in each 20-second window at 140/min or more are running and count; slower windows do not. 1,000 of them. `android/MOTION.md` |
+| `cycling` | GPS through `LocationManager`, read by `RideService` (a location-typed foreground service) only while a ride runs; needs `ACCESS_FINE_LOCATION` | Thirty-second windows judged together on mean pace 8 to 40 km/h (45 peak), accelerometer jostle (a still phone in a car earns nothing), no car-like speed changes, step cadence under 100/min, no mock fixes, Doppler speed agreeing with the positions. 3 km. No route kept. `android/CYCLING.md` |
+| `meditation` | Same camera and model | Sitting upright and facing the phone (nose, shoulders, hips and knees seen, shoulders level and wide, torso near vertical, each thigh sideways or foreshortened rather than hanging a torso long, hips within 0.6 of a torso of where they were when the clock started; standing never counts) and still (head and shoulders drift under 0.2 and 0.12 of a torso a second), timed; 7 minutes in one sitting, a break of three seconds or more starts it over. `android/MEDITATION.md` |
+| `stairs` | `TYPE_PRESSURE` and `TYPE_STEP_COUNTER`, read by the foreground service | Altitude from the barometer; a rise made while stepping is going on (three steps in the last 5 s, one in the last 2.5 s) is banked, a rise without steps (a lift) or a descent moves the reference. 2.8 m a floor, 10 floors. `android/MOTION.md` |
 | `waiting_period` | None: countdown | Nothing to verify; it is friction, not proof |
 
 Reward minutes are applied locally the instant the activity completes and
 reported to the server with the `activity_completed` event. The daily cap
--- the most bonus time one app can have in a day, across both kinds of
+-- the most bonus time one app can have in a day, across every kind of
 activity -- is enforced locally and re-checked by the server on the same
 rule. The phone also sends its IANA zone with its registration, every
 heartbeat and every summary; the server computes the challenge's "today"
@@ -498,10 +506,14 @@ opens the accept screen after sign-up.
 | `SYSTEM_ALERT_WINDOW` | Show the block screen over other apps | Onboarding step 3 |
 | `POST_NOTIFICATIONS` | Witness and reminder notifications | Onboarding step 4 |
 | `ACTIVITY_RECOGNITION` | Step activities | First time a step activity is started |
+| `CAMERA` | Counting push-ups and timing a plank or a wall sit, on the phone; nothing saved or sent | First time a camera activity is started |
+| `ACCESS_FINE_LOCATION` (+ `COARSE`, which Android pairs with it) | Measuring a bicycle ride, on the phone; no route saved, nothing about location sent. Precise is required; the approximate half alone reads as a refusal | First time cycling is started |
+| `FOREGROUND_SERVICE_LOCATION` | What Android 14 requires of `RideService`, the service that reads GPS during a ride | Install time |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | The protection service | Manifest |
 | `RECEIVE_BOOT_COMPLETED` | Restart protection after reboot | Manifest |
 
-No location, contacts, camera, microphone, or SMS.
+No location, contacts, microphone, or SMS. The camera is opened only on the
+push-up screen, released with it, and no frame is ever written or sent.
 
 ## Play policy notes
 

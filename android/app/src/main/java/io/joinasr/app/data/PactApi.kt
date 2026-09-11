@@ -41,7 +41,7 @@ data class PactAppAdd(
 data class ActivityRule(
     @SerialName("reward_min") val rewardMinutes: Int,
     @SerialName("daily_cap_min") val dailyCapMinutes: Int,
-    /** Steps, for a walk. */
+    /** Steps, for a walk or a run; reps, for push-ups; seconds, for a hold; floors, for a climb. */
     val target: Int? = null,
     /** Minutes, for a focus session. */
     @SerialName("target_min") val targetMinutes: Int? = null,
@@ -59,6 +59,22 @@ data class ActivityRule(
 data class ActivityRules(
     @SerialName("walk_steps") val walkSteps: ActivityRule? = null,
     @SerialName("focus_session") val focusSession: ActivityRule? = null,
+    /**
+     * Push-ups. Until the server knows the type it drops this key from the
+     * snapshot on the way in and refuses to start a push-up activity, which
+     * the phone treats as a settled refusal (Sync.StartResult.Refused):
+     * nothing is awarded that the ledger will not carry. docs/API.md.
+     */
+    @SerialName("push_ups") val pushUps: ActivityRule? = null,
+    /** Timed by the camera, in seconds. Server since migration 0014. */
+    @SerialName("plank") val plank: ActivityRule? = null,
+    @SerialName("wall_sit") val wallSit: ActivityRule? = null,
+    /** Steps at a running cadence, and floors climbed. Server since migration 0014. */
+    @SerialName("run_steps") val runSteps: ActivityRule? = null,
+    @SerialName("stairs") val stairs: ActivityRule? = null,
+    /** Metres at a cycling speed, and minutes with the phone lying still under the breathing guide. Server since migration 0015. */
+    @SerialName("cycling") val cycling: ActivityRule? = null,
+    @SerialName("meditation") val meditation: ActivityRule? = null,
 )
 
 @Serializable

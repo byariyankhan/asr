@@ -77,6 +77,19 @@ export const snapshot = z.object({
     .object({
       walk_steps: activityRule.extend({ target: z.number().int().min(100).max(50_000) }).optional(),
       focus_session: activityRule.extend({ target_min: z.number().int().min(5).max(180) }).optional(),
+      // Reps, counted by the phone's camera (android/PUSH_UPS.md).
+      push_ups: activityRule.extend({ target: z.number().int().min(1).max(500) }).optional(),
+      // Seconds held, timed by the camera.
+      plank: activityRule.extend({ target: z.number().int().min(10).max(600) }).optional(),
+      wall_sit: activityRule.extend({ target: z.number().int().min(10).max(600) }).optional(),
+      // Steps taken at a running cadence, from the step counter.
+      run_steps: activityRule.extend({ target: z.number().int().min(100).max(50_000) }).optional(),
+      // Floors climbed: the barometer's drop while the step counter moves.
+      stairs: activityRule.extend({ target: z.number().int().min(1).max(200) }).optional(),
+      // Metres ridden at a cycling speed, from GPS on the phone.
+      cycling: activityRule.extend({ target: z.number().int().min(500).max(100_000) }).optional(),
+      // Minutes of a guided breathing session with the phone lying still.
+      meditation: activityRule.extend({ target_min: z.number().int().min(1).max(120) }).optional(),
       waiting_period: activityRule.extend({ wait_min: z.number().int().min(1).max(60) }).optional(),
     })
     .default({}),
@@ -219,7 +232,18 @@ export const reactionCreate = z.object({ event_id: uuid, emoji: z.enum(EMOJIS) }
 export const reactionDelete = z.object({ event_id: uuid });
 
 // --- activities (earn your time) ---
-export const ACTIVITY_TYPES = ["walk_steps", "focus_session", "waiting_period"] as const;
+export const ACTIVITY_TYPES = [
+  "walk_steps",
+  "focus_session",
+  "push_ups",
+  "plank",
+  "wall_sit",
+  "run_steps",
+  "stairs",
+  "cycling",
+  "meditation",
+  "waiting_period",
+] as const;
 
 export const activityCreate = z
   .object({

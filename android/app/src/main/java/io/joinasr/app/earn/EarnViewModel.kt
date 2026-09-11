@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.enforcement.Pact
+import io.joinasr.app.enforcement.EnforcementService
 import io.joinasr.app.enforcement.PactApp
 import io.joinasr.app.sync.Sync
 import io.joinasr.app.sync.Uuid7
@@ -41,8 +42,8 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EarnedToday(""))
 
     /** Set when an activity finishes, so Figma 24 is shown once. */
-    private val _justEarned = MutableStateFlow<EarnActivity?>(null)
-    val justEarned: StateFlow<EarnActivity?> = _justEarned.asStateFlow()
+    val justEarned: StateFlow<EarnActivity?> = store.completed
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -56,7 +57,10 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun start(pact: Pact, app: PactApp, type: String) {
         viewModelScope.launch {
-            if (store.currentActive() != null) return@launch
+            if (store.currentActive() != null) {
+                _error.value = "You already have an activity running. Open it from Home."
+                return@launch
+            }
             val earnedSoFar = store.earnedToday().forPackage(app.packageName)
             if (earnedSoFar >= EarnRules.DAILY_CAP_MINUTES) {
                 _error.value = "You have earned all the bonus time ${app.label} can have today."
@@ -68,23 +72,27 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
                 type = type,
                 packageName = app.packageName,
                 appLabel = app.label,
-                target = if (type == EarnRules.WALK) {
-                    EarnRules.WALK_STEPS
-                } else {
-                    EarnRules.FOCUS_MINUTES
-                },
+                target = EarnRules.targetFor(type),
                 rewardMinutes = EarnRules.REWARD_MINUTES,
                 startedAtMillis = now,
                 deadlineAtMillis = now + EarnRules.DEADLINE_HOURS * 60 * 60 * 1000,
             )
             store.start(activity)
+            // The service measures these, screen on or off: the keyguard
+            // for a focus session, the motion sensors for a run or a climb.
+            if (type == EarnRules.FOCUS || type in EarnRules.MOTION_TYPES) {
+                EnforcementService.start(getApplication())
+            }
+            // A ride has its own service, typed for location, started only
+            // now: the screen has checked the permission before this.
+            if (type == EarnRules.RIDE) RideService.start(getApplication())
             // Stood down only on a settled refusal -- the day's bonus for
             // this app already spent, which the server can know before this
             // phone does. Silence and every other failure leave it running.
             val answer = runCatching { sync.startActivity(pact, activity) }
                 .getOrDefault(Sync.StartResult.Unknown)
             if (answer is Sync.StartResult.Refused) {
-                store.clearActive()
+                store.clearActive(activity.id)
                 _error.value = answer.message
             }
         }
@@ -105,6 +113,7 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val running = store.currentActive() ?: return@launch
             if (!running.isWalk) return@launch
+            if (expireIfOverdue(running)) return@launch
             if (running.baselineSteps < 0 || total < running.baselineSteps) {
                 store.update(running.copy(baselineSteps = total, progress = 0))
                 return@launch
@@ -116,27 +125,64 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** A tick of the focus timer, in whole minutes elapsed. */
-    fun onFocusMinutes(minutes: Int) {
+    /**
+     * Units the camera screen's judge awarded this frame: a push-up, a
+     * second held in a plank, a second sat still in a meditation.
+     *
+     * Counted here rather than trusted from the judge's own total, so
+     * that leaving the screen and coming back resumes at the same number:
+     * the camera and the judge start again from nothing every time the
+     * screen is opened, and the activity is what remembers.
+     */
+    fun onCounted(units: Int) {
+        if (units <= 0) return
         viewModelScope.launch {
             val running = store.currentActive() ?: return@launch
-            if (running.isWalk) return@launch
-            if (minutes <= running.progress) return@launch
-            val updated = running.copy(progress = minutes)
+            if (!running.isCamera || running.isComplete) return@launch
+            if (expireIfOverdue(running)) return@launch
+            val updated = running.copy(progress = (running.progress + units).coerceAtMost(running.target))
             if (updated.isComplete) finish(updated) else store.update(updated)
+        }
+    }
+
+    /**
+     * The judge gave up on a run that has to be done in one go (a
+     * meditation whose sitter got up), or the screen was left and opened
+     * again: the count goes back to nothing and the activity stays, so
+     * the next sitting starts from zero rather than from a fresh chooser.
+     */
+    fun onStartedOver() {
+        viewModelScope.launch {
+            val running = store.currentActive() ?: return@launch
+            if (!running.isCamera || running.isComplete || running.progress == 0) return@launch
+            store.update(running.copy(progress = 0))
         }
     }
 
     fun cancel() {
         viewModelScope.launch {
             val running = store.currentActive() ?: return@launch
-            store.clearActive()
+            store.clearActive(running.id)
             runCatching { sync.cancelActivity(running) }
         }
     }
 
+    /**
+     * The server fails an activity whose deadline passed (docs/API.md) and
+     * would refuse its completion; a set paused at breakfast and finished
+     * at midnight must not be awarded here first and refused there after.
+     * The same rule, applied on the phone before the last rep rather than
+     * discovered after it. True if the activity was stood down.
+     */
+    private suspend fun expireIfOverdue(running: EarnActivity): Boolean {
+        if (!running.expired(System.currentTimeMillis())) return false
+        store.clearActive(running.id)
+        _error.value = "That activity ran out of time. Start a fresh one."
+        return true
+    }
+
     fun acknowledgeEarned() {
-        _justEarned.value = null
+        viewModelScope.launch { store.acknowledgeCompleted() }
     }
 
     fun clearError() {
@@ -150,10 +196,8 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun finish(activity: EarnActivity) {
         val now = System.currentTimeMillis()
-        store.award(activity.packageName, activity.rewardMinutes)
+        if (!store.complete(activity)) return
         Analytics.log(Analytics.extraTimeEarned(activity.type))
-        store.clearActive()
-        _justEarned.value = activity
         runCatching { sync.completeActivity(activity, now) }
     }
 }
