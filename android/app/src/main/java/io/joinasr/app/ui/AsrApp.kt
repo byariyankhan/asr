@@ -1456,8 +1456,6 @@ fun AsrApp(
                                     }
                                     ReactScreen(
                                         item = about,
-                                        personName = person?.user?.name,
-                                        gender = person?.user?.gender ?: about.aboutUser?.gender,
                                         chosen = about.eventId?.let { reactions[it] },
                                         busy = false,
                                         onBack = { reactingToId = null },
