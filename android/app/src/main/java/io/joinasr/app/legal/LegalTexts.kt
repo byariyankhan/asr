@@ -14,7 +14,7 @@ data class LegalDocument(
  * The privacy policy and terms, verbatim from Figma 36 and 37 except where
  * the frames describe something this app does not do.
  *
- * The same words are served at joinasr.io/privacy and /terms from
+ * The same words are served at joinasr.com/privacy and /terms from
  * backend/src/lib/legal.ts, and a test there reads this file and fails when
  * the two differ. Change them together.
  *

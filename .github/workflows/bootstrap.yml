@@ -227,17 +227,17 @@ jobs:
 
       # From the public internet this time, not from inside the box: this is
       # what the Android app will actually talk to.
-      - name: Verify https://api.joinasr.io/v1/health
+      - name: Verify https://api.joinasr.com/v1/health
         run: |
           for i in 1 2 3 4 5 6; do
-            body=$(curl -fsS --max-time 10 https://api.joinasr.io/v1/health 2>/dev/null || true)
+            body=$(curl -fsS --max-time 10 https://api.joinasr.com/v1/health 2>/dev/null || true)
             echo "attempt $i: ${body:-<no answer>}"
             if printf %s "$body" | grep -q "\"ok\":true"; then
-              echo "api.joinasr.io is live over TLS"
+              echo "api.joinasr.com is live over TLS"
               exit 0
             fi
             sleep 10
           done
           echo "No healthy answer over HTTPS. If everything else passed, TLS is the"
-          echo "missing piece: ssh in and run  certbot --nginx -d api.joinasr.io"
+          echo "missing piece: ssh in and run  certbot --nginx -d api.joinasr.com"
           exit 1

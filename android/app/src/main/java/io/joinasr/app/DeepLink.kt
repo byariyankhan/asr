@@ -5,15 +5,15 @@ import android.content.Intent
 /**
  * A link that opened the app.
  *
- * Two of them exist, and both are App Links on joinasr.io rather than a
+ * Two of them exist, and both are App Links on joinasr.com rather than a
  * custom scheme, so a link that arrives on a phone without the app still
  * lands on a real web page instead of an error.
  */
 sealed interface DeepLink {
-    /** joinasr.io/reset/<token> — Figma 35. */
+    /** joinasr.com/reset/<token> — Figma 35. */
     data class Reset(val token: String) : DeepLink
 
-    /** joinasr.io/w/<code> — Figma 18. */
+    /** joinasr.com/w/<code> — Figma 18. */
     data class Invite(val code: String) : DeepLink
 
     /**

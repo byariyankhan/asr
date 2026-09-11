@@ -14,7 +14,7 @@ import org.junit.Test
  */
 class RelationshipsTest {
 
-    private val url = "https://joinasr.io/w/K7M2P9XQ4T"
+    private val url = "https://joinasr.com/w/K7M2P9XQ4T"
 
     @Test
     fun `every offered relationship has its own greeting`() {

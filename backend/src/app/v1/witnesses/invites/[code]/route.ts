@@ -4,7 +4,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/server/rate-limit";
 import { optionalCaller } from "@/server/session";
 import { peekInvite } from "@/server/witnesses";
 
-// Public: the accept screen and the joinasr.io/w/<code> page show who is
+// Public: the accept screen and the joinasr.com/w/<code> page show who is
 // asking before the witness has an account.
 //
 // The session is read when there is one, and required never. It only decides

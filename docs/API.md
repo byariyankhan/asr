@@ -1,6 +1,6 @@
 # API
 
-Base URL `https://api.joinasr.io/v1`. JSON in, JSON out. All times are
+Base URL `https://api.joinasr.com/v1`. JSON in, JSON out. All times are
 ISO 8601 with offset. Ids are UUIDs.
 
 ## Authentication
@@ -144,7 +144,7 @@ design: a certificate fingerprint is a public hash of a public certificate.
 
 This is what makes `android:autoVerify="true"` mean anything — Android
 fetches it when the app is installed, and only if it names the app's signing
-certificate does a tap on `joinasr.io/w/<code>` open Asr rather than a
+certificate does a tap on `joinasr.com/w/<code>` open Asr rather than a
 browser or an "open with" chooser.
 
 The fingerprints come from `ANDROID_CERT_SHA256` because they are not one
@@ -428,7 +428,7 @@ acceptance from the same person is `409 already_witness`.
 `201`:
 
 ```json
-{ "id": "…", "invite_code": "K7M2P9XQ4T", "relationship": "brother", "url": "https://joinasr.io/w/K7M2P9XQ4T" }
+{ "id": "…", "invite_code": "K7M2P9XQ4T", "relationship": "brother", "url": "https://joinasr.com/w/K7M2P9XQ4T" }
 ```
 
 If `email` is given the delivery worker also sends the link by email.
@@ -618,7 +618,7 @@ somebody kept stops working.
 
 The stored photo, to anybody who has the URL. **A profile picture is
 public.** The case that settles it is the witness invite: whoever opens
-`joinasr.io/w/<code>` has no account yet and has to be shown who is asking,
+`joinasr.com/w/<code>` has no account yet and has to be shown who is asking,
 and that preview already gives the inviter's name without a session.
 
 Two checks remain, and they are what make a photo removable: the key must be

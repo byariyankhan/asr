@@ -113,7 +113,7 @@ jobs:
             echo "the rolled-back image does not report a commit; checking health only"
           fi
           for i in 1 2 3 4 5 6 7 8 9 10; do
-            body=$(curl -fsS --max-time 10 https://api.joinasr.io/v1/health 2>/dev/null || true)
+            body=$(curl -fsS --max-time 10 https://api.joinasr.com/v1/health 2>/dev/null || true)
             echo "health: ${body:-<no answer>}"
             if printf %s "$body" | grep -q "\"ok\":true" \
                && { [ -z "$target" ] || printf %s "$body" | grep -q "\"commit\":\"$target\""; }; then

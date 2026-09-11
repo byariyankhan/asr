@@ -24,7 +24,7 @@ const structuredData = {
   ],
 };
 
-/** joinasr.io. What somebody finds when they follow the brand rather than a link. */
+/** joinasr.com. What somebody finds when they follow the brand rather than a link. */
 export default function LandingPage() {
   return (
     <SiteFrame

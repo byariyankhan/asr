@@ -9,7 +9,7 @@ export const metadata = publicPageMetadata(
 );
 
 /**
- * https://joinasr.io/delete-account — the address Google Play's Data safety
+ * https://joinasr.com/delete-account — the address Google Play's Data safety
  * form asks for: where somebody can have their account deleted, including
  * somebody who no longer has the app. The same deletion the app offers
  * (server/account.ts), described once, with the way in for people without a

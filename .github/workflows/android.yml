@@ -209,7 +209,7 @@ jobs:
           done
 
       # The fingerprint that has to be in /.well-known/assetlinks.json for a
-      # joinasr.io/w/<code> link to open a debug build of this app rather
+      # joinasr.com/w/<code> link to open a debug build of this app rather
       # than a browser. It is a property of the key that signed the debug
       # APK, and that key is app/debug.keystore, committed and named in
       # build.gradle.kts, so the value never changes; it is printed here so

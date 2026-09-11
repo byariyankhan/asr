@@ -89,7 +89,7 @@ they happened, so a week in flight mode reports a week-old breach with the
 time it occurred.
 
 **Witnesses work in both directions.** Invites are shared through Android's
-share sheet and opened by an App Link on `joinasr.io/w/` (Figma 18, which
+share sheet and opened by an App Link on `joinasr.com/w/` (Figma 18, which
 works signed out — the person being asked to vouch usually has no account).
 Figma 16 lists both halves, 17 shows what a witness may see, 19 is the
 inbox, 25 reacts to an event.
@@ -483,8 +483,8 @@ in it, so days stamped here and days judged there are on one calendar.
 
 ## Witness invite (App Links)
 
-`https://joinasr.io/w/<code>` is declared as an Android App Link with
-`autoVerify`, backed by `/.well-known/assetlinks.json` on `joinasr.io`. If
+`https://joinasr.com/w/<code>` is declared as an Android App Link with
+`autoVerify`, backed by `/.well-known/assetlinks.json` on `joinasr.com`. If
 the app is installed, the link opens the accept screen. If not, the fallback
 web page shows the inviter's name and a Play Store button with
 `referrer=w_<code>`; the app reads the install referrer on first launch and
@@ -519,7 +519,7 @@ No location, contacts, camera, microphone, or SMS.
 
 The API base URL is a `BuildConfig` field set in
 `android/app/build.gradle.kts`, never a literal in Kotlin source. Both build
-types currently point at `https://api.joinasr.io`. A `dev` flavor aimed at a
+types currently point at `https://api.joinasr.com`. A `dev` flavor aimed at a
 local server is worth adding when someone actually runs the backend locally,
 and does not exist yet.
 

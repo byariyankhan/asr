@@ -7,7 +7,7 @@ import { inviteLead, pronounsFor } from "@/server/witness-copy";
 /**
  * The page a witness invitation actually opens.
  *
- * It did not exist. `joinasr.io/w/<code>` was the link in every invitation
+ * It did not exist. `joinasr.com/w/<code>` was the link in every invitation
  * the app has ever sent, the target of an autoVerify App Link in the
  * manifest, and nothing was serving the apex at all — so the link produced
  * no preview in WhatsApp, no page for anybody without the app, and no
@@ -19,7 +19,7 @@ import { inviteLead, pronounsFor } from "@/server/witness-copy";
  * preview is going to say has to be in the first response.
  */
 
-const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.io").replace(/\/$/, "");
+const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.com").replace(/\/$/, "");
 
 /**
  * The Play listing, with the invitation attached.
@@ -45,7 +45,7 @@ function playUrl(code: string): string {
  * The same invitation, asked of the app by name.
  *
  * This page was written on the assumption that a phone with Asr on it never
- * gets here: the manifest claims joinasr.io/w/ as an App Link and Android
+ * gets here: the manifest claims joinasr.com/w/ as an App Link and Android
  * opens the app. That holds only when the app was installed after
  * /.well-known/assetlinks.json listed the certificate it is signed with, and
  * only on Android 12 and newer. A sideloaded build signed with a key the

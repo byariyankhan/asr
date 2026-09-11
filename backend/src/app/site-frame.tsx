@@ -6,7 +6,7 @@ import "./site.css";
  * The header and footer every public page sits inside.
  *
  * The site lived on an unmerged branch as three static HTML files while
- * joinasr.io answered 404 -- the address on every invitation the app sends,
+ * joinasr.com answered 404 -- the address on every invitation the app sends,
  * and the one Play needs for a privacy policy. It is served by the API
  * application now, behind the same nginx site, so shipping it is a deploy
  * and not a change to the server. Markup and styles are that branch's,

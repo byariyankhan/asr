@@ -77,7 +77,7 @@ branch.
    step 1), and the debug key's (printed at the end of every Android run).
    Then run the **Bootstrap** workflow: its fill-in step rewrites that one
    line in `/opt/asr/.env` and recreates the API. Check
-   `https://api.joinasr.io/.well-known/assetlinks.json` lists all three.
+   `https://api.joinasr.com/.well-known/assetlinks.json` lists all three.
    Without this, an invitation link opens a browser instead of the app.
 
 ### What can never change afterwards
@@ -87,12 +87,12 @@ a way that is easy to miss.
 
 - **The package name.** `io.joinasr.app` cannot be changed, and cannot be
   reused even if the app is deleted. It is only a name, though: Google never
-  checks that we own `joinasr.io`, so letting the domain go one day would
+  checks that we own `joinasr.com`, so letting the domain go one day would
   leave the package name looking dated and nothing worse.
 - **Free.** An app published free cannot be made paid later (paid to free is
   allowed). Anything charged for has to be an in-app purchase.
-- **The domain, in practice.** `api.joinasr.io` is compiled into every APK
-  (`buildConfigField "API_BASE_URL"`), and `joinasr.io` is the App Links host
+- **The domain, in practice.** `api.joinasr.com` is compiled into every APK
+  (`buildConfigField "API_BASE_URL"`), and `joinasr.com` is the App Links host
   in the manifest. An installed copy keeps calling that address for as long
   as it is installed, whatever a later version does -- so from the first
   public upload, the domain has to stay registered and answering. Letting it
@@ -133,8 +133,8 @@ a way that is easy to miss.
   Good ones: the dashboard with a running pact, Choose apps, the block
   screen, the witness circle, Progress.
 - **Category**: Productivity. **Tags**: habit, screen time, focus.
-- **Contact**: `hi@ariyankhan.com`; website `https://joinasr.io`.
-- **Privacy policy**: `https://joinasr.io/privacy`.
+- **Contact**: `hi@ariyankhan.com`; website `https://joinasr.com`.
+- **Privacy policy**: `https://joinasr.com/privacy`.
 
 ## 5. App content (the declarations)
 
@@ -144,7 +144,7 @@ a way that is easy to miss.
   confirmation is required to use it. To see enforcement, grant Usage access
   and Display over other apps when asked, start a challenge with a short
   limit, and open a limited app.* Also give a test account (create one from
-  the app first, e.g. `playreview@joinasr.io`) so a reviewer can skip
+  the app first, e.g. `playreview@joinasr.com`) so a reviewer can skip
   sign-up.
 - **Content rating**: Utility / Productivity. No violence, sexuality,
   language, controlled substances. *Users can interact* — yes (witnesses see
@@ -197,7 +197,7 @@ not sharing in Play's sense.
 | Location, contacts, messages, files, financial info, health and fitness | not collected | | step counts stay on the phone | |
 
 Security practices: data is encrypted in transit (yes); users can request
-that data be deleted (yes, `https://joinasr.io/delete-account`, and in the
+that data be deleted (yes, `https://joinasr.com/delete-account`, and in the
 app under Personal details); the app follows the Families policy (no, not
 designed for children).
 
@@ -212,7 +212,7 @@ Oppo or Vivo, a Pixel) for a week, then **Production**. Upload the
 
 - [ ] Off-site database backup running and restored once (`infra/backup.sh`).
 - [ ] The uptime monitor alerts a phone somebody looks at.
-- [ ] A password-reset email arrives from `noreply@joinasr.io` (Resend domain verified).
+- [ ] A password-reset email arrives from `noreply@joinasr.com` (Resend domain verified).
 - [ ] `ANDROID_CERT_SHA256` holds all three fingerprints and `assetlinks.json` shows them.
 - [ ] A release build (from `asr-release-apk`) ran on a real phone: sign up, start a pact, block, earn time, invite, accept on a second phone.
 - [ ] Crashlytics shows that release build's test crash with readable line numbers (the plugin uploads the R8 mapping during the CI build).

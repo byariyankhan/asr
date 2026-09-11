@@ -33,7 +33,7 @@ export const witnessColumns = [
 
 type Db = Kysely<Database> | Transaction<Database>;
 
-const SITE_URL = () => process.env.PUBLIC_SITE_URL ?? "https://joinasr.io";
+const SITE_URL = () => process.env.PUBLIC_SITE_URL ?? "https://joinasr.com";
 
 export function inviteUrl(code: string): string {
   return `${SITE_URL()}/w/${code}`;

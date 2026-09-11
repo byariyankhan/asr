@@ -78,7 +78,7 @@ cd android
 
 `API_BASE_URL` is a `BuildConfig` field, set per build type in
 `app/build.gradle.kts`, so it is never a literal in Kotlin. Both build
-types currently point at production (`https://api.joinasr.io`); a `dev`
+types currently point at production (`https://api.joinasr.com`); a `dev`
 flavor aimed at a local server is worth adding when someone actually runs
 the backend locally, and does not exist yet.
 

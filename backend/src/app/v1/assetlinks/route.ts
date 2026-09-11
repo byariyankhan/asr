@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
  *
  * This is what makes `android:autoVerify="true"` mean anything. Android
  * fetches it when the app is installed, and only if this file names the
- * app's signing certificate does a tap on joinasr.io/w/<code> open Asr
+ * app's signing certificate does a tap on joinasr.com/w/<code> open Asr
  * directly. Without it the link opens a browser, or asks which app to use —
  * which is not what somebody who has just installed the app to answer an
  * invitation should be asked.

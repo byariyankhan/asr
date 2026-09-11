@@ -92,11 +92,11 @@ android {
     // a debug build can be pointed at a laptop without editing source.
     buildTypes {
         debug {
-            buildConfigField("String", "API_BASE_URL", "\"https://api.joinasr.io\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://api.joinasr.com\"")
             buildConfigField("Boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
         }
         release {
-            buildConfigField("String", "API_BASE_URL", "\"https://api.joinasr.io\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://api.joinasr.com\"")
             buildConfigField("Boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
             isMinifyEnabled = true
             isShrinkResources = true
