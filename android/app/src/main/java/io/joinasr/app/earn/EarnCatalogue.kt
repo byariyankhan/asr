@@ -44,7 +44,7 @@ data class EarnOption(
 
 /** The catalogue entry for a type, however the phone is equipped, or null for a type the chooser does not list. */
 fun earnOptionFor(type: String): EarnOption? =
-    earnOptions(stepsAvailable = true, cameraAvailable = true, barometerAvailable = true)
+    earnOptions(stepsAvailable = true, cameraAvailable = true, barometerAvailable = true, accelerometerAvailable = true)
         .firstOrNull { it.type == type }
 
 /**
@@ -55,7 +55,12 @@ fun earnOptionFor(type: String): EarnOption? =
  * locks and the view model starts with, so the sheet cannot promise a
  * price the activity does not pay.
  */
-fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean, barometerAvailable: Boolean): List<EarnOption> = listOf(
+fun earnOptions(
+    stepsAvailable: Boolean,
+    cameraAvailable: Boolean,
+    barometerAvailable: Boolean,
+    accelerometerAvailable: Boolean,
+): List<EarnOption> = listOf(
     EarnOption(
         type = EarnRules.WALK,
         name = "Walk",
@@ -200,7 +205,9 @@ fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean, barometerAvai
         privacy = "Only whether the phone moved, on the phone. Nothing is recorded and nothing " +
             "about the session leaves the phone but that it was completed.",
         recommended = false,
-        unavailableReason = null,
+        unavailableReason = if (accelerometerAvailable) null else {
+            "This phone has no motion sensor, so it cannot tell when it is lying still."
+        },
         done = "Your ten minutes are done.",
     ),
 )

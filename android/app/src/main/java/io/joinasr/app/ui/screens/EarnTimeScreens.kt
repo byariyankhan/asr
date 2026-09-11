@@ -1759,7 +1759,12 @@ private fun ChooseActivityPreview() {
         ChooseActivityScreen(
             app = PactApp("com.zhiliaoapp.musically", "TikTok", 20),
             earnedSoFar = 0,
-            options = earnOptions(stepsAvailable = true, cameraAvailable = true, barometerAvailable = true),
+            options = earnOptions(
+                stepsAvailable = true,
+                cameraAvailable = true,
+                barometerAvailable = true,
+                accelerometerAvailable = true,
+            ),
             onBack = {},
             onStart = {},
             errorMessage = null,

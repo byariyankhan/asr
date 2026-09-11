@@ -1284,6 +1284,7 @@ fun AsrApp(
                                             stepsAvailable = earnViewModel.steps.available,
                                             cameraAvailable = Permissions.hasCameraHardware(context),
                                             barometerAvailable = Permissions.hasBarometer(context),
+                                            accelerometerAvailable = Permissions.hasAccelerometer(context),
                                         ),
                                         onBack = {
                                             earningFor = null

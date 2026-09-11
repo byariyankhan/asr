@@ -108,6 +108,10 @@ fun MeditationScreen(
             manager?.unregisterListener(listener)
             view.keepScreenOn = false
             sensing = false
+            // No samples means no stillness: the breathing loop below is
+            // keyed on it, and must not keep tapping from behind the lock
+            // screen or another app.
+            still = false
         }
     }
 
