@@ -339,14 +339,20 @@ class HoldJudgeTest {
         assertFalse(HoldPositions.plank(saggingHips))
     }
 
-    @Test fun `lying flat with the arms level with the shoulders is not a plank, however the line slopes`() {
+    @Test fun `lying flat with the arms on the body line is not a plank, however the line slopes`() {
         // A body flat on the floor seen from an angle that draws its line at 10 degrees: the elbows,
-        // level with the shoulders, say it is on the floor.
+        // on the line, say it is on the floor.
         val flat = body(0.3f to 0.5f, 0.55f to 0.545f, 0.68f to 0.57f, 0.8f to 0.59f)
             .copy(leftElbow = Landmark(0.25f, 0.51f, 0.9f))
         assertFalse(HoldPositions.plank(flat))
-        // The same line with an elbow hanging half a torso under the shoulder is held up.
+        // The same line with an elbow hanging a third of the line's length under it is held up.
         assertTrue(HoldPositions.plank(flat.copy(leftElbow = Landmark(0.28f, 0.66f, 0.9f))))
+        // Seen at a steep angle, so the line runs down the picture at 45 degrees, an arm lying
+        // along the body puts its elbow well below the shoulder in the picture and still on the
+        // line: not held up. The same elbow square to the line is.
+        val steep = body(0.3f to 0.3f, 0.45f to 0.45f, 0.55f to 0.55f, 0.65f to 0.65f)
+        assertFalse(HoldPositions.plank(steep.copy(leftElbow = Landmark(0.42f, 0.42f, 0.9f))))
+        assertTrue(HoldPositions.plank(steep.copy(leftElbow = Landmark(0.25f, 0.42f, 0.9f))))
         // An elbow the model sees on the far side, hung off a shoulder it only guessed at, says
         // nothing either way: the near arm, or failing that the slope, decides.
         assertTrue(HoldPositions.plank(plank.copy(rightElbow = Landmark(0.55f, 0.48f, 0.9f))))

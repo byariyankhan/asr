@@ -137,12 +137,16 @@ rule from `HoldPositions`:
   shoulders a hand off the floor and from a phone on the floor comes out
   under 8; standing, kneeling up and sitting are near vertical; a view
   from ahead and to one side steepens a plank's line, which is why 50
-  and not 45); and an elbow the model can see at least a quarter of the
-  torso's length in the picture below its shoulder (on the hands the
-  elbows are halfway to the floor, on the forearms on it; lying flat
-  they are level with the shoulders). A straight line is a straight line
-  from wherever the camera looks, which is what lets the same rule serve
-  the side view and the diagonal.
+  and not 45); and an elbow the model can see, on an arm whose shoulder
+  it can see too, at least a tenth of the shoulder-to-ankle line's
+  length below that line, measured square to the line rather than down
+  the picture, so that an arm lying along a body seen at a steep angle
+  (drawn lower than its shoulder without being under anything) does not
+  count (on the hands the elbows are halfway to the floor, on the
+  forearms on it, and the photographs put them 0.16 to 0.48 of the line
+  below it; lying flat, from a phone on the floor, they are on the line).
+  A straight line is a straight line from wherever the camera looks,
+  which is what lets the same rule serve the side view and the diagonal.
 
   The numbers come from running the app's own model over photographs
   from Wikimedia Commons (planks from the side and from ahead at an

@@ -247,11 +247,17 @@ object HoldPositions {
      * angle. And by [MAX_SLOPE] at most: standing, kneeling up and sitting
      * with the legs folded are near vertical. A view from ahead and to one
      * side steepens a plank's line, which is why the limit is 50 and not
-     * 45. Last, the arms hold it up: an elbow the model can see hangs at
-     * least [MIN_ELBOW_DROP] of the torso's length in the picture below
-     * its shoulder; on the hands the elbows are halfway to the floor, on
-     * the forearms on it, and lying flat they are level with the
-     * shoulders. With no elbow seen the slope decides on its own.
+     * 45. Last, the arms hold it up: an elbow the model can see, on an
+     * arm whose shoulder it can see too, lies at least [MIN_ELBOW_BELOW]
+     * of the shoulder-to-ankle line's length below that line, measured
+     * square to the line and not down the picture, so that an arm lying
+     * along a body seen at a steep angle, which is drawn lower down the
+     * picture than its shoulder without being under anything, does not
+     * count. On the hands the elbows are halfway to the floor, on the
+     * forearms on it, and in the photographs the model puts them 0.16 to
+     * 0.48 of the line below it; lying flat, from a phone on the floor,
+     * they are on the line. With no arm seen whole the slope decides on
+     * its own.
      */
     fun plank(pose: BodyPose): Boolean {
         val side = BodySide.of(pose) ?: return false
@@ -262,14 +268,12 @@ object HoldPositions {
         val sag = PoseGeometry.belowLine(side.hip, side.shoulder, side.ankle)
         if (sag > MAX_HIP_SAG || sag < -MAX_HIP_PIKE) return false
         if (PoseGeometry.belowLine(side.knee, side.shoulder, side.ankle) > MAX_KNEE_DROP) return false
-        val torso = PoseGeometry.distance(side.shoulder, side.hip)
-        if (torso <= 0f) return false
         // An arm the model has whole, shoulder and elbow: an elbow hung off a
         // shoulder it only guessed at measures the guess, not the arm.
-        val elbowDrop = listOf(pose.leftShoulder to pose.leftElbow, pose.rightShoulder to pose.rightElbow)
+        val elbowBelow = listOf(pose.leftShoulder to pose.leftElbow, pose.rightShoulder to pose.rightElbow)
             .filter { (shoulder, elbow) -> shoulder.visibility >= MIN_VISIBILITY && elbow.visibility >= MIN_VISIBILITY }
-            .maxOfOrNull { (shoulder, elbow) -> (elbow.y - shoulder.y) / torso }
-        return elbowDrop == null || elbowDrop >= MIN_ELBOW_DROP
+            .maxOfOrNull { (_, elbow) -> PoseGeometry.belowLine(elbow, side.shoulder, side.ankle) }
+        return elbowBelow == null || elbowBelow >= MIN_ELBOW_BELOW
     }
 
     private const val MAX_HIP_SAG = 0.05f
@@ -277,7 +281,7 @@ object HoldPositions {
     private const val MAX_KNEE_DROP = 0.12f
     private const val MIN_SLOPE = 8f
     private const val MAX_SLOPE = 50f
-    private const val MIN_ELBOW_DROP = 0.25f
+    private const val MIN_ELBOW_BELOW = 0.10f
 
     /**
      * What the wall sit needs before it can say anything about the
