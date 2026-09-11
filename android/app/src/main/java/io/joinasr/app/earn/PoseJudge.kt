@@ -77,7 +77,8 @@ class PushUpJudge(private val counter: PushUpCounter = PushUpCounter()) : PoseJu
 
 /**
  * Times a position being held: a plank, a wall sit. [position] says
- * whether a pose is the position; the judge says how long it has been.
+ * whether a pose is the position; a [HoldTimer] says how long it has
+ * been, with the settling and the frame-gap rule described there.
  *
  * The clock runs while the position holds and stops while it does not;
  * seconds are handed out whole, as they complete, and the activity keeps
@@ -85,40 +86,26 @@ class PushUpJudge(private val counter: PushUpCounter = PushUpCounter()) : PoseJu
  * count resumes. A break pauses the clock rather than resetting it: the
  * ask is 45 seconds in a plank, and somebody who managed 30, rested, and
  * did 15 more has done 45 seconds in a plank.
- *
- * A change of phase is believed only once it has held for [settleMillis]:
- * the model loses a hip for a frame or two on a bad background, and one
- * frame of "not in position" in the middle of a plank is not a break. The
- * settling time before "holding" is believed is not counted; the time
- * before a break is believed is, which is the smaller error and the
- * kinder one.
- *
- * Time is counted frame to frame, and only between frames that are close
- * together: a gap longer than [maxFrameGapMillis] is the camera having
- * stopped (the app sent to the background, the screen locked) and is
- * worth nothing, however long it was. Without that, a plank entered and
- * then left with the phone in a pocket for a minute would be a minute's
- * plank on the first frame back.
  */
 class HoldJudge(
     private val position: (BodyPose) -> Boolean,
     private val hasBody: (BodyPose) -> Boolean,
-    private val settleMillis: Long = 400L,
-    private val maxFrameGapMillis: Long = 500L,
+    settleMillis: Long = 400L,
+    maxFrameGapMillis: Long = 500L,
     private val coach: (PoseJudge.Phase, Boolean) -> Pair<String, String>,
 ) : PoseJudge {
+
+    private val timer = HoldTimer(settleMillis, maxFrameGapMillis)
 
     override var phase: PoseJudge.Phase = PoseJudge.Phase.NO_BODY
         private set
 
     /** Milliseconds held so far, whole and part. */
-    var heldMillis: Long = 0L
-        private set
+    val heldMillis: Long get() = timer.heldMillis
 
-    private var lastFrameAt: Long? = null
-    private var candidate: PoseJudge.Phase? = null
-    private var candidateSince: Long = 0L
-    private var secondsReported = 0L
+    private var seenCandidate: PoseJudge.Phase? = null
+    private var seenSince: Long = 0L
+    private val settle = settleMillis
 
     override fun observe(pose: BodyPose?, nowMillis: Long): Int {
         val seen = when {
@@ -126,33 +113,22 @@ class HoldJudge(
             position(pose) -> PoseJudge.Phase.WORKING
             else -> PoseJudge.Phase.NOT_IN_POSITION
         }
+        // The timer settles "holding or not"; the phase shown settles the
+        // same way, so nobody and out-of-position are told apart on the
+        // coaching line without flickering either.
         if (seen != phase) {
-            if (seen != candidate) {
-                candidate = seen
-                candidateSince = nowMillis
+            if (seen != seenCandidate) {
+                seenCandidate = seen
+                seenSince = nowMillis
             }
-            if (nowMillis - candidateSince >= settleMillis) {
+            if (nowMillis - seenSince >= settle) {
                 phase = seen
-                candidate = null
-                // Entering the hold: the clock starts now, not from the
-                // frames spent deciding. Leaving it: they counted.
-                if (seen == PoseJudge.Phase.WORKING) lastFrameAt = nowMillis
+                seenCandidate = null
             }
         } else {
-            candidate = null
+            seenCandidate = null
         }
-        if (phase == PoseJudge.Phase.WORKING) {
-            val last = lastFrameAt
-            val gap = if (last != null) nowMillis - last else 0L
-            if (gap in 1..maxFrameGapMillis) heldMillis += gap
-            lastFrameAt = nowMillis
-        } else {
-            lastFrameAt = null
-        }
-        val whole = heldMillis / 1_000L
-        val earned = (whole - secondsReported).toInt()
-        secondsReported = whole
-        return earned
+        return timer.observe(seen == PoseJudge.Phase.WORKING, nowMillis)
     }
 
     override fun coaching(started: Boolean): Pair<String, String> =

@@ -476,6 +476,7 @@ missed.
 | `plank` | Same camera and model | Shoulder, hip and ankle in one straight line sloping to the feet, timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
 | `wall_sit` | Same camera and model | Back upright, thigh level, knee near a right angle, timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
 | `run_steps` | `TYPE_STEP_COUNTER`, read by the foreground service in 10-second batches | Steps in each 20-second window at 140/min or more are running and count; slower windows do not. 1,000 of them. `android/MOTION.md` |
+| `meditation` | `TYPE_ACCELEROMETER`, read by the meditation screen while it is resumed | The phone lying still (vector moves under 0.35 m/s² sample to sample, settled over a second) under a 4-in / 6-out breathing guide, 10 minutes; picking it up pauses the clock. `android/MEDITATION.md` |
 | `stairs` | `TYPE_PRESSURE` and `TYPE_STEP_COUNTER`, read by the foreground service | Altitude from the barometer; a rise made while stepping is going on (three steps in the last 5 s, one in the last 2.5 s) is banked, a rise without steps (a lift) or a descent moves the reference. 2.8 m a floor, 10 floors. `android/MOTION.md` |
 | `waiting_period` | None: countdown | Nothing to verify; it is friction, not proof |
 

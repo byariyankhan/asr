@@ -48,6 +48,11 @@ class RepFeedback(context: Context, private val view: View?) {
         pulse(light = true)
     }
 
+    /** The breathing guide turned: the same small tap, for eyes that are closed. */
+    fun breath() {
+        pulse(light = true)
+    }
+
     /** One push-up counted. */
     fun rep() {
         if (audible) tones?.startTone(ToneGenerator.TONE_PROP_BEEP, 90)
