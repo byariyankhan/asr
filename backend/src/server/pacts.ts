@@ -32,7 +32,8 @@ export const pactColumns = [
 /**
  * The activities every challenge gets whether or not the phone asked for
  * them, and what each asks. Added in migrations 0014 and 0015 to every
- * pact then on the ledger; this is the same thing for a pact created
+ * pact then on the ledger (the meditation re-priced at seven minutes by
+ * 0016, when it moved to the camera); this is the same thing for a pact created
  * afterwards by a phone that does not know them yet, so a challenge started the day
  * before the app update is not a challenge without a plank for 90 days.
  * The snapshot is still locked: this only fills in what is missing, with
@@ -49,7 +50,7 @@ const LATER_COUNTED: Array<[CountedLater, number]> = [
   ["cycling", 3000], // metres
 ];
 const LATER_TIMED: Array<[TimedLater, number]> = [
-  ["meditation", 10], // minutes
+  ["meditation", 7], // minutes
 ];
 
 export function withLaterActivities(snapshot: Snapshot): Snapshot {

@@ -129,7 +129,7 @@ with have no `added_on`.
     "run_steps":      { "target": 1000, "reward_min": 10, "daily_cap_min": 30 },
     "stairs":         { "target": 10, "reward_min": 10, "daily_cap_min": 30 },
     "cycling":        { "target": 3000, "reward_min": 10, "daily_cap_min": 30 },
-    "meditation":     { "target_min": 10, "reward_min": 10, "daily_cap_min": 30 },
+    "meditation":     { "target_min": 7, "reward_min": 10, "daily_cap_min": 30 },
     "waiting_period": { "wait_min": 10, "reward_min": 5, "daily_cap_min": 15 }
   }
 }
@@ -190,6 +190,7 @@ create table activity (
   type           text not null check (type in ('walk_steps', 'focus_session', 'push_ups', 'plank', 'wall_sit',
                    'run_steps', 'stairs', 'cycling', 'meditation', 'waiting_period')),
                  -- push_ups since 0013, plank to stairs since 0014, cycling and meditation since 0015
+                 -- (the meditation re-priced from 10 to 7 minutes in every snapshot by 0016)
   target         integer not null,              -- steps, minutes, reps, seconds, floors, or metres
   reward_min     integer not null,
   started_at     timestamptz not null,

@@ -35,7 +35,7 @@ describe.skipIf(!DATABASE_URL)("the activities added after push-ups", async () =
           run_steps: { target: 1000, reward_min: 10, daily_cap_min: 30 },
           stairs: { target: 10, reward_min: 10, daily_cap_min: 30 },
           cycling: { target: 3000, reward_min: 10, daily_cap_min: 30 },
-          meditation: { target_min: 10, reward_min: 10, daily_cap_min: 30 },
+          meditation: { target_min: 7, reward_min: 10, daily_cap_min: 30 },
         },
       },
     });
@@ -59,7 +59,7 @@ describe.skipIf(!DATABASE_URL)("the activities added after push-ups", async () =
       ["run_steps", 1000, "com.google.android.youtube"],
       ["stairs", 10, undefined],
       ["cycling", 3000, "com.google.android.youtube"],
-      ["meditation", 10, "com.instagram.android"],
+      ["meditation", 7, "com.instagram.android"],
     ];
     for (const [type, target, app] of expected) {
       const { activity, created } = await createActivity(userId, pactId, {
@@ -104,7 +104,7 @@ describe.skipIf(!DATABASE_URL)("the activities added after push-ups", async () =
       run_steps: { target: 1000, reward_min: 15, daily_cap_min: 45 },
       stairs: { target: 10, reward_min: 15, daily_cap_min: 45 },
       cycling: { target: 3000, reward_min: 15, daily_cap_min: 45 },
-      meditation: { target_min: 10, reward_min: 15, daily_cap_min: 45 },
+      meditation: { target_min: 7, reward_min: 15, daily_cap_min: 45 },
     });
     const { activity } = await createActivity(other, pact.id, {
       id: newId(),
