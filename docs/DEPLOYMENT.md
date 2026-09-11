@@ -247,67 +247,58 @@ standalone API ≈ 150–250 MB. Asr adds roughly 300 MB to a machine with about
 - Backup failure alerts reuse Bookween's `alert.sh` (email), with a distinct
   subject.
 
-## Moving the domain
+## The domain move, and what is left of it
 
-Done once, from `joinasr.io` to `joinasr.com`. The repository already says
-`joinasr.com` everywhere; what follows is the part no commit can do, in the
-order that keeps production up. **Nothing here is safe to do out of order:
-the name in nginx, the name in the certificate and the name in DNS have to
-arrive together.**
+The move from the old `.io` name to `joinasr.com` is done. DNS, nginx and the
+certificates for `joinasr.com`, `www.joinasr.com` and `api.joinasr.com` are
+live; the repository says `joinasr.com` everywhere; production serves it. The
+old name no longer resolves at all, which is what makes the rest of this
+section a tidy-up rather than an outage.
 
-`infra/first-time-setup.sh` will not help with the switch. Its `install_site`
-refuses to overwrite a site file that already contains `ssl_certificate`, so
-that a re-run cannot destroy certbot's work -- which means the live
-`/etc/nginx/sites-available/asr-{api,site}` still carry the old name until
-somebody edits them by hand.
+It was safe to retire the old name outright only because nothing had been
+published: an installed APK talks to whatever host it was compiled with, for
+as long as it stays installed. After the first Play release the old name
+would have had to answer forever. See `PLAY.md`.
 
-1. **DNS, at the registrar.** Four records at the VPS's IP: `joinasr.com`,
-   `www.joinasr.com`, `api.joinasr.com` (A), and whatever Resend asks for in
-   step 4. Wait until `dig +short api.joinasr.com` answers with that IP from
-   somewhere other than the box itself.
-2. **nginx and the certificate.** On the server, in
-   `/etc/nginx/sites-available/asr-api` and `asr-site`, add the new names
-   *beside* the old ones on the `server_name` line -- not instead of them,
-   so nothing is down between this step and the last one. Then
-   `nginx -t && systemctl reload nginx`, and:
+`infra/first-time-setup.sh` could not do the switch and cannot undo it. Its
+`install_site` refuses to overwrite a site file that already contains
+`ssl_certificate`, so a re-run cannot destroy certbot's work -- which also
+means the live `/etc/nginx/sites-available/asr-{api,site}` only say what
+somebody typed into them.
+
+**Still to do on the box**, none of it urgent and none of it visible to
+anybody using the app:
+
+1. **`/opt/asr/.env`: `PLAY_PACKAGE_NAME`.** Confirmed still the old
+   application id, because `/.well-known/assetlinks.json` is serving it. It
+   has to be the id the APK is actually built with or every invitation link
+   opens a browser instead of the app:
 
    ```bash
-   certbot --nginx -d api.joinasr.com
-   certbot --nginx -d joinasr.com -d www.joinasr.com
+   cd /opt/asr
+   sed -i 's/^PLAY_PACKAGE_NAME=.*/PLAY_PACKAGE_NAME=com.joinasr.app/' .env
+   grep -E '^(PLAY_PACKAGE_NAME|PUBLIC_SITE_URL|BETTER_AUTH_URL|EMAIL_FROM)=' .env
+   docker compose up -d --force-recreate api
    ```
 
-3. **The application's own idea of its name.** Four lines in `/opt/asr/.env`:
+   That `grep` shows all four domain-shaped values at once. `PUBLIC_SITE_URL`
+   is already right -- the pages serve `joinasr.com` canonicals -- and the
+   other two are worth reading while the file is open.
 
-   ```
-   BETTER_AUTH_URL=https://api.joinasr.com
-   PUBLIC_SITE_URL=https://joinasr.com
-   EMAIL_FROM=Asr <noreply@joinasr.com>
-   PLAY_PACKAGE_NAME=com.joinasr.app
-   ```
-
-   Then `docker compose up -d --force-recreate api`. The first three put the
-   domain into invitation links, password-reset links and the From line; the
-   code's defaults match, but the file wins and the file is old. The fourth
-   is what `/.well-known/assetlinks.json` names, so it has to be the
-   application id the APK is actually built with -- left at the old one, every
-   invitation link opens a browser instead of the app.
-
-   The Bootstrap workflow cannot do this for you. It writes named *secrets*
-   into `.env`, and these are not secrets; `EMAIL_FROM` would be refused by
-   its own validation besides, since the value has spaces and angle brackets
-   in it.
-4. **Resend.** Verify `joinasr.com` as a sending domain and publish the DKIM
-   and SPF records it gives you. Until this is done, every password-reset
-   email fails: the API key is fine, the From address is not.
-5. **Verify, from off the box.** `https://api.joinasr.com/v1/health` answers
-   `"ok":true`; `https://joinasr.com/privacy` and `/delete-account` load;
-   `https://joinasr.com/.well-known/assetlinks.json` lists the fingerprints.
-   Send yourself a password-reset mail and open the link.
-6. **Only then, retire the old name.** Drop `joinasr.io` from both
-   `server_name` lines, reload, and let the certificate lapse. Anything
-   installed from an APK built before this move talks to `api.joinasr.io` and
-   stops working at this point -- which is the whole reason it is safe now
-   and would not be after the first Play release. See `PLAY.md`.
+   The Bootstrap workflow cannot do this. It writes named *secrets* into
+   `.env`, and these are not secrets; `EMAIL_FROM` would fail its validation
+   anyway, since the value has spaces and angle brackets in it.
+2. **The old names in nginx.** If `server_name` in either site file still
+   lists them, drop them and reload. They resolve to nothing, so they cost
+   nothing but confusion.
+3. **The old certificates.** `certbot certificates` will list them; they are
+   for names that no longer resolve, so renewal will now fail and mail about
+   it every week. `certbot delete --cert-name <name>` for each.
+4. **Resend.** `joinasr.com` has to be a verified sending domain with its
+   DKIM and SPF records published, or every password-reset email fails on the
+   From address rather than the API key. The old domain can be removed there
+   once it is.
+5. **DNS.** Any remaining records for the old name at the registrar.
 
 Nothing in the database refers to the domain, so there is no migration and no
 downtime in the data. Invitation codes issued under the old name keep

@@ -31,7 +31,7 @@ IMAGE="${ASR_IMAGE:-asr-api}"
 HEALTH_URL="${ASR_HEALTH_URL:-http://127.0.0.1:3001/v1/health}"
 WAIT_TIMEOUT="${ASR_WAIT_TIMEOUT:-180}"
 HEALTH_TRIES="${ASR_HEALTH_TRIES:-24}"
-COMMIT_LABEL="io.joinasr.commit"
+COMMIT_LABEL="com.joinasr.commit"
 
 say() { echo "rollback: $*"; }
 die() { echo "rollback: $*" >&2; exit 1; }
@@ -64,9 +64,27 @@ tag_of()     { cut -d'|' -f2 <<<"$1"; }
 id_of()      { cut -d'|' -f3 <<<"$1"; }
 commit_of()  { cut -d'|' -f4 <<<"$1"; }
 
-# The commit baked into an image; empty for images from before the label.
+# The commit baked into an image; empty only for images from before either
+# was baked in at all.
+#
+# The label first, then the environment. One Dockerfile writes both from the
+# same argument, so they never disagree -- but the label's *name* moved with
+# the package name, from io.joinasr.commit to com.joinasr.commit, and an
+# image built before that carries a label this no longer asks for. The
+# environment variable did not move. Every image the deploy has ever kept
+# has ASR_COMMIT in it, which is why reading that second keeps a release
+# built under the old name rollback-able instead of showing up as "commit
+# unknown".
 image_commit() {
-  docker inspect -f "{{index .Config.Labels \"$COMMIT_LABEL\"}}" "$1" 2>/dev/null || true
+  local commit
+  commit=$(docker inspect -f "{{index .Config.Labels \"$COMMIT_LABEL\"}}" "$1" 2>/dev/null || true)
+  # A missing key prints <no value> when the image has no labels at all.
+  [ "$commit" = "<no value>" ] && commit=""
+  if [ -z "$commit" ]; then
+    commit=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" 2>/dev/null \
+               | sed -n 's/^ASR_COMMIT=//p' | head -n1)
+  fi
+  printf %s "$commit"
 }
 
 kept=()
