@@ -96,7 +96,11 @@ class MeditationJudge(
 
         if (hold.phase == PoseJudge.Phase.WORKING) {
             outSince = null
-            if (seat == null && pose != null) seat = seatOf(pose)
+            // From a frame that is the position itself, not one the settled
+            // phase is lagging behind: the first frame after a gap can be
+            // a body the model has only half found again, and a seat with
+            // no torso to measure by would never be left.
+            if (seat == null && pose != null && SeatedPose.seated(pose) && !moving) seat = seatOf(pose)
         } else {
             val since = outSince ?: nowMillis.also { outSince = it }
             if (counted && nowMillis - since >= breakMillis) startOver()
@@ -111,6 +115,7 @@ class MeditationJudge(
         seat = null
     }
 
+    /** Only from a frame [SeatedPose.seated] passed, so the torso is a length. */
     private fun seatOf(pose: BodyPose) = Seat(
         x = (pose.leftHip.x + pose.rightHip.x) / 2f,
         y = (pose.leftHip.y + pose.rightHip.y) / 2f,

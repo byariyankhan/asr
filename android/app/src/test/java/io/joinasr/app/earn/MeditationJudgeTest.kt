@@ -155,6 +155,23 @@ class MeditationJudgeTest {
         assertFalse(judge.brokeOff)
     }
 
+    @Test fun `the seat is not taken from the half-found body after a gap`() {
+        val judge = MeditationJudge()
+        assertEquals(10, judge.frames(sitting, 0, 10_400))
+        // A gap long enough to start over, then a frame with the hips not yet found again,
+        // while the settled phase still says working.
+        judge.observe(seated(hipVisibility = 0.2f), 15_000)
+        assertTrue(judge.brokeOff)
+        assertEquals(5, judge.frames(sitting, 15_100, 5_400))
+        // Getting up from that sitting must still be noticed.
+        var restarts = 0
+        for (t in 20_600L..24_500L step 100) {
+            judge.observe(stood, t)
+            if (judge.brokeOff) restarts++
+        }
+        assertEquals(1, restarts)
+    }
+
     @Test fun `getting up and sitting straight back down costs the seconds, not the sitting`() {
         val judge = MeditationJudge()
         assertEquals(10, judge.frames(sitting, 0, 10_400))
