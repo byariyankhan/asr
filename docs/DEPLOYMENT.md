@@ -235,6 +235,17 @@ standalone API ≈ 150–250 MB. Asr adds roughly 300 MB to a machine with about
   answers to the health endpoints are not logged; query strings never are,
   and an invite code in a path is masked. Container logs are capped by the
   compose file at five files of 20 MB per service.
+- Email that did not send leaves its own JSON line, `event: "email_failed"`,
+  with which kind of message it was (`reset`, `verify`, `invite`,
+  `email-changed`), the recipient's domain and what Resend said back
+  (`backend/src/server/email.ts`). Nothing else is in it: no subject, no
+  body, and no token -- a reset link in a log file *is* the reset, and the
+  local part of every address is masked in the recipient and in the
+  provider's own message. Until this existed a refused send left no trace at
+  all: password reset answered 200 either way, on purpose, so the only place
+  a failure could show was a log line that nobody had written yet.
+
+      docker compose logs api | grep email_failed
 - The watchdog writes its last successful run time to Redis; `/v1/health`
   reports `watchdog_stale: true` if that is older than 30 minutes.
 - `/opt/asr/releases.log`: one line per deploy and per rollback, with the
@@ -297,7 +308,9 @@ anybody using the app:
 4. **Resend.** `joinasr.com` has to be a verified sending domain with its
    DKIM and SPF records published, or every password-reset email fails on the
    From address rather than the API key. The old domain can be removed there
-   once it is.
+   once it is. If reset mail is not arriving, `grep email_failed` in the API
+   log says whether Resend refused it and why; the reset endpoint itself
+   answers 200 either way and cannot be read as evidence.
 5. **DNS.** Any remaining records for the old name at the registrar.
 
 Nothing in the database refers to the domain, so there is no migration and no

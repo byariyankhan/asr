@@ -135,10 +135,10 @@ export async function createInvite(userId: string, input: WitnessInvite) {
           .select(["name", "gender"])
           .where("id", "=", userId)
           .executeTakeFirstOrThrow();
-        const mail = inviteEmail(inviter.name, input.relationship, url, inviter.gender);
         // Best effort: a failed email must not fail the invite; the code is
-        // still shareable from the app.
-        sendEmail(input.email, mail.subject, mail.text).catch((e) => console.error("[invite email]", e));
+        // still shareable from the app. sendEmail writes its own line when a
+        // send fails and does not throw, so nothing is caught here.
+        void sendEmail(input.email, inviteEmail(inviter.name, input.relationship, url, inviter.gender));
       }
       return { ...row, invite_code: code, url };
     } catch (error) {
