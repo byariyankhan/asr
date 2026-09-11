@@ -11,7 +11,7 @@ import { newId } from "@/lib/uuid";
 // /v1 request carries it as `Authorization: Bearer <token>`. No cookies are
 // relied on; nothing is shared with Bookween's auth.
 //
-// Reset and verification links point at joinasr.io/reset/<token> and
+// Reset and verification links point at joinasr.com/reset/<token> and
 // /verify/<token>. The reset link is an Android App Link, so on a phone with
 // the app it opens the app, which calls /api/auth/reset-password with the
 // token; anywhere else it is a web page (src/app/reset) that does the same.

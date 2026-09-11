@@ -87,7 +87,7 @@ that is the one thing the dashboard makes easy to copy.
 Then run **Actions → Bootstrap the VPS → Run workflow**. It ships the source
 to `/opt/asr/src`, hands the Firebase key over on stdin (never on a command
 line, where `ps` would show it), runs `infra/first-time-setup.sh`, shreds the
-key file, and finishes by fetching `https://api.joinasr.io/v1/health` from
+key file, and finishes by fetching `https://api.joinasr.com/v1/health` from
 the public internet. The host key is pinned from `infra/vps-host-key.pub`, so
 a changed key fails the run rather than being accepted.
 
@@ -96,8 +96,8 @@ The script it runs is idempotent and refuses to overwrite an existing
 
 ### What the script does
 
-1. **Checks its preconditions**: DNS resolves for `joinasr.io` and
-   `api.joinasr.io`, and reports on ports 5433/6380/3001.
+1. **Checks its preconditions**: DNS resolves for `joinasr.com` and
+   `api.joinasr.com`, and reports on ports 5433/6380/3001.
 2. **Installs** `docker-compose.yml`, `backup.sh` and `rollback.sh` into
    `/opt/asr`.
 3. **Writes `/opt/asr/.env`** (mode 600) with `PG_PASS`, `REDIS_PASS`,
@@ -123,9 +123,9 @@ The script it runs is idempotent and refuses to overwrite an existing
    `CERTBOT_EMAIL` is set. Two guards sit around certbot, because
    `certbot --nginx` edits whichever server block claims the hostname and
    falls back to the default server when none does: it refuses to run
-   unless nginx really serves `api.joinasr.io`, and afterwards it proves
+   unless nginx really serves `api.joinasr.com`, and afterwards it proves
    no site file but `asr-api` changed. The first bootstrap that reached
-   this step had `api.joinasr.com` still written in the site file, and
+   this step had the wrong hostname still written in the site file, and
    certbot deployed Asr's certificate into Bookween's.
 7. **Schedules the nightly backup** at 02:30 by writing `/etc/cron.d/asr-backup`
    (Bookween's is at 02:00, scheduled the same way).
@@ -168,7 +168,7 @@ is a release that served), notes the deploy in `/opt/asr/releases.log`, and
 prunes older releases, dangling images and build cache over 5GB — all after
 the new container is up, and in a block that cannot fail the deploy.
 
-Finally it fetches `https://api.joinasr.io/v1/health` from the public
+Finally it fetches `https://api.joinasr.com/v1/health` from the public
 internet. A deploy that does not end in a healthy answer **for this commit**
 is a failed deploy. The commit is baked into the image by the Dockerfile (an
 `ASR_COMMIT` build arg, kept as an ENV and a label), so the answer can only
@@ -246,6 +246,72 @@ standalone API ≈ 150–250 MB. Asr adds roughly 300 MB to a machine with about
   `docker compose exec -T postgres psql -U asr -d asr -c "select * from server_outage order by started_at desc limit 20"`.
 - Backup failure alerts reuse Bookween's `alert.sh` (email), with a distinct
   subject.
+
+## Moving the domain
+
+Done once, from `joinasr.io` to `joinasr.com`. The repository already says
+`joinasr.com` everywhere; what follows is the part no commit can do, in the
+order that keeps production up. **Nothing here is safe to do out of order:
+the name in nginx, the name in the certificate and the name in DNS have to
+arrive together.**
+
+`infra/first-time-setup.sh` will not help with the switch. Its `install_site`
+refuses to overwrite a site file that already contains `ssl_certificate`, so
+that a re-run cannot destroy certbot's work -- which means the live
+`/etc/nginx/sites-available/asr-{api,site}` still carry the old name until
+somebody edits them by hand.
+
+1. **DNS, at the registrar.** Four records at the VPS's IP: `joinasr.com`,
+   `www.joinasr.com`, `api.joinasr.com` (A), and whatever Resend asks for in
+   step 4. Wait until `dig +short api.joinasr.com` answers with that IP from
+   somewhere other than the box itself.
+2. **nginx and the certificate.** On the server, in
+   `/etc/nginx/sites-available/asr-api` and `asr-site`, add the new names
+   *beside* the old ones on the `server_name` line -- not instead of them,
+   so nothing is down between this step and the last one. Then
+   `nginx -t && systemctl reload nginx`, and:
+
+   ```bash
+   certbot --nginx -d api.joinasr.com
+   certbot --nginx -d joinasr.com -d www.joinasr.com
+   ```
+
+3. **The application's own idea of its name.** Four lines in `/opt/asr/.env`:
+
+   ```
+   BETTER_AUTH_URL=https://api.joinasr.com
+   PUBLIC_SITE_URL=https://joinasr.com
+   EMAIL_FROM=Asr <noreply@joinasr.com>
+   PLAY_PACKAGE_NAME=com.joinasr.app
+   ```
+
+   Then `docker compose up -d --force-recreate api`. The first three put the
+   domain into invitation links, password-reset links and the From line; the
+   code's defaults match, but the file wins and the file is old. The fourth
+   is what `/.well-known/assetlinks.json` names, so it has to be the
+   application id the APK is actually built with -- left at the old one, every
+   invitation link opens a browser instead of the app.
+
+   The Bootstrap workflow cannot do this for you. It writes named *secrets*
+   into `.env`, and these are not secrets; `EMAIL_FROM` would be refused by
+   its own validation besides, since the value has spaces and angle brackets
+   in it.
+4. **Resend.** Verify `joinasr.com` as a sending domain and publish the DKIM
+   and SPF records it gives you. Until this is done, every password-reset
+   email fails: the API key is fine, the From address is not.
+5. **Verify, from off the box.** `https://api.joinasr.com/v1/health` answers
+   `"ok":true`; `https://joinasr.com/privacy` and `/delete-account` load;
+   `https://joinasr.com/.well-known/assetlinks.json` lists the fingerprints.
+   Send yourself a password-reset mail and open the link.
+6. **Only then, retire the old name.** Drop `joinasr.io` from both
+   `server_name` lines, reload, and let the certificate lapse. Anything
+   installed from an APK built before this move talks to `api.joinasr.io` and
+   stops working at this point -- which is the whole reason it is safe now
+   and would not be after the first Play release. See `PLAY.md`.
+
+Nothing in the database refers to the domain, so there is no migration and no
+downtime in the data. Invitation codes issued under the old name keep
+working; only the host in front of them changes.
 
 ## Moving to a dedicated server later
 

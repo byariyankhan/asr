@@ -9,7 +9,7 @@ import { inviteEmail } from "./email";
  * agree.
  */
 describe("inviteEmail", () => {
-  const url = "https://joinasr.io/w/G73N2QJWGM";
+  const url = "https://joinasr.com/w/G73N2QJWGM";
 
   it("uses the inviter's own pronoun", () => {
     expect(inviteEmail("Ariyan", "brother", url, "male").text).toContain("use his phone less");

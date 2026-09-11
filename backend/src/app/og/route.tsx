@@ -21,7 +21,7 @@ export function GET() {
             Android app limits. Accountability from people you trust.
           </div>
         </div>
-        <div style={{ display: "flex", color: "#12B886", fontSize: 24 }}>joinasr.io</div>
+        <div style={{ display: "flex", color: "#12B886", fontSize: 24 }}>joinasr.com</div>
       </div>
     ),
     { width: 1200, height: 630 },

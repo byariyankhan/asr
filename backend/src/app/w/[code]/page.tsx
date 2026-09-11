@@ -7,7 +7,7 @@ import { inviteLead, pronounsFor } from "@/server/witness-copy";
 /**
  * The page a witness invitation actually opens.
  *
- * It did not exist. `joinasr.io/w/<code>` was the link in every invitation
+ * It did not exist. `joinasr.com/w/<code>` was the link in every invitation
  * the app has ever sent, the target of an autoVerify App Link in the
  * manifest, and nothing was serving the apex at all — so the link produced
  * no preview in WhatsApp, no page for anybody without the app, and no
@@ -19,7 +19,7 @@ import { inviteLead, pronounsFor } from "@/server/witness-copy";
  * preview is going to say has to be in the first response.
  */
 
-const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.io").replace(/\/$/, "");
+const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.com").replace(/\/$/, "");
 
 /**
  * The Play listing, with the invitation attached.
@@ -36,7 +36,7 @@ const SITE = () => (process.env.PUBLIC_SITE_URL ?? "https://joinasr.io").replace
  * the listing exists nothing here changes.
  */
 function playUrl(code: string): string {
-  const pkg = process.env.PLAY_PACKAGE_NAME || "io.joinasr.app";
+  const pkg = process.env.PLAY_PACKAGE_NAME || "com.joinasr.app";
   const referrer = encodeURIComponent(`w=${code}`);
   return `https://play.google.com/store/apps/details?id=${pkg}&referrer=${referrer}`;
 }
@@ -45,7 +45,7 @@ function playUrl(code: string): string {
  * The same invitation, asked of the app by name.
  *
  * This page was written on the assumption that a phone with Asr on it never
- * gets here: the manifest claims joinasr.io/w/ as an App Link and Android
+ * gets here: the manifest claims joinasr.com/w/ as an App Link and Android
  * opens the app. That holds only when the app was installed after
  * /.well-known/assetlinks.json listed the certificate it is signed with, and
  * only on Android 12 and newer. A sideloaded build signed with a key the
@@ -59,7 +59,7 @@ function playUrl(code: string): string {
  * splice in: peekInvite has already refused anything that is not a code.
  */
 function appUrl(code: string, fallback: string): string {
-  const pkg = process.env.PLAY_PACKAGE_NAME || "io.joinasr.app";
+  const pkg = process.env.PLAY_PACKAGE_NAME || "com.joinasr.app";
   const host = SITE().replace(/^https?:\/\//, "");
   return `intent://${host}/w/${code}#Intent;scheme=https;package=${pkg};S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
 }

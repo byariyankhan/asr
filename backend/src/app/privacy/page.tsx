@@ -8,7 +8,7 @@ export const metadata = publicPageMetadata(
   "/privacy",
 );
 
-/** https://joinasr.io/privacy — the address the Play listing points at. */
+/** https://joinasr.com/privacy — the address the Play listing points at. */
 export default function PrivacyPage() {
   return <LegalPage document={privacy} other={{ href: "/terms", label: "Terms" }} />;
 }

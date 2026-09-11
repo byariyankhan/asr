@@ -2,7 +2,7 @@
  * The privacy policy and the terms, as the web pages show them.
  *
  * The same words live in the app, in
- * android/app/src/main/java/io/joinasr/app/legal/LegalTexts.kt, because a
+ * android/app/src/main/java/com/joinasr/app/legal/LegalTexts.kt, because a
  * person reads them in one place and a store reviewer in the other, and the
  * two must not disagree. `legal.test.ts` parses the Kotlin file and fails
  * when they do: change the text here and there together, or not at all.

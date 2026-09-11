@@ -6,7 +6,7 @@ import { meUpdate, pactAppAdd, pactCreate } from "@/lib/schemas";
  * fed to the schemas this server validates with.
  *
  * The strings here are repeated character for character in
- * `android/app/src/test/java/io/joinasr/app/data/WireShapeTest.kt`, which
+ * `android/app/src/test/java/com/joinasr/app/data/WireShapeTest.kt`, which
  * asserts that its serializer produces them. Neither half can see the other
  * language, so the literal is the contract: change the shape on one side
  * and the other side goes red.

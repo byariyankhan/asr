@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 // Public identity stays on the marketing domain, even when the same pages
 // are requested through the API hostname.
-export const siteUrl = new URL(process.env.PUBLIC_SITE_URL ?? "https://joinasr.io").origin;
+export const siteUrl = new URL(process.env.PUBLIC_SITE_URL ?? "https://joinasr.com").origin;
 export const siteDescription =
   "Set daily app limits on Android and keep your screen-time commitments with people you trust. Asr combines app blocking with accountability.";
 

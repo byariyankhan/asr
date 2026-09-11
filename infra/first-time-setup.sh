@@ -26,7 +26,7 @@ command -v docker >/dev/null || die "Docker is not installed."
 command -v nginx >/dev/null || die "nginx is not installed."
 
 step "Checking DNS"
-for host in joinasr.io api.joinasr.io; do
+for host in joinasr.com api.joinasr.com; do
   ip=$(getent hosts "$host" | awk '{print $1}' | head -1 || true)
   [ -n "$ip" ] || die "$host does not resolve yet. Wait for DNS, then re-run."
   echo "  $host -> $ip"
@@ -58,9 +58,9 @@ else
     echo "REDIS_PASS=$(openssl rand -base64 32 | tr -d '/+=' | head -c 40)"
     echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)"
     echo "INTERNAL_SECRET=$(openssl rand -base64 32)"
-    echo "BETTER_AUTH_URL=https://api.joinasr.io"
-    echo "PUBLIC_SITE_URL=https://joinasr.io"
-    echo "EMAIL_FROM=Asr <noreply@joinasr.io>"
+    echo "BETTER_AUTH_URL=https://api.joinasr.com"
+    echo "PUBLIC_SITE_URL=https://joinasr.com"
+    echo "EMAIL_FROM=Asr <noreply@joinasr.com>"
     echo
     echo "# Firebase Admin SDK (push notifications), from the service-account JSON."
     echo "# The private key is one line with literal \\n; compose keeps single-quoted"
@@ -80,7 +80,7 @@ PY
     echo "# Without RESEND_API_KEY the app logs emails instead of sending them."
     echo "RESEND_API_KEY="
     echo "# Play Billing: empty means /v1/subscription/verify answers 503."
-    echo "PLAY_PACKAGE_NAME=io.joinasr.app"
+    echo "PLAY_PACKAGE_NAME=com.joinasr.app"
     echo "PLAY_SERVICE_ACCOUNT_JSON_B64="
     echo "PLAY_PUBSUB_SECRET="
     echo "# Cloudflare R2, for profile photos. Empty means POST /v1/me/avatar"
@@ -137,13 +137,13 @@ if [ -z "$ok" ]; then
 fi
 
 step "Installing the nginx sites"
-# Two names, one upstream. api.joinasr.io is what the app talks to;
-# joinasr.io serves the links the product puts in front of other people --
+# Two names, one upstream. api.joinasr.com is what the app talks to;
+# joinasr.com serves the links the product puts in front of other people --
 # the witness invitation and the App Links file Android verifies it with.
 # Never clobbers TLS: certbot rewrites a site file in place, so copying over
 # one it has already edited would take the certificate back out. Both sites,
 # not one: the guard was written for asr-site alone, and a re-run of this
-# script -- which its own header calls safe -- would have left api.joinasr.io
+# script -- which its own header calls safe -- would have left api.joinasr.com
 # on plain HTTP with the certificate re-issued only if CERTBOT_EMAIL, an
 # optional secret, happened to be set.
 install_site() {
@@ -159,8 +159,8 @@ install_site asr-api
 install_site asr-site
 nginx -t
 systemctl reload nginx
-echo "  api.joinasr.io proxies to 127.0.0.1:3001 (plain HTTP until certbot runs)"
-echo "  joinasr.io + www proxy to the same place"
+echo "  api.joinasr.com proxies to 127.0.0.1:3001 (plain HTTP until certbot runs)"
+echo "  joinasr.com + www proxy to the same place"
 
 step "Scheduling the nightly backup"
 # A file in /etc/cron.d, not root's crontab. Writing a file is idempotent on
@@ -271,7 +271,7 @@ issue_cert() {
   echo "  $certname: issued into $site, and no other site file changed"
 }
 
-issue_cert hard asr-api api.joinasr.io api.joinasr.io
+issue_cert hard asr-api api.joinasr.com api.joinasr.com
 # The apex carries the witness invitation link. Failing to get a certificate
 # for it must not fail the whole setup -- the API is what the app needs, and
 # it is already serving by this point -- but it does need saying out loud,
@@ -280,8 +280,8 @@ issue_cert hard asr-api api.joinasr.io api.joinasr.io
 # The apex carries the witness invitation link, which goes to other people
 # in their own messaging apps. Worth a loud warning, not worth failing a
 # setup whose API is already serving.
-issue_cert soft asr-site joinasr.io joinasr.io www.joinasr.io \
-  || echo "  WARNING: joinasr.io has no certificate yet; invitation links will not open"
+issue_cert soft asr-site joinasr.com joinasr.com www.joinasr.com \
+  || echo "  WARNING: joinasr.com has no certificate yet; invitation links will not open"
 
 echo
 echo "============================================================"

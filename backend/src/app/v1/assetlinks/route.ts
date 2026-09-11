@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
  *
  * This is what makes `android:autoVerify="true"` mean anything. Android
  * fetches it when the app is installed, and only if this file names the
- * app's signing certificate does a tap on joinasr.io/w/<code> open Asr
+ * app's signing certificate does a tap on joinasr.com/w/<code> open Asr
  * directly. Without it the link opens a browser, or asks which app to use —
  * which is not what somebody who has just installed the app to answer an
  * invitation should be asked.
@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 const FINGERPRINT = /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/;
 
 export async function GET() {
-  const pkg = process.env.PLAY_PACKAGE_NAME?.trim() || "io.joinasr.app";
+  const pkg = process.env.PLAY_PACKAGE_NAME?.trim() || "com.joinasr.app";
   const fingerprints = (process.env.ANDROID_CERT_SHA256 ?? "")
     .split(/[,\s]+/)
     .map((value) => value.trim().toUpperCase())

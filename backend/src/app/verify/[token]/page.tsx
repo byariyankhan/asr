@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 /**
  * The page the confirmation email opens.
  *
- * Every sign-up sent `joinasr.io/verify/<token>`, and nothing served it: the
+ * Every sign-up sent `joinasr.com/verify/<token>`, and nothing served it: the
  * first thing every new person received from this product was a link to a
  * 404. The token is Better Auth's own, so the page hands it to Better Auth
  * and says what happened -- there is no session to establish and nothing to

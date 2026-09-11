@@ -7,7 +7,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/server/rate-limit";
  * A profile photo, to anybody who has the URL.
  *
  * Public on purpose. The case that settles it is the witness invite: the
- * person opening joinasr.io/w/<code> has no account yet, and the preview has
+ * person opening joinasr.com/w/<code> has no account yet, and the preview has
  * to show them who is asking. That endpoint already gives the inviter's name
  * without a session, so the photo belongs in the same place. A profile
  * picture is a profile picture.

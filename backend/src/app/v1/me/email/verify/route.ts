@@ -9,7 +9,7 @@ import { requireCaller } from "@/server/session";
 // place one is sent from -- per account, three a day and one every five
 // minutes, because each is a paid email for a step that is not required.
 // Better Auth signs the token and calls the sender in server/auth.ts; the
-// link is joinasr.io/verify/<token>, and opening it is the confirmation.
+// link is joinasr.com/verify/<token>, and opening it is the confirmation.
 export const POST = route(async (request) => {
   const caller = await requireCaller(request, RATE_LIMITS.emailVerify);
   await assertRateLimit(RATE_LIMITS.emailVerifyBurst, caller.userId);
