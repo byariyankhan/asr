@@ -77,6 +77,7 @@ import io.joinasr.app.ui.screens.HelpAndSupportScreen
 import io.joinasr.app.legal.LegalTexts
 import io.joinasr.app.ui.screens.LegalScreen
 import io.joinasr.app.ui.screens.LogInScreen
+import io.joinasr.app.ui.screens.MeditationScreen
 import io.joinasr.app.ui.screens.NotificationsScreen
 import io.joinasr.app.ui.screens.PersonDetailScreen
 import io.joinasr.app.ui.screens.PersonalDetailsScreen
@@ -1228,6 +1229,19 @@ fun AsrApp(
                                         },
                                         onCounted = earnViewModel::onCounted,
                                     )
+                                } else if (running != null && !activityMinimised && running.isMeditation) {
+                                    MeditationScreen(
+                                        activity = running,
+                                        onBack = {
+                                            activityMinimised = true
+                                            earningFor = null
+                                        },
+                                        onEnd = {
+                                            earnViewModel.cancel()
+                                            earningFor = null
+                                        },
+                                        onCounted = earnViewModel::onCounted,
+                                    )
                                 } else if (running != null && !activityMinimised) {
                                     // Figma 23.
                                     ActivityProgressScreen(
@@ -1270,6 +1284,7 @@ fun AsrApp(
                                             stepsAvailable = earnViewModel.steps.available,
                                             cameraAvailable = Permissions.hasCameraHardware(context),
                                             barometerAvailable = Permissions.hasBarometer(context),
+                                            accelerometerAvailable = Permissions.hasAccelerometer(context),
                                         ),
                                         onBack = {
                                             earningFor = null

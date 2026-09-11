@@ -368,6 +368,43 @@ object AsrIcons {
     }
 
     /**
+     * A meditation: a person sitting cross-legged, and a breath around
+     * them, a ring that swells and settles with the phase.
+     */
+    @Composable
+    fun Meditation(colour: Color, phase: Float, size: Dp = 24.dp) = Icon(size) { scale ->
+        val stroke = strokeOf(scale)
+        drawCircle(color = colour, radius = 2.0f * scale, center = Offset(12f * scale, 6.2f * scale))
+        drawPath(
+            path = path(scale) {
+                // Torso.
+                moveTo(12f, 8.4f)
+                lineTo(12f, 14.2f)
+                // Folded legs: knees out, feet crossed under.
+                moveTo(12f, 14.2f)
+                lineTo(6.4f, 17.2f)
+                lineTo(12f, 18.6f)
+                lineTo(17.6f, 17.2f)
+                lineTo(12f, 14.2f)
+                // Arms resting on the knees.
+                moveTo(12f, 10.2f)
+                lineTo(8.2f, 15.4f)
+                moveTo(12f, 10.2f)
+                lineTo(15.8f, 15.4f)
+            },
+            color = colour,
+            style = stroke,
+        )
+        // The breath: a faint ring that swells as the phase rises.
+        drawCircle(
+            color = colour.copy(alpha = 0.35f + 0.25f * phase),
+            radius = (9.4f + 1.6f * phase) * scale,
+            center = Offset(12f * scale, 12.4f * scale),
+            style = Stroke(width = 0.9f * scale),
+        )
+    }
+
+    /**
      * One icon on a 24-unit grid.
      *
      * [content] receives the scale from grid units to pixels, so every path

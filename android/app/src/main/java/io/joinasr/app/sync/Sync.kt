@@ -370,6 +370,11 @@ class Sync(context: Context) {
                         dailyCapMinutes = EarnRules.DAILY_CAP_MINUTES,
                         target = EarnRules.STAIR_FLOORS,
                     ),
+                    meditation = ActivityRule(
+                        rewardMinutes = EarnRules.REWARD_MINUTES,
+                        dailyCapMinutes = EarnRules.DAILY_CAP_MINUTES,
+                        targetMinutes = EarnRules.MEDITATION_SECONDS / 60,
+                    ),
                 ),
             ),
         )

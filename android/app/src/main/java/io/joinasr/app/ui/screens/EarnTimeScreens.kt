@@ -313,6 +313,7 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.WALL_SIT -> 0f
         EarnIcon.RUN -> 1f
         EarnIcon.STAIRS -> 0.8f
+        EarnIcon.MEDITATION -> 0.4f
     }
     val period = when (icon) {
         EarnIcon.WALK -> 620
@@ -322,6 +323,7 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.WALL_SIT -> 260
         EarnIcon.RUN -> 420
         EarnIcon.STAIRS -> 700
+        EarnIcon.MEDITATION -> 2400
     }
     val context = LocalContext.current
     val animationsOn = remember(context) {
@@ -348,6 +350,7 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.WALL_SIT -> AsrIcons.WallSit(colour, phase, size)
         EarnIcon.RUN -> AsrIcons.Run(colour, phase, size)
         EarnIcon.STAIRS -> AsrIcons.Stairs(colour, phase, size)
+        EarnIcon.MEDITATION -> AsrIcons.Meditation(colour, phase, size)
     }
 }
 
@@ -1463,8 +1466,11 @@ fun EarnedScreen(
     var moment by remember(activity.id) { mutableStateOf(activity.isCamera) }
     val feedback = rememberRepFeedback()
     LaunchedEffect(activity.id) {
-        if (!activity.isCamera) return@LaunchedEffect
+        // The meditation ends on its own screen too, eyes closed: the
+        // chime says so, without the number.
+        if (!activity.isCamera && !activity.isMeditation) return@LaunchedEffect
         feedback.finished()
+        if (!activity.isCamera) return@LaunchedEffect
         delay(1_400)
         moment = false
     }
@@ -1635,7 +1641,7 @@ private fun TargetApp(app: PactApp, earnedSoFar: Int) {
 }
 
 @Composable
-private fun RewardContext(activity: EarnActivity) {
+internal fun RewardContext(activity: EarnActivity) {
     val shape = RoundedCornerShape(18.dp)
     Row(
         modifier = Modifier
@@ -1714,7 +1720,7 @@ private fun TrackingStatus(type: String) {
 }
 
 @Composable
-private fun RewardNote(title: String, body: String) {
+internal fun RewardNote(title: String, body: String) {
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
@@ -1753,7 +1759,12 @@ private fun ChooseActivityPreview() {
         ChooseActivityScreen(
             app = PactApp("com.zhiliaoapp.musically", "TikTok", 20),
             earnedSoFar = 0,
-            options = earnOptions(stepsAvailable = true, cameraAvailable = true, barometerAvailable = true),
+            options = earnOptions(
+                stepsAvailable = true,
+                cameraAvailable = true,
+                barometerAvailable = true,
+                accelerometerAvailable = true,
+            ),
             onBack = {},
             onStart = {},
             errorMessage = null,

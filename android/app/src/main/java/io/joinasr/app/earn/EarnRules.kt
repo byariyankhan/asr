@@ -44,6 +44,13 @@ object EarnRules {
     /** A climb: floors, from the barometer while the step counter moves. */
     const val STAIR_FLOORS = 10
 
+    /**
+     * A meditation: ten minutes with the breathing guide on the screen and
+     * the phone lying still. Kept in seconds on the phone, like the holds,
+     * so the count on the screen moves; the server's rule is in minutes.
+     */
+    const val MEDITATION_SECONDS = 10 * 60
+
     /** What any one of them is worth. Figma 21 and 24: "+10 minutes". */
     const val REWARD_MINUTES = 10
 
@@ -74,6 +81,7 @@ object EarnRules {
 
     const val RUN = "run_steps"
     const val STAIRS = "stairs"
+    const val MEDITATION = "meditation"
 
     /** The activities the camera counts or times, on the camera screen. */
     val CAMERA_TYPES: Set<String> = setOf(PUSHUPS, PLANK, WALL_SIT)
@@ -91,6 +99,7 @@ object EarnRules {
         WALL_SIT -> WALL_SIT_SECONDS
         RUN -> RUN_STEPS
         STAIRS -> STAIR_FLOORS
+        MEDITATION -> MEDITATION_SECONDS
         else -> FOCUS_MINUTES
     }
 }

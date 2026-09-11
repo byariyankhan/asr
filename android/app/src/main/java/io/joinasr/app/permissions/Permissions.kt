@@ -147,6 +147,10 @@ object Permissions {
     fun hasCameraHardware(context: Context): Boolean =
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
 
+    /** Whether there is an accelerometer to tell a still phone by. Every phone; declared anyway. */
+    fun hasAccelerometer(context: Context): Boolean =
+        context.getSystemService<SensorManager>()?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null
+
     /** Whether there is a barometer to read a climb from. Most phones; not all. */
     fun hasBarometer(context: Context): Boolean =
         context.getSystemService<SensorManager>()?.getDefaultSensor(Sensor.TYPE_PRESSURE) != null

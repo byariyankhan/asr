@@ -7,7 +7,7 @@ import java.util.Locale
  * activity, drawn in ui/components/AsrIcons.kt; an enum rather than a
  * composable here so this file stays plain Kotlin.
  */
-enum class EarnIcon { WALK, FOCUS, PUSH_UPS, PLANK, WALL_SIT, RUN, STAIRS }
+enum class EarnIcon { WALK, FOCUS, PUSH_UPS, PLANK, WALL_SIT, RUN, STAIRS, MEDITATION }
 
 /**
  * One way to earn time, as the chooser describes it.
@@ -44,7 +44,7 @@ data class EarnOption(
 
 /** The catalogue entry for a type, however the phone is equipped, or null for a type the chooser does not list. */
 fun earnOptionFor(type: String): EarnOption? =
-    earnOptions(stepsAvailable = true, cameraAvailable = true, barometerAvailable = true)
+    earnOptions(stepsAvailable = true, cameraAvailable = true, barometerAvailable = true, accelerometerAvailable = true)
         .firstOrNull { it.type == type }
 
 /**
@@ -55,7 +55,12 @@ fun earnOptionFor(type: String): EarnOption? =
  * locks and the view model starts with, so the sheet cannot promise a
  * price the activity does not pay.
  */
-fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean, barometerAvailable: Boolean): List<EarnOption> = listOf(
+fun earnOptions(
+    stepsAvailable: Boolean,
+    cameraAvailable: Boolean,
+    barometerAvailable: Boolean,
+    accelerometerAvailable: Boolean,
+): List<EarnOption> = listOf(
     EarnOption(
         type = EarnRules.WALK,
         name = "Walk",
@@ -184,5 +189,25 @@ fun earnOptions(stepsAvailable: Boolean, cameraAvailable: Boolean, barometerAvai
             else -> null
         },
         done = "Your climb is done.",
+    ),
+    EarnOption(
+        type = EarnRules.MEDITATION,
+        name = "Meditate",
+        title = "Breathe for ${EarnRules.MEDITATION_SECONDS / 60} minutes",
+        target = "${EarnRules.MEDITATION_SECONDS / 60} minutes with the phone lying still",
+        icon = EarnIcon.MEDITATION,
+        explanation = "Put the phone down where you can see it, sit, and follow the breathing " +
+            "guide: in for four, out for six. A small tap marks each turn, so your eyes can " +
+            "close. Pick the phone up and the clock pauses; put it back and it goes on.",
+        verification = "The motion sensor: the clock runs while the phone lies still with the " +
+            "guide on the screen. It cannot know whether you meditated; it knows the phone " +
+            "was put down and left.",
+        privacy = "Only whether the phone moved, on the phone. Nothing is recorded and nothing " +
+            "about the session leaves the phone but that it was completed.",
+        recommended = false,
+        unavailableReason = if (accelerometerAvailable) null else {
+            "This phone has no motion sensor, so it cannot tell when it is lying still."
+        },
+        done = "Your ten minutes are done.",
     ),
 )

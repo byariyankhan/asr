@@ -72,6 +72,8 @@ data class ActivityRules(
     /** Steps at a running cadence, and floors climbed. Server since migration 0014. */
     @SerialName("run_steps") val runSteps: ActivityRule? = null,
     @SerialName("stairs") val stairs: ActivityRule? = null,
+    /** Minutes with the phone lying still under the breathing guide. Server since migration 0015. */
+    @SerialName("meditation") val meditation: ActivityRule? = null,
 )
 
 @Serializable
