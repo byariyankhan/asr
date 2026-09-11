@@ -56,6 +56,25 @@
         android:name="android.hardware.camera.any"
         android:required="false" />
 
+    <!-- Location, and only to measure a bicycle ride (earn/RideService.kt).
+         Asked the first time somebody chooses cycling and never at launch,
+         like the camera. Precise, because a ride is metres at a speed and
+         approximate location cannot give either. Read only while a ride
+         is the active activity, by a foreground service whose type says
+         so (FOREGROUND_SERVICE_LOCATION is what Android 14 requires of
+         it); each fix is compared with the last and then dropped, no
+         route is written, and nothing about where the phone was is sent.
+         No background location: the service is started from the screen
+         and its notification is on for the whole ride. GPS hardware is
+         declared optional so a phone without it still installs; it is
+         simply not offered cycling. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false" />
+
     <!-- The enforcement loop runs as a foreground service. SPECIAL_USE is the
          type Android 14 requires for it: the other types describe things this
          is not (no media, no location, no sync), and the whole point is that
@@ -207,6 +226,13 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Enforces the daily app time limits the user set for themselves. The service must run while other apps are in the foreground, because that is precisely when a limit can be reached." />
         </service>
+
+        <!-- Measures a bicycle ride, for as long as one is running and not a
+             moment longer: see the location permission above. -->
+        <service
+            android:name=".earn.RideService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <receiver
             android:name=".enforcement.BootReceiver"

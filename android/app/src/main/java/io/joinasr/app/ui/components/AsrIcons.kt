@@ -405,6 +405,53 @@ object AsrIcons {
     }
 
     /**
+     * A bicycle from the side with somebody on it: two wheels, a frame,
+     * a rider leaning to the bars. Phase turns the wheels, a spoke each.
+     */
+    @Composable
+    fun Ride(colour: Color, phase: Float, size: Dp = 24.dp) = Icon(size) { scale ->
+        val stroke = strokeOf(scale)
+        val thin = Stroke(width = 1.2f * scale, cap = StrokeCap.Round)
+        val back = Offset(6.2f * scale, 16.8f * scale)
+        val front = Offset(17.8f * scale, 16.8f * scale)
+        val wheel = 3.6f * scale
+        drawCircle(color = colour, radius = wheel, center = back, style = thin)
+        drawCircle(color = colour, radius = wheel, center = front, style = thin)
+        // One spoke per wheel, turning with the phase.
+        val turn = phase * 2f * Math.PI.toFloat()
+        for (hub in listOf(back, front)) {
+            drawLine(
+                color = colour,
+                start = hub,
+                end = Offset(hub.x + wheel * kotlin.math.cos(turn), hub.y + wheel * kotlin.math.sin(turn)),
+                strokeWidth = 1.2f * scale,
+                cap = StrokeCap.Round,
+            )
+        }
+        drawPath(
+            path = path(scale) {
+                // Frame: back hub to the seat post, down to the pedals, to
+                // the front hub, and the top tube to the bars.
+                moveTo(6.2f, 16.8f)
+                lineTo(10.2f, 10.6f)
+                lineTo(12.6f, 16.8f)
+                lineTo(6.2f, 16.8f)
+                moveTo(12.6f, 16.8f)
+                lineTo(17.8f, 16.8f)
+                lineTo(15.6f, 10.2f)
+                lineTo(10.2f, 10.6f)
+                // Rider: seat to shoulders, arms to the bars.
+                moveTo(10.2f, 10.2f)
+                lineTo(12.8f, 5.6f)
+                lineTo(15.6f, 9.6f)
+            },
+            color = colour,
+            style = stroke,
+        )
+        drawCircle(color = colour, radius = 1.7f * scale, center = Offset(13.6f * scale, 3.6f * scale))
+    }
+
+    /**
      * One icon on a 24-unit grid.
      *
      * [content] receives the scale from grid units to pixels, so every path

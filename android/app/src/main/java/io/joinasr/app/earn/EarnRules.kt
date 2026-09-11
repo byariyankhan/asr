@@ -51,6 +51,9 @@ object EarnRules {
      */
     const val MEDITATION_SECONDS = 10 * 60
 
+    /** A ride: metres at a cycling speed, from GPS. Three kilometres is ten minutes or so on a bicycle. */
+    const val RIDE_METRES = 3_000
+
     /** What any one of them is worth. Figma 21 and 24: "+10 minutes". */
     const val REWARD_MINUTES = 10
 
@@ -82,6 +85,7 @@ object EarnRules {
     const val RUN = "run_steps"
     const val STAIRS = "stairs"
     const val MEDITATION = "meditation"
+    const val RIDE = "cycling"
 
     /** The activities the camera counts or times, on the camera screen. */
     val CAMERA_TYPES: Set<String> = setOf(PUSHUPS, PLANK, WALL_SIT)
@@ -100,6 +104,7 @@ object EarnRules {
         RUN -> RUN_STEPS
         STAIRS -> STAIR_FLOORS
         MEDITATION -> MEDITATION_SECONDS
+        RIDE -> RIDE_METRES
         else -> FOCUS_MINUTES
     }
 }

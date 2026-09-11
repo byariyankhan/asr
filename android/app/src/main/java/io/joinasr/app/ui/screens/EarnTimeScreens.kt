@@ -314,6 +314,7 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.RUN -> 1f
         EarnIcon.STAIRS -> 0.8f
         EarnIcon.MEDITATION -> 0.4f
+        EarnIcon.RIDE -> 0.5f
     }
     val period = when (icon) {
         EarnIcon.WALK -> 620
@@ -324,6 +325,7 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.RUN -> 420
         EarnIcon.STAIRS -> 700
         EarnIcon.MEDITATION -> 2400
+        EarnIcon.RIDE -> 900
     }
     val context = LocalContext.current
     val animationsOn = remember(context) {
@@ -351,6 +353,7 @@ private fun EarnIconView(icon: EarnIcon, colour: Color, size: Dp, moving: Boolea
         EarnIcon.RUN -> AsrIcons.Run(colour, phase, size)
         EarnIcon.STAIRS -> AsrIcons.Stairs(colour, phase, size)
         EarnIcon.MEDITATION -> AsrIcons.Meditation(colour, phase, size)
+        EarnIcon.RIDE -> AsrIcons.Ride(colour, phase, size)
     }
 }
 
@@ -726,6 +729,132 @@ fun CameraAccessScreen(
 }
 
 /**
+ * Location, asked the first time somebody chooses cycling and never at
+ * launch, in the camera screen's layout. The promises on it are the ones
+ * enforced in earn/RideService.kt: each fix is compared with the last and
+ * dropped, no route is written, nothing about where the phone was is
+ * sent, and GPS is on for the ride only.
+ */
+@Composable
+fun LocationAccessScreen(
+    onBack: () -> Unit,
+    onAllow: () -> Unit,
+    onSkip: () -> Unit,
+    openSettings: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(AsrColors.Background)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp),
+    ) {
+        Spacer(Modifier.height(20.dp))
+        AsrBackChevron(onBack)
+
+        Spacer(Modifier.height(18.dp))
+        Text("EARN TIME", style = AsrType.Eyebrow, color = AsrColors.Accent)
+        Spacer(Modifier.height(14.dp))
+        Text("Measure your ride.", style = AsrType.display(38), color = AsrColors.TextPrimary)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            if (openSettings) {
+                "Precise location was refused. Allow it on Asr's page in Settings to measure a ride; " +
+                    "approximate location cannot."
+            } else {
+                "Only requested when you choose cycling to earn extra app time."
+            },
+            style = AsrType.Field,
+            color = AsrColors.TextSecondary,
+        )
+
+        Spacer(Modifier.height(24.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(AsrColors.SurfaceRaised, RoundedCornerShape(22.dp))
+                .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(22.dp))
+                .padding(17.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    "%.0f".format(Locale.US, EarnRules.RIDE_METRES / 1000.0),
+                    style = AsrType.display(38),
+                    color = AsrColors.Accent,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "KM BY BIKE",
+                    style = AsrType.Eyebrow.copy(fontSize = 11.sp),
+                    color = AsrColors.Accent,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Phone in your pocket, GPS on for the ride",
+                style = AsrType.Label.copy(fontSize = 14.sp),
+                color = AsrColors.TextPrimary,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Your phone compares each GPS fix with the last for speed and distance, counts " +
+                    "the metres at a cycling pace, and drops the fix. No route is kept.",
+                style = AsrType.Legal.copy(fontSize = 12.sp),
+                color = AsrColors.TextSecondary,
+            )
+        }
+
+        Spacer(Modifier.height(18.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(AsrColors.Field, RoundedCornerShape(20.dp))
+                .border(1.dp, AsrColors.FieldBorder, RoundedCornerShape(20.dp))
+                .padding(17.dp),
+        ) {
+            Text("Location access", style = AsrType.RowTitle, color = AsrColors.TextPrimary)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Used only while a ride is running, with a notification saying so. GPS switches " +
+                    "off the moment the ride ends.",
+                style = AsrType.Label.copy(fontSize = 13.sp),
+                color = AsrColors.TextSecondary,
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "✓  No route or place is ever saved",
+                style = AsrType.Label.copy(fontSize = 13.sp),
+                color = AsrColors.Accent,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "✓  Nothing about where you went leaves your phone",
+                style = AsrType.Label.copy(fontSize = 13.sp),
+                color = AsrColors.Accent,
+            )
+        }
+
+        Spacer(Modifier.height(26.dp))
+        AsrPrimaryButton(text = if (openSettings) "Open Settings" else "Allow location access", onClick = onAllow)
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "Not now",
+            style = AsrType.Label.copy(fontSize = 14.sp),
+            color = AsrColors.TextSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(role = Role.Button, onClick = onSkip)
+                .padding(vertical = 10.dp),
+        )
+        Spacer(Modifier.height(28.dp))
+    }
+}
+
+/**
  * Figma 23 — Earn Time / Activity Progress — Walk (node 133:2).
  *
  * The same screen serves a focus session, because the design of the two is
@@ -743,6 +872,7 @@ fun ActivityProgressScreen(
     val focus = activity.isFocus
     val run = activity.type == EarnRules.RUN
     val stairs = activity.type == EarnRules.STAIRS
+    val ride = activity.isRide
     // Display only. No UI clock can complete an activity or award minutes.
     val focusRemaining by produceState(
         initialValue = activity.target * 60,
@@ -780,6 +910,7 @@ fun ActivityProgressScreen(
                 walk -> "Keep walking."
                 run -> "Go for a run."
                 stairs -> "Take the stairs."
+                ride -> "Go for a ride."
                 else -> "Put your phone down for ${activity.target} minutes."
             },
             style = AsrType.display(36),
@@ -797,6 +928,10 @@ fun ActivityProgressScreen(
                 stairs ->
                     "${activity.target} floors on foot earn ${activity.rewardMinutes} more minutes " +
                         "for ${activity.appLabel}. The lift does not count."
+                ride ->
+                    "${"%.0f".format(Locale.US, activity.target / 1000.0)} km at a cycling speed earn " +
+                        "${activity.rewardMinutes} more minutes for ${activity.appLabel}. Walking the bike " +
+                        "and a car do not count."
                 else -> "Keep your phone locked and spend some time in the real world."
             },
             style = AsrType.Field,
@@ -827,6 +962,8 @@ fun ActivityProgressScreen(
                             "—"
                         } else if (focus) {
                             String.format(Locale.US, "%02d:%02d", focusRemaining / 60, focusRemaining % 60)
+                        } else if (ride) {
+                            String.format(Locale.US, "%.2f", activity.progress / 1000.0)
                         } else {
                             format(activity.progress)
                         },
@@ -839,6 +976,7 @@ fun ActivityProgressScreen(
                             walk -> "of ${format(activity.target)} steps"
                             run -> "of ${format(activity.target)} running steps"
                             stairs -> "of ${activity.target} floors"
+                            ride -> "of ${"%.1f".format(Locale.US, activity.target / 1000.0)} km by bike"
                             activity.focusLockedSinceElapsed == null -> "Lock your phone to start the timer."
                             else -> "remaining with your phone locked"
                         },
@@ -899,6 +1037,7 @@ fun ActivityProgressScreen(
                 walk -> "${format(activity.remaining)} steps to go"
                 run -> "${format(activity.remaining)} running steps to go"
                 stairs -> "${activity.remaining} floors to go"
+                ride -> "${"%.1f".format(Locale.US, activity.remaining / 1000.0)} km to go"
                 else -> "If you unlock your phone before the ${activity.target} minutes are complete, the timer will reset."
             },
             body = "Finish and ${activity.appLabel} gets +${activity.rewardMinutes} minutes today.",
@@ -1708,6 +1847,9 @@ private fun TrackingStatus(type: String) {
                     EarnRules.STAIRS ->
                         "Keep the phone on you and lock it. Floors climbed on foot keep counting, " +
                             "all day if need be; we’ll notify you when you have them."
+                    EarnRules.RIDE ->
+                        "Keep the phone on you and lock it. GPS measures the ride and shows a " +
+                            "notification while it does; we’ll notify you when it is done."
                     else ->
                         "Incoming calls and notifications won’t affect your session. " +
                             "We’ll notify you when your ${EarnRules.FOCUS_MINUTES} minutes are complete."
@@ -1764,6 +1906,7 @@ private fun ChooseActivityPreview() {
                 cameraAvailable = true,
                 barometerAvailable = true,
                 accelerometerAvailable = true,
+                gpsAvailable = true,
             ),
             onBack = {},
             onStart = {},
