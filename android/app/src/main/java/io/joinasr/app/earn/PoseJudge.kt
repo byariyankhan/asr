@@ -264,8 +264,31 @@ object HoldPositions {
 
     private const val MIN_ELBOW_DROP = 0.45f
 
-    /** A body seen whole on one side, shoulder to ankle: what the wall sit needs before it can say anything. */
-    fun wholeSide(pose: BodyPose): Boolean = BodySide.of(pose) != null
+    /**
+     * What the wall sit needs before it can say anything about the
+     * position, by the way the body is facing. Head-on (both shoulders
+     * seen, and wide against the torso), every one of the eight points
+     * [wallSitFront] reads, so a knee or an ankle out of the picture on
+     * one side is "Looking for you" with the shoulders-to-feet line and
+     * not "Slide down the wall". Side-on, a whole side, shoulder to ankle.
+     */
+    fun wallSitBody(pose: BodyPose): Boolean =
+        if (facingWide(pose)) WALL_SIT_POINTS.all { it(pose).visibility >= MIN_VISIBILITY } else BodySide.of(pose) != null
+
+    private val WALL_SIT_POINTS: List<(BodyPose) -> Landmark> = listOf(
+        { it.leftShoulder }, { it.rightShoulder }, { it.leftHip }, { it.rightHip },
+        { it.leftKnee }, { it.rightKnee }, { it.leftAnkle }, { it.rightAnkle },
+    )
+
+    /** Both shoulders seen and at least a third of a torso apart: a body turned towards the phone rather than side-on. */
+    private fun facingWide(pose: BodyPose): Boolean {
+        if (pose.leftShoulder.visibility < MIN_VISIBILITY || pose.rightShoulder.visibility < MIN_VISIBILITY) return false
+        val hip = listOf(pose.leftHip, pose.rightHip).filter { it.visibility >= MIN_VISIBILITY }.maxByOrNull { it.visibility }
+            ?: return false
+        val mid = Landmark((pose.leftShoulder.x + pose.rightShoulder.x) / 2f, (pose.leftShoulder.y + pose.rightShoulder.y) / 2f, 1f)
+        val torso = PoseGeometry.distance(mid, hip)
+        return torso > 0f && PoseGeometry.distance(pose.leftShoulder, pose.rightShoulder) / torso >= 0.35f
+    }
 
     /**
      * A plank, from the side: the body a straight line from shoulder to

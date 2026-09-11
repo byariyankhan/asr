@@ -145,10 +145,10 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
         judge = {
             HoldJudge(
                 position = HoldPositions::wallSit,
-                // Shoulder to ankle on one side, or there is nothing to
-                // judge: a face with its legs cropped is "Looking for you",
+                // Every point the view needs, or there is nothing to judge:
+                // a body with a knee or a foot cropped is "Looking for you",
                 // not "Slide down the wall".
-                hasBody = HoldPositions::wholeSide,
+                hasBody = HoldPositions::wallSitBody,
                 coach = { phase, _ ->
                     when (phase) {
                         PoseJudge.Phase.NO_BODY ->

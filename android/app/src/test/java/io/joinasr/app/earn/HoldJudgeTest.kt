@@ -170,11 +170,16 @@ class HoldJudgeTest {
         assertFalse(HoldPositions.wallSit(wallSitFront.copy(leftAnkle = BodyPose.UNSEEN, rightAnkle = BodyPose.UNSEEN)))
     }
 
-    @Test fun `a face with its shoulders is a body for the plank, and not a whole side for the wall sit`() {
+    @Test fun `a face with its shoulders is a body for the plank, and not a body for the wall sit`() {
         assertTrue(HoldPositions.hasBody(standingFront))
-        assertFalse(HoldPositions.wholeSide(standingFront))
-        assertTrue(HoldPositions.wholeSide(wallSitFront))
-        assertTrue(HoldPositions.wholeSide(wallSit))
+        assertFalse(HoldPositions.wallSitBody(standingFront))
+        assertTrue(HoldPositions.wallSitBody(wallSitFront))
+        assertTrue(HoldPositions.wallSitBody(wallSit))
+        // Head-on with one foot out of the picture: not yet a body to judge, whatever the other side shows.
+        assertFalse(HoldPositions.wallSitBody(wallSitFront.copy(rightAnkle = BodyPose.UNSEEN)))
+        assertFalse(HoldPositions.wallSitBody(wallSitFront.copy(leftKnee = BodyPose.UNSEEN)))
+        // Side-on, the far side is guessed through the body and is not asked for.
+        assertTrue(HoldPositions.wallSitBody(wallSit.copy(rightKnee = BodyPose.UNSEEN, rightAnkle = BodyPose.UNSEEN)))
         assertFalse(HoldPositions.hasBody(front(eyesAbove = 0.6f, hipVisibility = 0.2f).copy(
             leftShoulder = BodyPose.UNSEEN, rightShoulder = BodyPose.UNSEEN,
         )))

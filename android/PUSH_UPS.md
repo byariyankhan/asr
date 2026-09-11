@@ -151,10 +151,11 @@ rule from `HoldPositions`:
   are off it; sitting with the legs out has the hips far below it).
   Forearms or hands are not asked about. `plank` is either. The plank's
   body predicate (`hasBody`) accepts a face with both shoulders, so the
-  head-on view coaches "Get into a plank"; the wall sit's (`wholeSide`)
-  wants shoulder to ankle on one side first, so a face with the legs
-  cropped is "Looking for you" with the shoulders-to-feet line, not
-  "Slide down the wall".
+  head-on view coaches "Get into a plank"; the wall sit's
+  (`wallSitBody`) wants, head-on, all eight points it reads, and
+  side-on a whole side shoulder to ankle, so a body with a foot or a
+  knee cropped is "Looking for you" with the shoulders-to-feet line,
+  not "Slide down the wall".
 - **Wall sit**, head-on (`HoldPositions.wallSitFront`): the phone stood
   upright on the floor or a low stool a couple of steps in front of the
   wall, no higher than the knees, with the person in the picture from
