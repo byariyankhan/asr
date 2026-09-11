@@ -19,7 +19,7 @@ private data class ChangePassword(
 )
 
 @Serializable
-private data class ForgetPassword(val email: String)
+private data class RequestPasswordReset(val email: String)
 
 @Serializable
 private data class ResetPassword(val newPassword: String, val token: String)
@@ -64,12 +64,15 @@ class AccountApi(
      * server accepts it, because the server deliberately answers the same
      * way for an address it has never seen: telling somebody which emails
      * have accounts is how account lists get harvested.
+     *
+     * No redirectTo is sent. The server builds the link in the email itself,
+     * and Better Auth refuses a redirectTo it does not already trust.
      */
     suspend fun sendResetEmail(email: String): ApiResult<Unit> = withContext(Dispatchers.IO) {
         post(
-            path = "/api/auth/forget-password",
+            path = "/api/auth/request-password-reset",
             token = null,
-            body = ApiJson.encodeToString(ForgetPassword(email.trim())),
+            body = ApiJson.encodeToString(RequestPasswordReset(email.trim())),
         )
     }
 
