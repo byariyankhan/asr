@@ -273,9 +273,10 @@ object SeatedPose {
      * of a torso). A body on its feet has a thigh that hangs straight down
      * and as long as the torso, and fails both; so does one kneeling up
      * or sitting back on its heels, whose thighs are long and near
-     * vertical from the front, and which is asked to sit another way. An
-     * ankle the model can see below a straight, long leg is the last
-     * word: that leg is standing on the floor.
+     * vertical from the front, and which is asked to sit another way.
+     * The ankles are not asked about: from a phone on the floor a chair
+     * sitter's hip, knee and ankle line up as straight and as long as a
+     * standing leg's, and a rule on them refused real sitters.
      *
      * The founder's ask is that the clock never runs for a body on its
      * feet, so the picture has to include the knees, and a phone high
@@ -285,24 +286,14 @@ object SeatedPose {
     fun legsFolded(pose: BodyPose): Boolean {
         val torso = torsoLength(pose)
         if (torso <= 0f || !kneesSeen(pose)) return false
-        val legs = listOf(
-            Triple(pose.leftHip, pose.leftKnee, pose.leftAnkle),
-            Triple(pose.rightHip, pose.rightKnee, pose.rightAnkle),
-        )
-        return legs.all { (hip, knee, ankle) ->
-            val thighTilt = PoseGeometry.tiltFromHorizontal(hip, knee)
-            val thighLength = PoseGeometry.distance(hip, knee) / torso
-            val folded = thighTilt <= MAX_FOLDED_THIGH_TILT || thighLength <= MAX_FORESHORTENED_THIGH
-            val standingOn = ankle.visibility >= MIN_VISIBILITY && ankle.y > knee.y &&
-                PoseGeometry.distance(hip, ankle) / torso >= MIN_STANDING_LEG &&
-                PoseGeometry.tiltFromHorizontal(hip, ankle) >= 60f
-            folded && !standingOn
+        return listOf(pose.leftHip to pose.leftKnee, pose.rightHip to pose.rightKnee).all { (hip, knee) ->
+            PoseGeometry.tiltFromHorizontal(hip, knee) <= MAX_FOLDED_THIGH_TILT ||
+                PoseGeometry.distance(hip, knee) / torso <= MAX_FORESHORTENED_THIGH
         }
     }
 
     private const val MAX_FOLDED_THIGH_TILT = 40f
     private const val MAX_FORESHORTENED_THIGH = 0.55f
-    private const val MIN_STANDING_LEG = 1.45f
 
     /**
      * The whole position: somebody facing the phone, sitting up, with

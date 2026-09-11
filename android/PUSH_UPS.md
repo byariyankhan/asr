@@ -133,17 +133,28 @@ rule from `HoldPositions`:
   (within 0.6 of a width of centre) and no more than 0.35 of a width
   below the shoulder line. A body on its feet or a chair has its hips a
   torso below the shoulders, which is the one thing this view sees
-  plainly. Without hips the face and shoulders decide, which lets a
-  standing person with their head bowed and their hips out of the
-  picture through; the copy asks for the hips in. A kneeling plank
-  passes, as it did from the side; that is the easy end.
+  plainly. And the arms hold the body up: an elbow the model can see
+  hangs at least 0.45 of a shoulder width below its shoulder, which it
+  does on the hands (halfway to the floor) and on the forearms (on it)
+  and does not for a body lying face down with its head raised to look
+  at the phone, whose shoulders are a hand above the floor; no elbow
+  seen is no plank. Without hips the face, shoulders and arms decide,
+  which lets a standing person with their head bowed, their hips out of
+  the picture and their elbows held low through; the copy asks for the
+  hips in. A kneeling plank passes, as it did from the side; that is the
+  easy end.
 - **Plank**, from the side (`HoldPositions.plankSide`), still accepted
   when that is how the phone is placed: shoulder, hip and ankle on one
   side of the body all seen, the shoulder-to-ankle line sloping down to
   the feet by 6° to 45° (lying flat is under, sitting up is over), and
   the hip within 14% of that line's length from it (sagging or piked hips
   are off it; sitting with the legs out has the hips far below it).
-  Forearms or hands are not asked about. `plank` is either.
+  Forearms or hands are not asked about. `plank` is either. The plank's
+  body predicate (`hasBody`) accepts a face with both shoulders, so the
+  head-on view coaches "Get into a plank"; the wall sit's (`wholeSide`)
+  wants shoulder to ankle on one side first, so a face with the legs
+  cropped is "Looking for you" with the shoulders-to-feet line, not
+  "Slide down the wall".
 - **Wall sit**, head-on (`HoldPositions.wallSitFront`): the phone stood
   upright on the floor or a low stool a couple of steps in front of the
   wall, no higher than the knees, with the person in the picture from

@@ -228,8 +228,14 @@ object HoldPositions {
      * the model has them, sit behind the shoulders: between them across
      * the picture and no lower than a little under the shoulder line. A
      * body on its feet or on a chair has its hips a torso below the
-     * shoulders, which is the one thing this view sees plainly. All
-     * distances are in shoulder widths, so the phone can be a hand's
+     * shoulders, which is the one thing this view sees plainly. And the
+     * arms hold the body up: an elbow the model can see hangs at least
+     * [MIN_ELBOW_DROP] of a shoulder width below its shoulder, which it
+     * does on the hands (halfway to the floor) and on the forearms (on
+     * it), and does not for a body lying face down with its head raised
+     * to look at the phone, whose shoulders are a hand above the floor
+     * and whose elbows, wherever the arms are, are barely below them.
+     * All distances are in shoulder widths, so the phone can be a hand's
      * width away or a stride.
      */
     fun plankFront(pose: BodyPose): Boolean {
@@ -242,6 +248,10 @@ object HoldPositions {
         val eyesY = (pose.leftEye.y + pose.rightEye.y) / 2f
         // Picture y grows downwards: eyes above the shoulder line are smaller.
         if (eyesY < shoulderY - 0.3f * width) return false
+        val arms = listOf(pose.leftShoulder to pose.leftElbow, pose.rightShoulder to pose.rightElbow)
+            .filter { (_, elbow) -> elbow.visibility >= MIN_VISIBILITY }
+        if (arms.isEmpty()) return false
+        if (arms.none { (shoulder, elbow) -> elbow.y - shoulder.y >= MIN_ELBOW_DROP * width }) return false
         val hipsSeen = pose.leftHip.visibility >= MIN_VISIBILITY && pose.rightHip.visibility >= MIN_VISIBILITY
         if (hipsSeen) {
             val hipX = (pose.leftHip.x + pose.rightHip.x) / 2f
@@ -251,6 +261,11 @@ object HoldPositions {
         }
         return true
     }
+
+    private const val MIN_ELBOW_DROP = 0.45f
+
+    /** A body seen whole on one side, shoulder to ankle: what the wall sit needs before it can say anything. */
+    fun wholeSide(pose: BodyPose): Boolean = BodySide.of(pose) != null
 
     /**
      * A plank, from the side: the body a straight line from shoulder to

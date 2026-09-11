@@ -126,6 +126,18 @@ class HoldJudgeTest {
         assertTrue(HoldPositions.plank(front(eyesAbove = 0.1f, hipsBelow = 0.2f)))
     }
 
+    @Test fun `head-on, lying face down with the head up is not a plank, nor are arms the camera cannot see`() {
+        // Shoulders a hand above the floor, so the elbows, wherever the arms are, are barely below them.
+        val lying = plankFront.copy(
+            leftElbow = Landmark(0.75f, 0.62f, 0.9f), rightElbow = Landmark(0.25f, 0.62f, 0.9f),
+            leftWrist = Landmark(0.72f, 0.7f, 0.9f), rightWrist = Landmark(0.28f, 0.7f, 0.9f),
+        )
+        assertFalse(HoldPositions.plank(lying))
+        assertFalse(HoldPositions.plank(plankFront.copy(leftElbow = BodyPose.UNSEEN, rightElbow = BodyPose.UNSEEN)))
+        // One elbow seen, on the floor: enough.
+        assertTrue(HoldPositions.plank(plankFront.copy(rightElbow = BodyPose.UNSEEN)))
+    }
+
     @Test fun `head-on, standing and sitting are not a plank`() {
         assertFalse(HoldPositions.plank(standingFront))
         assertFalse(HoldPositions.plank(sittingFront))
@@ -158,8 +170,11 @@ class HoldJudgeTest {
         assertFalse(HoldPositions.wallSit(wallSitFront.copy(leftAnkle = BodyPose.UNSEEN, rightAnkle = BodyPose.UNSEEN)))
     }
 
-    @Test fun `a face with its shoulders is a body, for the coaching`() {
+    @Test fun `a face with its shoulders is a body for the plank, and not a whole side for the wall sit`() {
         assertTrue(HoldPositions.hasBody(standingFront))
+        assertFalse(HoldPositions.wholeSide(standingFront))
+        assertTrue(HoldPositions.wholeSide(wallSitFront))
+        assertTrue(HoldPositions.wholeSide(wallSit))
         assertFalse(HoldPositions.hasBody(front(eyesAbove = 0.6f, hipVisibility = 0.2f).copy(
             leftShoulder = BodyPose.UNSEEN, rightShoulder = BodyPose.UNSEEN,
         )))

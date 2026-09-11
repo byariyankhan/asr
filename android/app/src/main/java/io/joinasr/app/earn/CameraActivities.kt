@@ -117,7 +117,7 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
                         PoseJudge.Phase.NO_BODY ->
                             "Looking for you" to "Stand the phone upright on the floor a step ahead of your hands, facing you."
                         PoseJudge.Phase.NOT_IN_POSITION ->
-                            "Get into a plank" to "Forearms or hands on the floor, head down in line with your back, hips up behind you."
+                            "Get into a plank" to "Up on your forearms or hands, head down in line with your back, hips up behind you."
                         else ->
                             "Hold it" to "Hips level, body straight. The clock is running."
                     }
@@ -145,7 +145,10 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
         judge = {
             HoldJudge(
                 position = HoldPositions::wallSit,
-                hasBody = HoldPositions::hasBody,
+                // Shoulder to ankle on one side, or there is nothing to
+                // judge: a face with its legs cropped is "Looking for you",
+                // not "Slide down the wall".
+                hasBody = HoldPositions::wholeSide,
                 coach = { phase, _ ->
                     when (phase) {
                         PoseJudge.Phase.NO_BODY ->

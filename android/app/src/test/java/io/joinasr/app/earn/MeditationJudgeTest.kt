@@ -121,13 +121,14 @@ class MeditationJudgeTest {
         assertFalse(SeatedPose.seated(kneeling))
     }
 
-    @Test fun `a foreshortened thigh with a straight long leg under it is standing, not a chair`() {
-        // The knee guessed close under the hip, but the ankle a torso and a half straight below the hip.
-        val trick = sitting.copy(
-            leftKnee = Landmark(0.56f, 0.75f, 0.95f), rightKnee = Landmark(0.44f, 0.75f, 0.95f),
-            leftAnkle = Landmark(0.56f, 1.05f, 0.95f), rightAnkle = Landmark(0.44f, 1.05f, 0.95f),
+    @Test fun `a chair sitter seen from the floor, ankles and all, is sitting`() {
+        // From a phone on the floor the shins look long and the leg straight: hip, knee, ankle in a line
+        // two torsos tall. The thigh is still short, and that is what decides.
+        val fromTheFloor = onAChair.copy(
+            leftAnkle = Landmark(0.57f, 1.15f, 0.95f), rightAnkle = Landmark(0.43f, 1.15f, 0.95f),
         )
-        assertFalse(SeatedPose.legsFolded(trick))
+        assertTrue(SeatedPose.legsFolded(fromTheFloor))
+        assertTrue(SeatedPose.seated(fromTheFloor))
     }
 
     @Test fun `a body standing in front of the phone from the start never starts the clock`() {

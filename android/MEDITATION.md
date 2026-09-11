@@ -42,8 +42,9 @@ things of the pose:
   hip-to-knee line within 40° of horizontal) or comes towards the camera
   and looks short (on a chair: no longer than 0.55 of a torso). A body
   on its feet has a thigh that hangs straight down and as long as the
-  torso, and fails both; an ankle the model sees below a straight leg
-  1.45 torsos long is the last word. The founder's rule is that a body
+  torso, and fails both. The ankles are not asked about: from a phone on
+  the floor a chair sitter's hip, knee and ankle line up as straight and
+  as long as a standing leg's. The founder's rule is that a body
   standing in front of the phone never earns a second, so knees out of
   the picture is not the position either ("Show your knees"), and
   kneeling up or sitting back on the heels, whose thighs look long and
