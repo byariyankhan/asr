@@ -121,32 +121,41 @@ the next thing to do as a title and a line. The push-up counter is one
 rule from `HoldPositions`:
 
 - **Plank**, head-on (`HoldPositions.plankFront`): the phone stood
-  upright on the floor a step ahead of the hands, screen facing the
-  person, which keeps it in portrait like the rest of the app and needs
-  no room. That view sees the face, the shoulders, and the hips behind
-  them, small; the legs are behind the torso and are not asked about.
-  The rule: both eyes and both shoulders seen; the shoulders level within
-  30°; the eyes no more than 0.3 of a shoulder width above the shoulder
-  line (the head hangs in line with the spine in a plank; standing,
-  kneeling up or sitting puts the eyes well above the shoulders); and the
-  hips, when the model has them, between the shoulders across the picture
-  (within 0.6 of a width of centre) and no more than 0.35 of a width
-  below the shoulder line. A body on its feet or a chair has its hips a
-  torso below the shoulders, which is the one thing this view sees
-  plainly. And the arms hold the body up: an elbow the model can see
-  hangs at least 0.45 of a shoulder width below its shoulder, or a wrist
-  at least a whole width. On the forearms the elbows are on the floor, a
-  width and more down; on the hands they are halfway down, which from a
-  phone within half a metre comes out under the elbow line by
-  perspective, so the wrists decide there (on the floor under the
-  shoulders, an arm's length down, 1.2 widths and more). A body lying
-  face down with its head raised to look at the phone has shoulders a
-  hand above the floor and, wherever the arms are, elbows barely below
-  them and wrists under a width; no elbow or wrist seen is no plank.
-  Without hips the face, shoulders and arms decide, which lets a
-  standing person with their head bowed, their hips out of the picture
-  and their arms held low through; the copy asks for the hips in. A
-  kneeling plank passes, as it did from the side; that is the easy end.
+  upright on the floor, half a step to a step ahead of the hands, screen
+  facing the person, which keeps it in portrait like the rest of the app
+  and needs no room. From there the picture holds the face, big, the
+  shoulders, and perhaps the elbows; the wrists, the hips and the legs
+  are often below the frame or behind the torso, and the rule needs none
+  of them. Both eyes and both shoulders seen; the shoulders level within
+  30°; the hips, when the model has them, between the shoulders across
+  the picture (within 0.6 of a width of centre) and no more than 0.8 of
+  a width below the shoulder line (from a phone on the floor a body on
+  its feet, a chair, the floor cross-legged or its knees has its hips a
+  width and more under its shoulders; a plank's, level with the
+  shoulders and a torso further off, come out under that from a hand's
+  width away or a stride). Then the body has to be up off the floor, on
+  two witnesses. The arms: an elbow the model sees at least 0.38 of a
+  width below its shoulder, or a wrist at least 0.8 (on the hands the
+  elbows are halfway to the floor and the wrists on it; on the forearms
+  the elbows are on the floor, a width and more down); an elbow within
+  0.32 of the shoulder line is an arm beside a body lying flat with its
+  head raised, and a forearm seen flat (wrist within 0.3 of a width of
+  its elbow) under a shoulder less than 0.9 above it is a sphinx, chest
+  propped on the elbows, and either ends it. The face: in a plank the
+  head is a foot nearer the phone than the shoulders and is drawn larger
+  for it, the more so the closer the phone, so the gap between the eyes
+  is at least 0.22 of a shoulder width, against about 0.17 for a head on
+  top of its shoulders (standing, sitting, kneeling) at any distance.
+  With no arm held up in the picture, which is the close view, the face
+  decides; with one, and no hips in the picture to rule out a body on
+  its feet, the eyes still have to be at least 0.19 of a width apart,
+  because the arms of a standing body with its hips cropped hang as low
+  as a plank's. What this lets through: a sphinx with its wrists below
+  the frame (the elbows alone look like a hands plank's); a person
+  leaning right over a phone propped at chest height, hips and arms out
+  of the picture (the face comes nearer than the shoulders, as a plank's
+  does); and a kneeling plank, as from the side. The copy puts the phone
+  on the floor, and the rest is honesty; that is the easy end.
 - **Plank**, from the side (`HoldPositions.plankSide`), still accepted
   when that is how the phone is placed: shoulder, hip and ankle on one
   side of the body all seen, the shoulder-to-ankle line sloping down to
@@ -198,7 +207,7 @@ last one; every second would be a metronome. Tested without a camera in
 `HoldJudgeTest`.
 
 Both placement cards now put the phone upright, in portrait, in front
-of the person: the plank's "about a step ahead of where your hands go",
+of the person: the plank's "half a step to a step ahead of where your hands go",
 the wall sit's "a couple of steps in front of the wall, shoulders to
 feet in the picture". The side view is the note under the steps on each.
 
@@ -311,9 +320,11 @@ These need a phone; JVM tests prove the rule, not the camera.
    seven push-ups at a normal pace: the count reaches seven, the reward
    screen appears, the selected app has +10. Repeat with the phone propped
    on its side a few steps away, whole body in view from the side.
-   For the plank: stand the phone upright a step ahead of your hands,
-   facing you, and hold a plank: the frame goes green and the clock runs;
-   kneel up, sit back or stand and it stops. The same with the phone on
+   For the plank: stand the phone upright on the floor or the bed half a
+   step ahead of your hands, facing you, and hold a plank, forearms then
+   hands, looking at the screen: the frame goes green and the clock runs
+   with only your face, shoulders and elbows in the picture; lie down
+   flat, kneel up, sit back or stand and it stops. The same with the phone on
    its side across the room. For the wall sit: stand the phone upright on
    the floor a couple of steps in front of the wall and slide down it:
    green, and the clock runs; stand up, or stop half way, and it stops.
