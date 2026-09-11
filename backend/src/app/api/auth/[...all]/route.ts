@@ -9,7 +9,8 @@ const handler = toNextJsHandler(auth);
 
 // Credentials endpoints get the tight per-IP limit; everything else under
 // /api/auth (session reads, sign-out) the loose one.
-const CREDENTIALS = /\/(sign-up|sign-in|forget-password|reset-password|change-password)(\/|$)/;
+const CREDENTIALS =
+  /\/(sign-up|sign-in|request-password-reset|reset-password|change-password)(\/|$)/;
 
 // Two of Better Auth's own endpoints are not offered. send-verification-email
 // takes any address and mails it, and the only limit on it here would be the
