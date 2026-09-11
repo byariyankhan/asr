@@ -347,6 +347,10 @@ class HoldJudgeTest {
         assertFalse(HoldPositions.plank(flat))
         // The same line with an elbow hanging half a torso under the shoulder is held up.
         assertTrue(HoldPositions.plank(flat.copy(leftElbow = Landmark(0.28f, 0.66f, 0.9f))))
+        // An elbow the model sees on the far side, hung off a shoulder it only guessed at, says
+        // nothing either way: the near arm, or failing that the slope, decides.
+        assertTrue(HoldPositions.plank(plank.copy(rightElbow = Landmark(0.55f, 0.48f, 0.9f))))
+        assertFalse(HoldPositions.plank(flat.copy(rightElbow = Landmark(0.28f, 0.9f, 0.9f))))
     }
 
     @Test fun `the phone stood close in front of the face is not a body to judge, plank or no plank`() {

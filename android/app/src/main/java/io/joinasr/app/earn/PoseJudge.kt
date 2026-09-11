@@ -264,8 +264,10 @@ object HoldPositions {
         if (PoseGeometry.belowLine(side.knee, side.shoulder, side.ankle) > MAX_KNEE_DROP) return false
         val torso = PoseGeometry.distance(side.shoulder, side.hip)
         if (torso <= 0f) return false
+        // An arm the model has whole, shoulder and elbow: an elbow hung off a
+        // shoulder it only guessed at measures the guess, not the arm.
         val elbowDrop = listOf(pose.leftShoulder to pose.leftElbow, pose.rightShoulder to pose.rightElbow)
-            .filter { (_, elbow) -> elbow.visibility >= MIN_VISIBILITY }
+            .filter { (shoulder, elbow) -> shoulder.visibility >= MIN_VISIBILITY && elbow.visibility >= MIN_VISIBILITY }
             .maxOfOrNull { (shoulder, elbow) -> (elbow.y - shoulder.y) / torso }
         return elbowDrop == null || elbowDrop >= MIN_ELBOW_DROP
     }
