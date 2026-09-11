@@ -27,14 +27,18 @@ import io.joinasr.app.MainActivity
 import io.joinasr.app.R
 import io.joinasr.app.analytics.Analytics
 import io.joinasr.app.diagnostics.Crash
+import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.sync.Sync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.ArrayDeque
 import java.util.Locale
 
@@ -72,6 +76,8 @@ class RideService : Service() {
         data class Activity(val value: EarnActivity?) : Event
         data class Fix(val latitude: Double, val longitude: Double, val accuracy: Float, val atMillis: Long) : Event
         data class Steps(val total: Int, val atMillis: Long) : Event
+        /** The watchdog: is there still a ride worth listening for? */
+        data object Tick : Event
     }
 
     private val locations = object : LocationListener {
@@ -120,6 +126,14 @@ class RideService : Service() {
             return
         }
         lastCreditAt = System.currentTimeMillis()
+        // A watchdog of its own, because the idle stop and the deadline
+        // must not wait for a GPS fix that a switched-off GPS never sends.
+        scope.launch {
+            while (isActive) {
+                delay(WATCHDOG_MILLIS)
+                events.trySend(Event.Tick)
+            }
+        }
         scope.launch {
             for (event in events) {
                 try {
@@ -127,6 +141,7 @@ class RideService : Service() {
                         is Event.Activity -> activityChanged(event.value)
                         is Event.Fix -> onFix(event)
                         is Event.Steps -> onSteps(event)
+                        Event.Tick -> if (overdueOrIdle()) stopSelf()
                     }
                 } catch (error: Exception) {
                     Crash.report(this@RideService, error, "ride")
@@ -153,7 +168,10 @@ class RideService : Service() {
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
         val locationManager = getSystemService<LocationManager>()
-        if (!fine || locationManager == null) {
+        // Both permissions, or nothing: without the step counter a runner
+        // at a bicycle's speed would be a cyclist, which the sheet says
+        // is refused. The screens ask for both before starting this.
+        if (!fine || locationManager == null || !Permissions.hasActivityRecognition(this)) {
             stopSelf()
             return
         }
@@ -195,20 +213,31 @@ class RideService : Service() {
         return steps.size * 60_000f / CADENCE_WINDOW_MILLIS
     }
 
-    private suspend fun onFix(fix: Event.Fix) {
-        val activity = running ?: return
+    /**
+     * True when there is no ride left to measure: its deadline has passed
+     * (it is stood down, as the view model stands down an overdue walk) or
+     * nothing has been credited for half an hour, which is a phone
+     * forgotten with GPS on. Checked on every fix and on the watchdog.
+     */
+    private suspend fun overdueOrIdle(): Boolean {
+        val activity = running ?: return true
         val now = System.currentTimeMillis()
         if (activity.expired(now)) {
             store.clearActive(activity.id)
+            return true
+        }
+        return now - lastCreditAt > IDLE_STOP_MILLIS
+    }
+
+    private suspend fun onFix(fix: Event.Fix) {
+        val activity = running ?: return
+        if (overdueOrIdle()) {
             stopSelf()
             return
         }
         val earned = counter.observe(fix.latitude, fix.longitude, fix.accuracy, fix.atMillis, cadence(fix.atMillis))
-        if (earned <= 0) {
-            if (now - lastCreditAt > IDLE_STOP_MILLIS) stopSelf()
-            return
-        }
-        lastCreditAt = now
+        if (earned <= 0) return
+        lastCreditAt = System.currentTimeMillis()
         val updated = activity.copy(progress = (activity.progress + earned).coerceAtMost(activity.target))
         if (!updated.isComplete) {
             store.update(updated)
@@ -226,7 +255,10 @@ class RideService : Service() {
                 requestCode = 22,
             )
             Analytics.log(Analytics.extraTimeEarned(updated.type))
-            scope.launch(Dispatchers.IO) {
+            // Reported before the service goes: stopping first would cancel
+            // this scope with the report still in it, and the ledger would
+            // keep a pending ride that the phone had already paid out.
+            withContext(Dispatchers.IO) {
                 runCatching { Sync(this@RideService).completeActivity(updated, System.currentTimeMillis()) }
             }
         }
@@ -279,8 +311,13 @@ class RideService : Service() {
 
         /** Half an hour of no ride is a phone forgotten with GPS on. */
         private const val IDLE_STOP_MILLIS = 30L * 60 * 1000
+        private const val WATCHDOG_MILLIS = 60L * 1000
 
-        /** Starts measuring the active ride. The caller has checked the location permission. */
+        /**
+         * Starts measuring the active ride; safe to call whenever the ride
+         * is on screen, since a service already running only gets another
+         * onStartCommand. The screens have checked both permissions.
+         */
         fun start(context: Context) {
             val intent = Intent(context, RideService::class.java)
             runCatching { ContextCompat.startForegroundService(context, intent) }

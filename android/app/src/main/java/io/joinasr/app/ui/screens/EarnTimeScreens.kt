@@ -502,6 +502,7 @@ fun ActivityTrackingScreen(
             when (type) {
                 EarnRules.RUN -> "Track your run."
                 EarnRules.STAIRS -> "Track your climb."
+                EarnRules.RIDE -> "Tell a ride from a run."
                 else -> "Track your walk."
             },
             style = AsrType.display(38),
@@ -509,7 +510,12 @@ fun ActivityTrackingScreen(
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            "Only requested when you choose an activity on foot to earn extra app time.",
+            if (type == EarnRules.RIDE) {
+                "A ride reads your steps too, so that running at a bicycle's speed is not counted " +
+                    "as cycling. Location is asked for next."
+            } else {
+                "Only requested when you choose an activity on foot to earn extra app time."
+            },
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
         )

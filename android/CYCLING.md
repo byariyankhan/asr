@@ -53,17 +53,29 @@ The counter remembers one fix, the last, and only until the next. No
 route is written and nothing about where the phone was is sent; the
 server learns that the ride was completed, as it does for a walk.
 
-## Permission
+## Permissions
 
-`ACCESS_FINE_LOCATION`, asked on its own screen the first time cycling
-is chosen and never at launch. Precise, because a ride is metres at a
+Two. `ACTIVITY_RECOGNITION` first (API 29+), on the walk's screen with
+the ride's copy, because the step counter is what tells a run from a
+ride and without it a runner at a bicycle's speed would be a cyclist;
+the service refuses to start without it. Then `ACCESS_FINE_LOCATION`,
+asked on its own screen the first time cycling is chosen and never at
+launch. Precise, because a ride is metres at a
 speed and Android 12's approximate half cannot give either: a grant of
 the approximate half alone reads as a refusal, and once the dialog will
 no longer show, the screen's button goes to the app's page in Settings.
 No background location: the service is started from the screen, with
-the app in front, and runs with its notification up. A revoke mid-ride
-stops the service; the activity waits, and a fresh grant restarts the
-service for the same ride.
+the app in front, and runs with its notification up. A revoke of either
+permission mid-ride stops the service; the activity waits, and a fresh
+grant restarts the service for the same ride. Opening the ride's screen
+with both permissions in hand always (re)starts the service, which is
+how a ride resumes after the half-hour idle stop or after Android has
+killed the service; a service already running takes no notice. The
+idle stop and the 12-hour deadline are checked by a watchdog every
+minute as well as on every fix, so a switched-off GPS cannot leave the
+service running for want of a fix, and the completion report to the
+server is awaited before the service stops, so stopping cannot cancel
+it.
 
 Play data safety: location is collected, used for app functionality,
 processed ephemerally on the device, not shared. Cycling is declared
