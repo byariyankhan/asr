@@ -7,13 +7,20 @@ name: Android
 # to android/ is proven here or not at all, and each run leaves an installable
 # debug APK behind.
 #
-# No paths filter on the triggers, on purpose. Branch protection requires
+# No paths filter on the triggers, on purpose. The repository's rules require
 # this workflow's `build` on every pull request, and a job that never starts
 # never reports: with a filter, a backend-only pull request sat at "expected"
 # forever and could not be merged (#6). So the workflow runs for every push
 # and pull request and decides for itself, in seconds, whether anything under
-# android/ changed; a `build` skipped for that reason reports "skipped",
-# which satisfies the rule. A manual run always builds.
+# android/ changed.
+#
+# The work and the verdict are two jobs for a second reason, learned the same
+# way. `build` used to be the work, gated by an `if`, on the belief that a
+# skipped job counts as a pass. It does under the old branch protection; it
+# does not under a repository ruleset, which reads "skipped" as "did not
+# pass" and refuses the merge (#49). So `apk` is the work and may be skipped,
+# and `build` always runs and reports what `apk` did. A manual run always
+# builds.
 on:
   push:
     branches: [master]
@@ -49,7 +56,7 @@ jobs:
             decide false "nothing under android/ in $BASE..$HEAD"
           fi
 
-  build:
+  apk:
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
@@ -244,3 +251,30 @@ jobs:
           echo "newest published:"
           curl -sSL --max-time 60 https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/maven-metadata.xml \
             | grep -o "<version>[0-9][^<]*</version>" | tail -5
+
+  # The required check, and the only job here that runs on every pull
+  # request. It carries [apk]'s verdict rather than doing the work, because
+  # a required check that is skipped blocks the merge (see the top of this
+  # file) and one that does the work on a docs-only change wastes five
+  # minutes of somebody's afternoon.
+  build:
+    needs: [changes, apk]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: What the Android build said
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          APK: ${{ needs.apk.result }}
+        run: |
+          # A `changes` that did not succeed means nobody decided whether
+          # android/ was touched, so this cannot claim anything was proven.
+          if [ "$CHANGES" != "success" ]; then
+            echo "The changes job ended as: $CHANGES"
+            exit 1
+          fi
+          case "$APK" in
+            success) echo "Android build passed." ;;
+            skipped) echo "Nothing under android/ changed; nothing to build." ;;
+            *) echo "Android build ended as: $APK"; exit 1 ;;
+          esac
