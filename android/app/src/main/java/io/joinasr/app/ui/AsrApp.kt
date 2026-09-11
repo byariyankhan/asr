@@ -43,6 +43,7 @@ import io.joinasr.app.PendingInvite
 import io.joinasr.app.permissions.PermissionState
 import io.joinasr.app.permissions.Permissions
 import io.joinasr.app.earn.EarnRules
+import io.joinasr.app.earn.RideService
 import io.joinasr.app.earn.cameraSpec
 import io.joinasr.app.earn.earnOptions
 import io.joinasr.app.earn.EarnViewModel
@@ -76,6 +77,7 @@ import io.joinasr.app.ui.screens.ForgotPasswordScreen
 import io.joinasr.app.ui.screens.HelpAndSupportScreen
 import io.joinasr.app.legal.LegalTexts
 import io.joinasr.app.ui.screens.LegalScreen
+import io.joinasr.app.ui.screens.LocationAccessScreen
 import io.joinasr.app.ui.screens.LogInScreen
 import io.joinasr.app.ui.screens.MeditationScreen
 import io.joinasr.app.ui.screens.NotificationsScreen
@@ -307,10 +309,14 @@ fun AsrApp(
     var stepsOnceGranted by remember { mutableStateOf(false) }
     var stepsWanted by remember { mutableStateOf(EarnRules.WALK) }
 
+    // Re-read on resume as well, because a ride revoked in Settings and
+    // re-granted there arrives through no callback.
+    var stepsGranted by remember { mutableStateOf(Permissions.hasActivityRecognition(context)) }
     val askForSteps = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         askingForSteps = false
+        stepsGranted = granted
         stepsOnceGranted = granted
     }
     // The same pair for the camera, between choosing a camera activity and
@@ -347,6 +353,40 @@ fun AsrApp(
             runCatching { context.startActivity(Permissions.appDetailsIntent(context)) }
         } else {
             askForCamera.launch(Manifest.permission.CAMERA)
+        }
+    }
+    // And the same again for location, between choosing cycling and the
+    // grant. Precise location is what a ride needs; Android 12 lets the
+    // person grant the approximate half alone, which reads here as a
+    // refusal with the Settings page as the way to the precise half.
+    var askingForLocation by remember { mutableStateOf(false) }
+    var rideOnceGranted by remember { mutableStateOf(false) }
+    var locationRefused by remember { mutableStateOf(false) }
+    var locationDeniedForGood by remember { mutableStateOf(false) }
+    var locationGranted by remember { mutableStateOf(Permissions.hasPreciseLocation(context)) }
+    val askForLocation = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        val granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        askingForLocation = false
+        locationGranted = granted
+        rideOnceGranted = granted
+        locationRefused = !granted
+        if (!granted) {
+            val activity = context as? Activity
+            locationDeniedForGood = activity != null &&
+                !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            locationDeniedForGood = false
+        }
+    }
+    val allowLocation: () -> Unit = {
+        if (locationDeniedForGood) {
+            runCatching { context.startActivity(Permissions.appDetailsIntent(context)) }
+        } else {
+            askForLocation.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+            )
         }
     }
 
@@ -441,6 +481,16 @@ fun AsrApp(
             if (askingForCamera) {
                 askingForCamera = false
                 cameraOnceGranted = true
+            }
+        }
+        stepsGranted = Permissions.hasActivityRecognition(context)
+        locationGranted = Permissions.hasPreciseLocation(context)
+        if (locationGranted) {
+            locationRefused = false
+            locationDeniedForGood = false
+            if (askingForLocation) {
+                askingForLocation = false
+                rideOnceGranted = true
             }
         }
         onPauseOrDispose {}
@@ -549,9 +599,31 @@ fun AsrApp(
     LaunchedEffect(stepsOnceGranted, earningFor, pactState) {
         if (!stepsOnceGranted) return@LaunchedEffect
         stepsOnceGranted = false
+        // A ride reads steps too (to tell a run from a ride), so it asks
+        // for steps first and location second; a ride already running
+        // that lost the step permission wants its service back.
+        if (stepsWanted == EarnRules.RIDE) {
+            if (!locationGranted) {
+                askingForLocation = true
+                return@LaunchedEffect
+            }
+            if (activeActivity?.isRide == true) {
+                RideService.start(context)
+                return@LaunchedEffect
+            }
+        }
         val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
         val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
         earnViewModel.start(pact, app, stepsWanted)
+    }
+    // A ride reopened with both permissions in hand gets its service
+    // back: the service stops itself after half an hour of nothing, or
+    // Android may have killed it, and the screen is the moment to resume.
+    // Starting a service that is already running is a no-op.
+    LaunchedEffect(activeActivity?.id, activityMinimised, stepsGranted, locationGranted) {
+        val ride = activeActivity?.takeIf { it.isRide } ?: return@LaunchedEffect
+        if (activityMinimised || !stepsGranted || !locationGranted) return@LaunchedEffect
+        RideService.start(context)
     }
     LaunchedEffect(cameraOnceGranted, earningFor, pactState) {
         if (!cameraOnceGranted) return@LaunchedEffect
@@ -560,6 +632,19 @@ fun AsrApp(
         val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
         val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
         earnViewModel.start(pact, app, type)
+    }
+    LaunchedEffect(rideOnceGranted, earningFor, pactState) {
+        if (!rideOnceGranted) return@LaunchedEffect
+        rideOnceGranted = false
+        // A ride already running (the permission revoked and re-granted
+        // mid-way) wants its service back, not a second ride.
+        if (activeActivity?.isRide == true) {
+            RideService.start(context)
+            return@LaunchedEffect
+        }
+        val pact = (pactState as? PactState.Active)?.pact ?: return@LaunchedEffect
+        val app = earningFor?.let { pact.appFor(it) } ?: return@LaunchedEffect
+        earnViewModel.start(pact, app, EarnRules.RIDE)
     }
 
     // What actually drives an activity forward.
@@ -791,6 +876,7 @@ fun AsrApp(
         })
         tab == AsrTab.Home && askingForSteps -> ({ askingForSteps = false })
         tab == AsrTab.Home && askingForCamera -> ({ askingForCamera = false })
+        tab == AsrTab.Home && askingForLocation -> ({ askingForLocation = false })
         tab == AsrTab.Home && earnAppNow != null -> ({
             earningFor = null
             earnViewModel.clearError()
@@ -1149,6 +1235,9 @@ fun AsrApp(
                     askingForCamera = false
                     cameraOnceGranted = false
                     cameraRefused = false
+                    askingForLocation = false
+                    rideOnceGranted = false
+                    locationRefused = false
                     showingNotifications = false
                     showingProtectionLost = false
                     fixingProtection = false
@@ -1215,6 +1304,32 @@ fun AsrApp(
                                         onSkip = { activityMinimised = true },
                                         openSettings = cameraDeniedForGood,
                                     )
+                                } else if (running != null && !activityMinimised && running.isRide &&
+                                    !stepsGranted
+                                ) {
+                                    // The step permission revoked mid-ride: the
+                                    // service has stopped itself; ask again.
+                                    ActivityTrackingScreen(
+                                        type = EarnRules.RIDE,
+                                        onBack = { activityMinimised = true },
+                                        onAllow = {
+                                            stepsWanted = EarnRules.RIDE
+                                            askForSteps.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                                        },
+                                        onSkip = { activityMinimised = true },
+                                    )
+                                } else if (running != null && !activityMinimised && running.isRide &&
+                                    !locationGranted
+                                ) {
+                                    // Revoked in Settings mid-ride: the service has
+                                    // stopped itself; ask again, and a grant restarts
+                                    // it for the same ride.
+                                    LocationAccessScreen(
+                                        onBack = { activityMinimised = true },
+                                        onAllow = allowLocation,
+                                        onSkip = { activityMinimised = true },
+                                        openSettings = locationDeniedForGood,
+                                    )
                                 } else if (running != null && !activityMinimised && running.isCamera) {
                                     CameraActivityScreen(
                                         activity = running,
@@ -1255,6 +1370,13 @@ fun AsrApp(
                                             earningFor = null
                                         },
                                     )
+                                } else if (earnApp != null && askingForLocation) {
+                                    LocationAccessScreen(
+                                        onBack = { askingForLocation = false },
+                                        onAllow = allowLocation,
+                                        onSkip = { askingForLocation = false },
+                                        openSettings = locationDeniedForGood,
+                                    )
                                 } else if (earnApp != null && askingForCamera && cameraWanted != null) {
                                     CameraAccessScreen(
                                         spec = cameraSpec(cameraWanted!!)!!,
@@ -1285,6 +1407,7 @@ fun AsrApp(
                                             cameraAvailable = Permissions.hasCameraHardware(context),
                                             barometerAvailable = Permissions.hasBarometer(context),
                                             accelerometerAvailable = Permissions.hasAccelerometer(context),
+                                            gpsAvailable = Permissions.hasGps(context),
                                         ),
                                         onBack = {
                                             earningFor = null
@@ -1315,14 +1438,28 @@ fun AsrApp(
                                                         askingForCamera = true
                                                     }
                                                 }
+                                                option.type == EarnRules.RIDE -> {
+                                                    stepsWanted = EarnRules.RIDE
+                                                    when {
+                                                        !stepsGranted -> askingForSteps = true
+                                                        !locationGranted -> askingForLocation = true
+                                                        else -> {
+                                                            locationRefused = false
+                                                            earnViewModel.start(pact, earnApp, EarnRules.RIDE)
+                                                        }
+                                                    }
+                                                }
                                                 else -> earnViewModel.start(pact, earnApp, option.type)
                                             }
                                         },
-                                        errorMessage = earnError ?: if (cameraRefused && !cameraGranted) {
-                                            "Camera access was refused, so nothing can be counted on camera. " +
-                                                "Choose the activity again to allow it."
-                                        } else {
-                                            null
+                                        errorMessage = earnError ?: when {
+                                            cameraRefused && !cameraGranted ->
+                                                "Camera access was refused, so nothing can be counted on camera. " +
+                                                    "Choose the activity again to allow it."
+                                            locationRefused && !locationGranted ->
+                                                "Precise location was refused, so a ride cannot be measured. " +
+                                                    "Choose Cycle again to allow it."
+                                            else -> null
                                         },
                                     )
                                 } else if (about != null) {

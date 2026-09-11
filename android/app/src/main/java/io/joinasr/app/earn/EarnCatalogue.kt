@@ -7,7 +7,7 @@ import java.util.Locale
  * activity, drawn in ui/components/AsrIcons.kt; an enum rather than a
  * composable here so this file stays plain Kotlin.
  */
-enum class EarnIcon { WALK, FOCUS, PUSH_UPS, PLANK, WALL_SIT, RUN, STAIRS, MEDITATION }
+enum class EarnIcon { WALK, FOCUS, PUSH_UPS, PLANK, WALL_SIT, RUN, STAIRS, MEDITATION, RIDE }
 
 /**
  * One way to earn time, as the chooser describes it.
@@ -44,7 +44,13 @@ data class EarnOption(
 
 /** The catalogue entry for a type, however the phone is equipped, or null for a type the chooser does not list. */
 fun earnOptionFor(type: String): EarnOption? =
-    earnOptions(stepsAvailable = true, cameraAvailable = true, barometerAvailable = true, accelerometerAvailable = true)
+    earnOptions(
+        stepsAvailable = true,
+        cameraAvailable = true,
+        barometerAvailable = true,
+        accelerometerAvailable = true,
+        gpsAvailable = true,
+    )
         .firstOrNull { it.type == type }
 
 /**
@@ -60,6 +66,7 @@ fun earnOptions(
     cameraAvailable: Boolean,
     barometerAvailable: Boolean,
     accelerometerAvailable: Boolean,
+    gpsAvailable: Boolean,
 ): List<EarnOption> = listOf(
     EarnOption(
         type = EarnRules.WALK,
@@ -189,6 +196,28 @@ fun earnOptions(
             else -> null
         },
         done = "Your climb is done.",
+    ),
+    EarnOption(
+        type = EarnRules.RIDE,
+        name = "Cycle",
+        title = "Cycle ${"%.0f".format(Locale.US, EarnRules.RIDE_METRES / 1000.0)} km",
+        target = "${"%.0f".format(Locale.US, EarnRules.RIDE_METRES / 1000.0)} km at a cycling speed, by GPS",
+        icon = EarnIcon.RIDE,
+        explanation = "Go for a ride with the phone on you. Only distance at a cycling speed counts, " +
+            "between 8 and 45 km/h, so walking the bike and a car do not. You can lock the phone.",
+        verification = "GPS, while the ride is on, judged half a minute at a time: a bicycle's pace, " +
+            "the shake of a bicycle on the motion sensor (a phone resting in a car earns nothing), no " +
+            "car-like braking, no running on the step counter, no mock location. Each fix is then dropped.",
+        privacy = "Location is read on the phone to measure the ride and never sent. No route or " +
+            "place is saved; the server learns that the ride was completed, nothing about where.",
+        recommended = false,
+        unavailableReason = when {
+            !gpsAvailable -> "This phone has no GPS, so a ride cannot be measured."
+            !stepsAvailable -> "This phone has no step counter, which a ride needs to tell it from a run."
+            !accelerometerAvailable -> "This phone has no motion sensor, which a ride needs to tell it from a car."
+            else -> null
+        },
+        done = "Your ride is done.",
     ),
     EarnOption(
         type = EarnRules.MEDITATION,

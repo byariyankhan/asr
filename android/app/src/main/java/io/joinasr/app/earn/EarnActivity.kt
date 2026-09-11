@@ -47,8 +47,11 @@ data class EarnActivity(
     /** Timed on its own screen from the accelerometer: the phone lying still with the breathing guide up. */
     val isMeditation: Boolean get() = type == EarnRules.MEDITATION
 
+    /** Measured by [RideService] from GPS: metres at a cycling speed. */
+    val isRide: Boolean get() = type == EarnRules.RIDE
+
     /** Everything else: the keyguard-timed session. */
-    val isFocus: Boolean get() = !isWalk && !isCamera && !isMotion && !isMeditation
+    val isFocus: Boolean get() = !isWalk && !isCamera && !isMotion && !isMeditation && !isRide
 
     val fraction: Float
         get() = if (target <= 0) 1f else (progress.toFloat() / target).coerceIn(0f, 1f)

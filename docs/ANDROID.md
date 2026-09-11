@@ -476,6 +476,7 @@ missed.
 | `plank` | Same camera and model | Shoulder, hip and ankle in one straight line sloping to the feet, timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
 | `wall_sit` | Same camera and model | Back upright, thigh level, knee near a right angle, timed; 45 seconds, breaks pause the clock. `android/PUSH_UPS.md` |
 | `run_steps` | `TYPE_STEP_COUNTER`, read by the foreground service in 10-second batches | Steps in each 20-second window at 140/min or more are running and count; slower windows do not. 1,000 of them. `android/MOTION.md` |
+| `cycling` | GPS through `LocationManager`, read by `RideService` (a location-typed foreground service) only while a ride runs; needs `ACCESS_FINE_LOCATION` | Thirty-second windows judged together on mean pace 8 to 40 km/h (45 peak), accelerometer jostle (a still phone in a car earns nothing), no car-like speed changes, step cadence under 100/min, no mock fixes, Doppler speed agreeing with the positions. 3 km. No route kept. `android/CYCLING.md` |
 | `meditation` | `TYPE_ACCELEROMETER`, read by the meditation screen while it is resumed | The phone lying still (vector moves under 0.35 m/s² sample to sample, settled over a second) under a 4-in / 6-out breathing guide, 10 minutes; picking it up pauses the clock. `android/MEDITATION.md` |
 | `stairs` | `TYPE_PRESSURE` and `TYPE_STEP_COUNTER`, read by the foreground service | Altitude from the barometer; a rise made while stepping is going on (three steps in the last 5 s, one in the last 2.5 s) is banked, a rise without steps (a lift) or a descent moves the reference. 2.8 m a floor, 10 floors. `android/MOTION.md` |
 | `waiting_period` | None: countdown | Nothing to verify; it is friction, not proof |
@@ -506,6 +507,8 @@ opens the accept screen after sign-up.
 | `POST_NOTIFICATIONS` | Witness and reminder notifications | Onboarding step 4 |
 | `ACTIVITY_RECOGNITION` | Step activities | First time a step activity is started |
 | `CAMERA` | Counting push-ups and timing a plank or a wall sit, on the phone; nothing saved or sent | First time a camera activity is started |
+| `ACCESS_FINE_LOCATION` (+ `COARSE`, which Android pairs with it) | Measuring a bicycle ride, on the phone; no route saved, nothing about location sent. Precise is required; the approximate half alone reads as a refusal | First time cycling is started |
+| `FOREGROUND_SERVICE_LOCATION` | What Android 14 requires of `RideService`, the service that reads GPS during a ride | Install time |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | The protection service | Manifest |
 | `RECEIVE_BOOT_COMPLETED` | Restart protection after reboot | Manifest |
 

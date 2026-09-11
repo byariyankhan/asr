@@ -151,6 +151,19 @@ object Permissions {
     fun hasAccelerometer(context: Context): Boolean =
         context.getSystemService<SensorManager>()?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null
 
+    /**
+     * Precise location, for measuring a ride. Precise and not approximate:
+     * Android 12 lets a person grant the coarse half alone, and a ride is
+     * metres at a speed, which the coarse half cannot give.
+     */
+    fun hasPreciseLocation(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /** Whether there is a GPS to measure a ride with. */
+    fun hasGps(context: Context): Boolean =
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LOCATION_GPS)
+
     /** Whether there is a barometer to read a climb from. Most phones; not all. */
     fun hasBarometer(context: Context): Boolean =
         context.getSystemService<SensorManager>()?.getDefaultSensor(Sensor.TYPE_PRESSURE) != null

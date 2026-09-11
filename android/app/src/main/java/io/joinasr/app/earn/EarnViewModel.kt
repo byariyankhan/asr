@@ -83,6 +83,9 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
             if (type == EarnRules.FOCUS || type in EarnRules.MOTION_TYPES) {
                 EnforcementService.start(getApplication())
             }
+            // A ride has its own service, typed for location, started only
+            // now: the screen has checked the permission before this.
+            if (type == EarnRules.RIDE) RideService.start(getApplication())
             // Stood down only on a settled refusal -- the day's bonus for
             // this app already spent, which the server can know before this
             // phone does. Silence and every other failure leave it running.
