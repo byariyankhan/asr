@@ -63,6 +63,37 @@ class HoldJudgeTest {
     /** Head down in line with the back, hips up behind the shoulders. */
     private val plankFront = front(eyesAbove = -0.15f)
 
+    /**
+     * A body facing a phone stood low in front of it: shoulders 0.3 wide
+     * on 0.30, hips on 0.55 (a torso of 0.25), and each leg as given,
+     * knee then ankle, for the left side and mirrored for the right.
+     */
+    private fun facingLegs(knee: Pair<Float, Float>, ankle: Pair<Float, Float>, shoulderY: Float = 0.30f): BodyPose {
+        val ghost = Landmark(0.5f, 0.5f, 0.2f)
+        fun at(x: Float, y: Float) = Landmark(x, y, 0.9f)
+        fun mirror(p: Pair<Float, Float>) = at(1f - p.first, p.second)
+        return BodyPose(
+            nose = at(0.5f, shoulderY - 0.1f), leftEye = at(0.52f, shoulderY - 0.12f), rightEye = at(0.48f, shoulderY - 0.12f),
+            mouthLeft = at(0.51f, shoulderY - 0.08f), mouthRight = at(0.49f, shoulderY - 0.08f),
+            leftShoulder = at(0.65f, shoulderY), leftElbow = ghost, leftWrist = ghost, leftHip = at(0.58f, 0.55f),
+            rightShoulder = at(0.35f, shoulderY), rightElbow = ghost, rightWrist = ghost, rightHip = at(0.42f, 0.55f),
+            leftKnee = at(knee.first, knee.second), rightKnee = mirror(knee),
+            leftAnkle = at(ankle.first, ankle.second), rightAnkle = mirror(ankle),
+        )
+    }
+
+    /** Thighs towards the camera, knees drawn a touch above the hips from low down, shins straight to the feet. */
+    private val wallSitFront = facingLegs(knee = 0.60f to 0.52f, ankle = 0.60f to 0.78f)
+
+    /** On the feet: knees a thigh below the hips. */
+    private val standingFacing = facingLegs(knee = 0.58f to 0.78f, ankle = 0.58f to 1.0f)
+
+    /** A half squat: the knees below the hips, the shins still down. */
+    private val halfSquatFacing = facingLegs(knee = 0.60f to 0.66f, ankle = 0.60f to 0.90f)
+
+    /** Cross-legged on the floor: knees out to the sides, ankles up by them. */
+    private val crossLeggedFacing = facingLegs(knee = 0.78f to 0.60f, ankle = 0.55f to 0.66f)
+
     /** Standing facing the phone: eyes well above the shoulders, hips a torso below them. */
     private val standingFront = front(eyesAbove = 0.6f, hipsBelow = 1.4f)
 
@@ -110,6 +141,23 @@ class HoldJudgeTest {
         assertFalse(HoldPositions.plank(onOneSide))
     }
 
+    @Test fun `head-on from low down, thighs at the camera over shins to the feet is a wall sit`() {
+        assertTrue(HoldPositions.wallSitFront(wallSitFront))
+        assertTrue(HoldPositions.wallSit(wallSitFront))
+        // Knees level with the hips, the phone at hip height: still a wall sit.
+        assertTrue(HoldPositions.wallSit(facingLegs(knee = 0.60f to 0.56f, ankle = 0.60f to 0.80f)))
+    }
+
+    @Test fun `head-on, standing, a half squat, cross-legged and a slouch are not a wall sit`() {
+        assertFalse(HoldPositions.wallSit(standingFacing))
+        assertFalse(HoldPositions.wallSit(halfSquatFacing))
+        assertFalse(HoldPositions.wallSit(crossLeggedFacing))
+        // Leaning right over: the shoulders come down towards the hips.
+        assertFalse(HoldPositions.wallSit(facingLegs(knee = 0.60f to 0.52f, ankle = 0.60f to 0.78f, shoulderY = 0.50f)))
+        // Feet out of the picture: the shins cannot be seen to drop, so not yet.
+        assertFalse(HoldPositions.wallSit(wallSitFront.copy(leftAnkle = BodyPose.UNSEEN, rightAnkle = BodyPose.UNSEEN)))
+    }
+
     @Test fun `a face with its shoulders is a body, for the coaching`() {
         assertTrue(HoldPositions.hasBody(standingFront))
         assertFalse(HoldPositions.hasBody(front(eyesAbove = 0.6f, hipVisibility = 0.2f).copy(
@@ -130,6 +178,7 @@ class HoldJudgeTest {
     }
 
     @Test fun `back upright, thigh level, knee square is a wall sit`() {
+        assertTrue(HoldPositions.wallSitSide(wallSit))
         assertTrue(HoldPositions.wallSit(wallSit))
     }
 

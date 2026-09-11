@@ -240,12 +240,20 @@ object SeatedPose {
         return PoseGeometry.distance(pose.leftShoulder, pose.rightShoulder) / torso >= 0.35f
     }
 
-    /** Sitting up: the shoulders above the hips, the line between them near vertical. Slumped forward or lying back is not. */
+    /**
+     * Sitting up: the shoulders above the hips, the line between them
+     * near vertical, and the torso not folded down towards the lens (a
+     * body bent double at the waist has a torso a fraction of its
+     * shoulder width in the picture, and looks "vertical" only because
+     * there is so little of it). Slumped forward or lying back is not.
+     */
     fun upright(pose: BodyPose): Boolean {
-        if (!hipsSeen(pose)) return false
+        val torso = torsoLength(pose)
+        if (torso <= 0f) return false
         val sy = (pose.leftShoulder.y + pose.rightShoulder.y) / 2f
         val hy = (pose.leftHip.y + pose.rightHip.y) / 2f
         if (sy >= hy) return false
+        if (PoseGeometry.distance(pose.leftShoulder, pose.rightShoulder) / torso > 1.5f) return false
         val sx = (pose.leftShoulder.x + pose.rightShoulder.x) / 2f
         val hx = (pose.leftHip.x + pose.rightHip.x) / 2f
         return PoseGeometry.tiltFromHorizontal(Landmark(sx, sy, 1f), Landmark(hx, hy, 1f)) >= 60f

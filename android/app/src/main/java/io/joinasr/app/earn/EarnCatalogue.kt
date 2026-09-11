@@ -147,11 +147,12 @@ fun earnOptions(
         title = "Hold a wall sit for ${EarnRules.WALL_SIT_SECONDS} seconds",
         target = "${EarnRules.WALL_SIT_SECONDS} seconds, timed on camera",
         icon = EarnIcon.WALL_SIT,
-        explanation = "Back against a wall, slide down until your knees are at a right angle, and " +
-            "hold it. Prop your phone on its side a few steps away, looking at you from the side. " +
-            "Rest if you need to: the seconds you have done are kept.",
-        verification = "The front camera and an on-device pose model: the clock runs while your " +
-            "back is upright and your thighs are level with the floor.",
+        explanation = "Stand your phone upright on the floor a couple of steps in front of the wall, " +
+            "facing you. Back against the wall, slide down until your knees are at a right angle, and " +
+            "hold it. Rest if you need to: the seconds you have done are kept.",
+        verification = "The front camera and an on-device pose model: the clock runs while it sees you " +
+            "from shoulders to feet with your back upright, your thighs level and your shins straight " +
+            "down to your feet; standing or a half squat does not count.",
         privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
             "judged, and nothing from the camera leaves the phone.",
         recommended = false,

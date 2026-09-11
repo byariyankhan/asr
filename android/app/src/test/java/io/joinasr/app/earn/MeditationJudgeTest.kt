@@ -86,6 +86,9 @@ class MeditationJudgeTest {
 
     @Test fun `slumping, side-on and lying down are not`() {
         assertFalse(SeatedPose.upright(slumped))
+        // Bent double towards the phone: the shoulders just above the hips, the torso a sliver.
+        val folded = sitting.copy(leftShoulder = Landmark(0.58f, 0.60f, 0.95f), rightShoulder = Landmark(0.42f, 0.60f, 0.95f))
+        assertFalse(SeatedPose.upright(folded))
         assertFalse(SeatedPose.facing(sideOn))
         assertFalse(SeatedPose.facing(onOneSide))
     }

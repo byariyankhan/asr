@@ -269,11 +269,67 @@ object HoldPositions {
     }
 
     /**
+     * A wall sit, from whichever way the phone is looking: head-on from a
+     * phone stood upright low in front ([wallSitFront]), or from the side
+     * across the room ([wallSitSide]).
+     */
+    fun wallSit(pose: BodyPose): Boolean = wallSitFront(pose) || wallSitSide(pose)
+
+    /**
+     * A wall sit seen from in front: the phone upright on the floor or a
+     * low stool a couple of steps ahead, looking at the person from about
+     * knee height or lower. Eight points: both shoulders, hips, knees and
+     * ankles, which from that distance a portrait frame holds.
+     *
+     * The thighs come towards the camera, so each knee sits close under
+     * its hip across the picture (within half a torso) and, seen from
+     * low down, level with the hip or above it: a knee nearer the lens
+     * than the hip at the same height is drawn higher. The shins drop
+     * from the knees to the feet, near vertical and at least half a torso
+     * long. The back is upright and facing the phone. Standing puts the
+     * knees a thigh below the hips; a half squat puts them below too; a
+     * cross-legged sitter has the knees out to the sides and the ankles
+     * up by them; a torso folded forward is short against the shoulders;
+     * a chair passes, as it did from the side. A phone above
+     * the hips looks down on the thighs and draws the knees below the
+     * hips, which is why the copy says low.
+     */
+    fun wallSitFront(pose: BodyPose): Boolean {
+        val points = listOf(
+            pose.leftShoulder, pose.rightShoulder, pose.leftHip, pose.rightHip,
+            pose.leftKnee, pose.rightKnee, pose.leftAnkle, pose.rightAnkle,
+        )
+        if (points.any { it.visibility < MIN_VISIBILITY }) return false
+        val shoulderMid = Landmark((pose.leftShoulder.x + pose.rightShoulder.x) / 2f, (pose.leftShoulder.y + pose.rightShoulder.y) / 2f, 1f)
+        val hipMid = Landmark((pose.leftHip.x + pose.rightHip.x) / 2f, (pose.leftHip.y + pose.rightHip.y) / 2f, 1f)
+        val torso = PoseGeometry.distance(shoulderMid, hipMid)
+        if (torso <= 0f) return false
+        // Facing the phone, back upright: shoulders level, and between a
+        // third of a torso and one and a half torsos apart. Under that is
+        // a body side-on; over it is a torso folded down towards the lens,
+        // which a slouch or a bend at the waist does and a wall sit does not.
+        if (PoseGeometry.tiltFromHorizontal(pose.leftShoulder, pose.rightShoulder) > 30f) return false
+        if (PoseGeometry.distance(pose.leftShoulder, pose.rightShoulder) / torso !in 0.35f..1.5f) return false
+        if (shoulderMid.y >= hipMid.y || PoseGeometry.tiltFromHorizontal(shoulderMid, hipMid) < 60f) return false
+        val legs = listOf(
+            Triple(pose.leftHip, pose.leftKnee, pose.leftAnkle),
+            Triple(pose.rightHip, pose.rightKnee, pose.rightAnkle),
+        )
+        return legs.all { (hip, knee, ankle) ->
+            val kneeUnderHip = abs(knee.x - hip.x) / torso <= 0.5f && knee.y <= hip.y + 0.15f * torso
+            val shinDown = ankle.y > knee.y &&
+                PoseGeometry.distance(knee, ankle) / torso >= 0.45f &&
+                PoseGeometry.tiltFromHorizontal(knee, ankle) >= 55f
+            kneeUnderHip && shinDown
+        }
+    }
+
+    /**
      * A wall sit, from the side: the back upright, the thigh level, the
      * knee near a right angle. A chair would pass too; the camera cannot
      * see what is behind the legs, and the mechanism is honesty.
      */
-    fun wallSit(pose: BodyPose): Boolean {
+    fun wallSitSide(pose: BodyPose): Boolean {
         val side = BodySide.of(pose) ?: return false
         val back = PoseGeometry.tiltFromHorizontal(side.shoulder, side.hip)
         if (back < 55f) return false

@@ -130,16 +130,18 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
         noun = "seconds",
         permissionTitle = "Time your wall sit.",
         unitLabel = "SECONDS",
-        placementLine = "Phone propped on its side, a few steps away",
+        placementLine = "Phone upright on the floor, a couple of steps in front of you",
         verification = "Your phone finds your shoulders, hips, knees and ankles in each frame and runs " +
-            "the clock while your back is upright and your thighs are level. The frame is then dropped.",
+            "the clock while your back is upright, your thighs are level and your shins drop straight " +
+            "to your feet. The frame is then dropped.",
         timed = true,
         tickEvery = 5,
         placement = listOf(
-            "Prop the phone on its side a few steps away, with your whole body in the picture from the side.",
-            "Back flat against a wall, slide down until your knees are at a right angle. The clock runs while you hold it.",
+            "Stand the phone upright on the floor a couple of steps in front of the wall, screen facing you, with you in the picture from shoulders to feet.",
+            "Back flat against the wall, slide down until your thighs are level and your knees are over your feet. The clock runs while you hold it.",
         ),
-        placementNote = "Rest if you need to. The seconds you have done are kept; the clock picks up when you are back down.",
+        placementNote = "Rest if you need to. The seconds you have done are kept; the clock picks up when you are back down. " +
+            "A phone propped on its side to see you from the side works too.",
         judge = {
             HoldJudge(
                 position = HoldPositions::wallSit,
@@ -147,9 +149,9 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
                 coach = { phase, _ ->
                     when (phase) {
                         PoseJudge.Phase.NO_BODY ->
-                            "Looking for you" to "Prop the phone on its side a few steps away, your whole body in the picture."
+                            "Looking for you" to "Stand the phone upright on the floor in front of you, shoulders to feet in the picture."
                         PoseJudge.Phase.NOT_IN_POSITION ->
-                            "Slide down the wall" to "Back against the wall, thighs level with the floor, knees at a right angle."
+                            "Slide down the wall" to "Back on the wall, thighs level, knees over your feet, and all of you from shoulders to feet in the picture."
                         else ->
                             "Hold it" to "Thighs level, back on the wall. The clock is running."
                     }
