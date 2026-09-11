@@ -25,7 +25,7 @@ package io.joinasr.app.earn
  */
 class MeditationJudge(
     settleMillis: Long = 400L,
-    maxFrameGapMillis: Long = 500L,
+    maxFrameGapMillis: Long = 1_000L,
     private val breakMillis: Long = 3_000L,
     private val maxSeatDrift: Float = 0.6f,
     private val motion: BodyMotion = BodyMotion(),

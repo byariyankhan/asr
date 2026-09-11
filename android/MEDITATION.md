@@ -68,8 +68,9 @@ things of the pose:
 Both together are the position, and a `HoldJudge` times it exactly as it
 times a plank: a change of phase has to hold for 400 ms before it is
 believed, whole seconds go to the activity through `EarnViewModel.onCounted`
-as they complete, and a gap in the frames longer than 500 ms is worth
-nothing. Every sixtieth second ticks and pulses, so a person with their
+as they complete, and a gap in the frames longer than a second is worth
+nothing (a slow phone at two or three frames a second still counts; a
+locked screen is seconds away). Every sixtieth second ticks and pulses, so a person with their
 eyes closed knows a minute went by, and the last one does.
 
 ### In one go

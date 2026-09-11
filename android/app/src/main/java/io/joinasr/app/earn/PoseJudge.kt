@@ -98,7 +98,7 @@ class HoldJudge(
     private val position: (BodyPose) -> Boolean,
     private val hasBody: (BodyPose) -> Boolean,
     settleMillis: Long = 400L,
-    maxFrameGapMillis: Long = 500L,
+    maxFrameGapMillis: Long = 1_000L,
     private val coach: (PoseJudge.Phase, Boolean) -> Pair<String, String>,
 ) : PoseJudge {
 
@@ -230,13 +230,16 @@ object HoldPositions {
      * body on its feet or on a chair has its hips a torso below the
      * shoulders, which is the one thing this view sees plainly. And the
      * arms hold the body up: an elbow the model can see hangs at least
-     * [MIN_ELBOW_DROP] of a shoulder width below its shoulder, which it
-     * does on the hands (halfway to the floor) and on the forearms (on
-     * it), and does not for a body lying face down with its head raised
-     * to look at the phone, whose shoulders are a hand above the floor
-     * and whose elbows, wherever the arms are, are barely below them.
-     * All distances are in shoulder widths, so the phone can be a hand's
-     * width away or a stride.
+     * [MIN_ELBOW_DROP] of a shoulder width below its shoulder, or a wrist
+     * at least [MIN_WRIST_DROP]. On the forearms the elbows are on the
+     * floor, a width and more below; on the hands they are halfway down,
+     * which from a phone within half a metre comes out under the elbow
+     * line, so the wrists decide there: on the floor under the shoulders,
+     * an arm's length down, well over a width. A body lying face down
+     * with its head raised to look at the phone has shoulders a hand
+     * above the floor and, wherever the arms are, elbows barely below
+     * them and wrists under a width. All distances are in shoulder
+     * widths, so the phone can be a hand's width away or a stride.
      */
     fun plankFront(pose: BodyPose): Boolean {
         if (!facing(pose)) return false
@@ -248,10 +251,13 @@ object HoldPositions {
         val eyesY = (pose.leftEye.y + pose.rightEye.y) / 2f
         // Picture y grows downwards: eyes above the shoulder line are smaller.
         if (eyesY < shoulderY - 0.3f * width) return false
-        val arms = listOf(pose.leftShoulder to pose.leftElbow, pose.rightShoulder to pose.rightElbow)
+        val elbows = listOf(pose.leftShoulder to pose.leftElbow, pose.rightShoulder to pose.rightElbow)
             .filter { (_, elbow) -> elbow.visibility >= MIN_VISIBILITY }
-        if (arms.isEmpty()) return false
-        if (arms.none { (shoulder, elbow) -> elbow.y - shoulder.y >= MIN_ELBOW_DROP * width }) return false
+        val wrists = listOf(pose.leftShoulder to pose.leftWrist, pose.rightShoulder to pose.rightWrist)
+            .filter { (_, wrist) -> wrist.visibility >= MIN_VISIBILITY }
+        val heldUp = elbows.any { (shoulder, elbow) -> elbow.y - shoulder.y >= MIN_ELBOW_DROP * width } ||
+            wrists.any { (shoulder, wrist) -> wrist.y - shoulder.y >= MIN_WRIST_DROP * width }
+        if (!heldUp) return false
         val hipsSeen = pose.leftHip.visibility >= MIN_VISIBILITY && pose.rightHip.visibility >= MIN_VISIBILITY
         if (hipsSeen) {
             val hipX = (pose.leftHip.x + pose.rightHip.x) / 2f
@@ -263,6 +269,7 @@ object HoldPositions {
     }
 
     private const val MIN_ELBOW_DROP = 0.45f
+    private const val MIN_WRIST_DROP = 1.0f
 
     /**
      * What the wall sit needs before it can say anything about the

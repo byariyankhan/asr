@@ -43,18 +43,23 @@ class HoldJudgeTest {
         hipVisibility: Float = 0.7f,
         width: Float = 0.4f,
         shoulderY: Float = 0.55f,
+        /** How far below the shoulder line the elbows and wrists are, in shoulder widths. */
+        elbowsBelow: Float = 0.625f,
+        wristsBelow: Float = 1.0f,
     ): BodyPose {
         val eyeY = shoulderY - eyesAbove * width
         val hipY = shoulderY + hipsBelow * width
         val hipX = 0.5f + hipsAcross * width
+        val elbowY = shoulderY + elbowsBelow * width
+        val wristY = shoulderY + wristsBelow * width
         val ghost = Landmark(0.5f, 0.5f, 0.2f)
         fun at(x: Float, y: Float, v: Float = 0.9f) = Landmark(x, y, v)
         return BodyPose(
             nose = at(0.5f, eyeY + 0.03f), leftEye = at(0.54f, eyeY), rightEye = at(0.46f, eyeY),
             mouthLeft = at(0.52f, eyeY + 0.06f), mouthRight = at(0.48f, eyeY + 0.06f),
-            leftShoulder = at(0.5f + width / 2f, shoulderY), leftElbow = at(0.72f, 0.8f), leftWrist = at(0.7f, 0.95f),
+            leftShoulder = at(0.5f + width / 2f, shoulderY), leftElbow = at(0.72f, elbowY), leftWrist = at(0.7f, wristY),
             leftHip = at(hipX + 0.04f, hipY, hipVisibility),
-            rightShoulder = at(0.5f - width / 2f, shoulderY), rightElbow = at(0.28f, 0.8f), rightWrist = at(0.3f, 0.95f),
+            rightShoulder = at(0.5f - width / 2f, shoulderY), rightElbow = at(0.28f, elbowY), rightWrist = at(0.3f, wristY),
             rightHip = at(hipX - 0.04f, hipY, hipVisibility),
             leftKnee = ghost, rightKnee = ghost, leftAnkle = ghost, rightAnkle = ghost,
         )
@@ -127,15 +132,40 @@ class HoldJudgeTest {
     }
 
     @Test fun `head-on, lying face down with the head up is not a plank, nor are arms the camera cannot see`() {
-        // Shoulders a hand above the floor, so the elbows, wherever the arms are, are barely below them.
-        val lying = plankFront.copy(
-            leftElbow = Landmark(0.75f, 0.62f, 0.9f), rightElbow = Landmark(0.25f, 0.62f, 0.9f),
-            leftWrist = Landmark(0.72f, 0.7f, 0.9f), rightWrist = Landmark(0.28f, 0.7f, 0.9f),
+        // Shoulders a hand above the floor, so the elbows, wherever the arms are, are barely below
+        // them, and even arms stretched out towards the phone put the wrists under a width down.
+        assertFalse(HoldPositions.plank(front(eyesAbove = -0.15f, elbowsBelow = 0.2f, wristsBelow = 0.4f)))
+        assertFalse(HoldPositions.plank(front(eyesAbove = -0.15f, elbowsBelow = 0.35f, wristsBelow = 0.8f)))
+        val unseenArms = plankFront.copy(
+            leftElbow = BodyPose.UNSEEN, rightElbow = BodyPose.UNSEEN,
+            leftWrist = BodyPose.UNSEEN, rightWrist = BodyPose.UNSEEN,
         )
-        assertFalse(HoldPositions.plank(lying))
-        assertFalse(HoldPositions.plank(plankFront.copy(leftElbow = BodyPose.UNSEEN, rightElbow = BodyPose.UNSEEN)))
+        assertFalse(HoldPositions.plank(unseenArms))
         // One elbow seen, on the floor: enough.
-        assertTrue(HoldPositions.plank(plankFront.copy(rightElbow = BodyPose.UNSEEN)))
+        assertTrue(HoldPositions.plank(plankFront.copy(rightElbow = BodyPose.UNSEEN, leftWrist = BodyPose.UNSEEN, rightWrist = BodyPose.UNSEEN)))
+    }
+
+    @Test fun `head-on, a plank on the hands with the phone close is held up by its wrists`() {
+        // From half a metre the elbows, halfway to the floor, come out only 0.44 of a width under
+        // the shoulders; the wrists, on the floor an arm's length down, come out well over one.
+        val close = front(eyesAbove = -0.15f, elbowsBelow = 0.44f, wristsBelow = 1.25f)
+        assertTrue(HoldPositions.plank(close))
+        // The wrists alone will do when the elbows are out of the picture.
+        assertTrue(HoldPositions.plank(close.copy(leftElbow = BodyPose.UNSEEN, rightElbow = BodyPose.UNSEEN)))
+    }
+
+    @Test fun `a slow phone's frames, a fraction of a second apart, still add up`() {
+        val judge = judge()
+        judge.feed(plank, 0, 2_400)
+        assertEquals(2_000L, judge.heldMillis)
+        // Three frames a second, then two: every gap counts.
+        judge.observe(plank, 2_800)
+        judge.observe(plank, 3_300)
+        judge.observe(plank, 3_900)
+        assertEquals(3_500L, judge.heldMillis)
+        // Two seconds without a frame is the camera stopped, not a slow one.
+        judge.observe(plank, 5_900)
+        assertEquals(3_500L, judge.heldMillis)
     }
 
     @Test fun `head-on, standing and sitting are not a plank`() {

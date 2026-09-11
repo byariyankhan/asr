@@ -117,7 +117,7 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
                         PoseJudge.Phase.NO_BODY ->
                             "Looking for you" to "Stand the phone upright on the floor a step ahead of your hands, facing you."
                         PoseJudge.Phase.NOT_IN_POSITION ->
-                            "Get into a plank" to "Up on your forearms or hands, head down in line with your back, hips up behind you."
+                            "Get into a plank" to "Up on your forearms or hands, head down in line with your back, hips up behind you, arms in the picture."
                         else ->
                             "Hold it" to "Hips level, body straight. The clock is running."
                     }
