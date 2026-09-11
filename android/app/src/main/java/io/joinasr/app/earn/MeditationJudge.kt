@@ -27,11 +27,12 @@ class MeditationJudge(
     settleMillis: Long = 400L,
     maxFrameGapMillis: Long = 500L,
     private val breakMillis: Long = 3_000L,
+    private val maxSeatDrift: Float = 0.6f,
     private val motion: BodyMotion = BodyMotion(),
 ) : PoseJudge {
 
     private val hold = HoldJudge(
-        position = { pose -> SeatedPose.seated(pose) && !moving },
+        position = { pose -> SeatedPose.seated(pose) && !moving && !leftSeat },
         hasBody = SeatedPose::hasBody,
         settleMillis = settleMillis,
         maxFrameGapMillis = maxFrameGapMillis,
@@ -48,22 +49,38 @@ class MeditationJudge(
     var reason: Reason = Reason.NO_BODY
         private set
 
-    enum class Reason { NO_BODY, HIPS_UNSEEN, NOT_FACING, NOT_UPRIGHT, STANDING, MOVING, NONE }
+    enum class Reason { NO_BODY, HIPS_UNSEEN, NOT_FACING, NOT_UPRIGHT, LEFT_SEAT, MOVING, NONE }
 
     private var moving = false
+    private var leftSeat = false
     private var counted = false
     private var outSince: Long? = null
     private var lastFrameAt: Long? = null
 
+    /**
+     * Where the hips were when the clock started, in picture units, and
+     * the torso length then: the seat. A body more than [maxSeatDrift]
+     * torso lengths from it has got up, however still it is standing,
+     * and is out of position until the sitting starts over, when the
+     * seat is wherever it sits next. The camera cannot tell a chair from
+     * standing from every angle (a chair seen from above projects like a
+     * standing leg), so it does not try; it can tell that the hips went
+     * somewhere else.
+     */
+    private var seat: Seat? = null
+
+    private class Seat(val x: Float, val y: Float, val torso: Float)
+
     override fun observe(pose: BodyPose?, nowMillis: Long): Int {
         brokeOff = false
         moving = if (pose != null && SeatedPose.hasBody(pose)) motion.observe(pose, nowMillis) else motion.forget()
+        leftSeat = pose != null && seat?.let { SeatedPose.hipsSeen(pose) && hipsAwayFrom(pose, it) } == true
         reason = when {
             pose == null || !SeatedPose.hasBody(pose) -> Reason.NO_BODY
             !SeatedPose.hipsSeen(pose) -> Reason.HIPS_UNSEEN
             !SeatedPose.facing(pose) -> Reason.NOT_FACING
             !SeatedPose.upright(pose) -> Reason.NOT_UPRIGHT
-            SeatedPose.standing(pose) -> Reason.STANDING
+            leftSeat -> Reason.LEFT_SEAT
             moving -> Reason.MOVING
             else -> Reason.NONE
         }
@@ -79,6 +96,7 @@ class MeditationJudge(
 
         if (hold.phase == PoseJudge.Phase.WORKING) {
             outSince = null
+            if (seat == null && pose != null) seat = seatOf(pose)
         } else {
             val since = outSince ?: nowMillis.also { outSince = it }
             if (counted && nowMillis - since >= breakMillis) startOver()
@@ -90,6 +108,20 @@ class MeditationJudge(
         brokeOff = true
         counted = false
         outSince = null
+        seat = null
+    }
+
+    private fun seatOf(pose: BodyPose) = Seat(
+        x = (pose.leftHip.x + pose.rightHip.x) / 2f,
+        y = (pose.leftHip.y + pose.rightHip.y) / 2f,
+        torso = SeatedPose.torsoLength(pose),
+    )
+
+    private fun hipsAwayFrom(pose: BodyPose, seat: Seat): Boolean {
+        if (seat.torso <= 0f) return false
+        val dx = (pose.leftHip.x + pose.rightHip.x) / 2f - seat.x
+        val dy = (pose.leftHip.y + pose.rightHip.y) / 2f - seat.y
+        return kotlin.math.sqrt(dx * dx + dy * dy) / seat.torso > maxSeatDrift
     }
 
     override fun coaching(started: Boolean): Pair<String, String> {
@@ -101,7 +133,7 @@ class MeditationJudge(
                 Reason.HIPS_UNSEEN -> "Move back a little" to "The camera needs to see you down to the hips."
                 Reason.NOT_FACING -> "Face the phone" to "Turn to look straight at the camera."
                 Reason.NOT_UPRIGHT -> "Sit up" to "Back straight, shoulders over your hips."
-                Reason.STANDING -> "Sit down" to "On the floor or a chair, facing the phone."
+                Reason.LEFT_SEAT -> "Sit back down" to "Where you were. A few seconds away starts the sitting over."
                 Reason.MOVING -> "Settle" to "Keep still. The clock starts when you have."
                 else -> "Sit still, facing the phone" to "Back straight, and keep still."
             }
@@ -213,25 +245,15 @@ object SeatedPose {
     }
 
     /**
-     * On the feet: a thigh the model can see hanging straight down from
-     * the hip and as long as it is when it is not foreshortened. Sitting
-     * cross-legged, the thighs go sideways; on a chair facing the camera,
-     * they come towards it and look short. Legs out of the picture say
-     * nothing either way, and a person who has propped the phone so it
-     * sees only their top half is taken at their word about the rest.
+     * The whole position: somebody facing the phone, sitting up. The legs
+     * are not asked about: from the front, in two dimensions, a chair
+     * with the phone a little above it projects exactly like a standing
+     * leg, and a rule that called that standing would refuse a real
+     * sitter the whole seven minutes. Getting up is caught instead by
+     * the hips leaving the seat ([MeditationJudge]); somebody who stands
+     * still in front of the phone for seven minutes has done the harder
+     * thing, and is taken at their word.
      */
-    fun standing(pose: BodyPose): Boolean {
-        val torso = torsoLength(pose)
-        if (torso <= 0f) return false
-        return listOf(pose.leftHip to pose.leftKnee, pose.rightHip to pose.rightKnee).any { (hip, knee) ->
-            knee.visibility >= MIN_VISIBILITY &&
-                knee.y > hip.y &&
-                PoseGeometry.tiltFromHorizontal(hip, knee) >= 60f &&
-                PoseGeometry.distance(hip, knee) / torso >= 0.6f
-        }
-    }
-
-    /** The whole position: somebody facing the phone, sitting up, not on their feet. */
     fun seated(pose: BodyPose): Boolean =
-        hasBody(pose) && hipsSeen(pose) && facing(pose) && upright(pose) && !standing(pose)
+        hasBody(pose) && hipsSeen(pose) && facing(pose) && upright(pose)
 }

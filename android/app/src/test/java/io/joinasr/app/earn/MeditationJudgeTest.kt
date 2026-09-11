@@ -33,11 +33,8 @@ class MeditationJudgeTest {
 
     private val sitting = seated()
 
-    /** The same body on its feet: thighs straight down from the hips, as long as the torso. */
-    private val standing = sitting.copy(
-        leftKnee = Landmark(0.56f, 0.90f, 0.95f),
-        rightKnee = Landmark(0.44f, 0.90f, 0.95f),
-    )
+    /** The same body stood up on the spot: everything a torso and a bit higher in the picture, and then still. */
+    private val stood = seated(dy = -0.3f)
 
     /** On a chair, facing the phone: the thighs come towards the camera and look short. */
     private val onAChair = sitting.copy(
@@ -73,9 +70,7 @@ class MeditationJudgeTest {
         assertTrue(SeatedPose.seated(onAChair))
     }
 
-    @Test fun `standing, slumping, side-on and lying down are not`() {
-        assertTrue(SeatedPose.standing(standing))
-        assertFalse(SeatedPose.seated(standing))
+    @Test fun `slumping, side-on and lying down are not`() {
         assertFalse(SeatedPose.upright(slumped))
         assertFalse(SeatedPose.facing(sideOn))
         assertFalse(SeatedPose.facing(onOneSide))
@@ -137,21 +132,39 @@ class MeditationJudgeTest {
         assertFalse(judge.brokeOff)
     }
 
-    @Test fun `standing up for longer than a moment starts the count over`() {
+    @Test fun `getting up for longer than a moment starts the count over, however still the standing is`() {
         val judge = MeditationJudge()
         assertEquals(20, judge.frames(sitting, 0, 20_400))
-        var restarts = 0
-        for (t in 20_500L..24_000L step 100) {
-            judge.observe(standing, t)
-            if (judge.brokeOff) restarts++
+        // Up: a second of movement, then a still body whose hips are a torso and more from the seat.
+        for (t in 20_500L..23_800L step 100) {
+            judge.observe(stood, t)
+            assertFalse(judge.brokeOff)
         }
-        assertEquals(1, restarts)
         assertEquals(PoseJudge.Phase.NOT_IN_POSITION, judge.phase)
-        assertEquals(MeditationJudge.Reason.STANDING, judge.reason)
-        // Sitting back down: the seconds come one at a time again, from nothing said about before.
-        judge.frames(sitting, 24_100, 400)
+        assertEquals(MeditationJudge.Reason.LEFT_SEAT, judge.reason)
+        assertEquals("Sit back down", judge.coaching(true).first)
+        // Three seconds out of position: over.
+        judge.observe(stood, 23_900)
+        assertTrue(judge.brokeOff)
+        // Still standing there, still: a fresh sitting, wherever the hips now are. The camera
+        // cannot tell a chair from standing from every angle, so standing still is taken at its word.
+        judge.frames(stood, 24_000, 400)
         assertFalse(judge.brokeOff)
-        assertEquals(5, judge.frames(sitting, 24_600, 5_400))
+        assertEquals(PoseJudge.Phase.WORKING, judge.phase)
+        assertEquals(5, judge.frames(stood, 24_500, 5_400))
+        assertFalse(judge.brokeOff)
+    }
+
+    @Test fun `getting up and sitting straight back down costs the seconds, not the sitting`() {
+        val judge = MeditationJudge()
+        assertEquals(10, judge.frames(sitting, 0, 10_400))
+        judge.frames(stood, 10_500, 900)
+        assertEquals(PoseJudge.Phase.NOT_IN_POSITION, judge.phase)
+        for (t in 11_500L..16_000L step 100) {
+            judge.observe(sitting, t)
+            assertFalse(judge.brokeOff)
+        }
+        assertEquals(PoseJudge.Phase.WORKING, judge.phase)
     }
 
     @Test fun `leaving the picture starts the count over, and coming back does not restart it twice`() {
@@ -189,7 +202,7 @@ class MeditationJudgeTest {
         val judge = MeditationJudge()
         judge.frames(sitting, 0, 300)
         for (t in 400L..5_000L step 100) {
-            judge.observe(standing, t)
+            judge.observe(stood, t)
             assertFalse(judge.brokeOff)
         }
     }
@@ -205,10 +218,8 @@ class MeditationJudgeTest {
         assertEquals("Face the phone", judge.coaching(true).first)
         judge.frames(slumped, 1_800, 500)
         assertEquals("Sit up", judge.coaching(true).first)
-        judge.frames(standing, 2_400, 500)
-        assertEquals("Sit down", judge.coaching(true).first)
         // The head came back from the slump within the last second: moving, until that is out of the window.
-        judge.frames(sitting, 3_000, 1_000)
+        judge.frames(sitting, 2_400, 1_400)
         assertEquals("Sit still", judge.coaching(true).first)
     }
 

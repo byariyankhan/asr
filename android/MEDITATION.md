@@ -36,11 +36,11 @@ things of the pose:
   back a little"); the shoulders level within 25° and at least 0.35 of a
   torso apart (a body side-on or lying on its side is neither); the
   shoulders above the hips with the line between them at least 60° from
-  horizontal (slumped or lying back is not); and, when a knee is seen,
-  not standing: a thigh hanging straight down (60° or more) and at least
-  0.6 of a torso long is a person on their feet. Cross-legged, the thighs
-  go sideways; on a chair facing the phone they come towards it and look
-  short. Legs out of the picture say nothing either way.
+  horizontal (slumped or lying back is not). The legs are not asked
+  about: from the front, in two dimensions, a chair with the phone a
+  little above it projects exactly like a standing leg, and a rule that
+  called that standing would refuse a real sitter the whole seven
+  minutes.
 - **Still** (`BodyMotion`): over the last second the nose may drift by
   0.2 of a torso and the point between the shoulders by 0.12, measured
   in torso lengths (shoulders to hips) so the rule is the same near the
@@ -48,6 +48,11 @@ things of the pose:
   a small fraction of it at any distance. A breath, a slow sway and a
   nod are under; a head turned to look at something, a shift on the
   cushion and getting up are over.
+- **In the seat**: where the hips were when the clock started is the
+  seat, and hips more than 0.6 of a torso from it have got up, however
+  still the body now is; that is out of position until the sitting
+  starts over, when the seat is wherever it sits next. Getting up from
+  a chair or a cushion moves the hips by a torso and more.
 
 Both together are the position, and a `HoldJudge` times it exactly as it
 times a plank: a change of phase has to hold for 400 ms before it is
@@ -86,6 +91,15 @@ second, as it does for every camera activity, and the receipt shows
   needs a face, shoulders and hips.
 - Sitting for four minutes, going to make tea, sitting for three more:
   nothing. Two sittings are not a meditation; the count started over.
+- Standing up mid-sitting and standing still: the hips left the seat,
+  and three seconds later the count starts over. Standing still in front
+  of the phone from the start, for seven minutes: passes. The camera
+  cannot tell a chair from standing from every angle, and somebody who
+  stood still that long has done the harder thing.
+- The phone knocked mid-sitting so the picture shifts by more than 0.6
+  of a torso: the hips appear to have left the seat, and the sitting
+  starts over. A nudge does less than that; a phone knocked over ends
+  the sitting anyway.
 - Lying on the sofa with the phone propped to look at you: the shoulders
   are one above the other, or the torso is horizontal; not the position.
   Lying on the back with the phone held above you would pass the torso
@@ -127,9 +141,10 @@ second, as it does for every camera activity, and the receipt shows
 3. Scratch your nose, cough: the clock stops for a moment and goes on
    from where it was. Turn to look at something for a second: "Settle";
    look back and be still: the clock goes on.
-4. Stand up and sit back down after five seconds: the clock is at 0:00
-   and running again once you are still. "Give up this sitting" and
-   "Finish later: leaving starts the sitting over" read as such.
+4. Stand up and stay standing: "Sit back down", and after three seconds
+   the clock is at 0:00. Stand up and sit straight back down: the clock
+   goes on from where it was. "Give up this sitting" and "Finish later:
+   leaving starts the sitting over" read as such.
 5. Leave with the back chevron mid-sitting and reopen: 0:00.
 6. Sit for seven minutes: "7:00 ✓ DONE", the finish chime, the receipt,
    +10 on the app.
