@@ -51,8 +51,24 @@ branch.
 
 ## 3. Creating the app in the Console
 
-1. **Create app**: name `Asr: Protect Your Time & Focus` (30 characters, the
-   limit), default language English (United States), App, Free.
+1. **Create app**:
+
+   | Field | Value |
+   |---|---|
+   | App name | `Asr: Protect Your Time & Focus` |
+   | Package name | `io.joinasr.app` |
+   | Default language | English (United States) |
+   | App or game | App |
+   | Free or paid | Free |
+
+   The name is exactly 30 characters, which is the limit. A hyphen does not
+   fit -- it needs a space on both sides where a colon needs one, so
+   `Asr - Protect Your Time & Focus` is 31 and an em dash is no better. Keep
+   the colon, or drop a word: `Asr - Screen Time with Witness` (30),
+   `Asr - Limit Apps, Keep Focus` (28), `Asr - App Limits & Focus` (24).
+
+   The package name must match `applicationId` in
+   `android/app/build.gradle.kts` exactly, or the bundle is refused.
 2. **App signing**: accept Play App Signing when the first bundle is
    uploaded (Google generates the app signing key; ours is the upload key).
 3. **App Links**: under Release → Setup → App signing, copy the *App signing
@@ -63,6 +79,34 @@ branch.
    line in `/opt/asr/.env` and recreates the API. Check
    `https://api.joinasr.io/.well-known/assetlinks.json` lists all three.
    Without this, an invitation link opens a browser instead of the app.
+
+### What can never change afterwards
+
+Three of the answers above are permanent, and two of those are permanent in
+a way that is easy to miss.
+
+- **The package name.** `io.joinasr.app` cannot be changed, and cannot be
+  reused even if the app is deleted. It is only a name, though: Google never
+  checks that we own `joinasr.io`, so letting the domain go one day would
+  leave the package name looking dated and nothing worse.
+- **Free.** An app published free cannot be made paid later (paid to free is
+  allowed). Anything charged for has to be an in-app purchase.
+- **The domain, in practice.** `api.joinasr.io` is compiled into every APK
+  (`buildConfigField "API_BASE_URL"`), and `joinasr.io` is the App Links host
+  in the manifest. An installed copy keeps calling that address for as long
+  as it is installed, whatever a later version does -- so from the first
+  public upload, the domain has to stay registered and answering. Letting it
+  lapse means every phone still on an older version stops reaching the
+  server: no summaries, no events, no witnesses told, and no way to tell
+  anybody, because the way to tell them was the domain.
+
+  Everything *outside* the APK moves freely: the store listing's URLs, the
+  invite and reset links (`PUBLIC_SITE_URL`) and the mail sender
+  (`EMAIL_FROM`) are all configuration. So moving to another domain is
+  really *adding* one -- new builds point at it, both hosts stay in the
+  manifest, the old domain proxies to the new server, and the old domain is
+  never switched off. A `.io` renewal a year is the price of every install
+  that came before.
 
 ## 4. Store listing
 
