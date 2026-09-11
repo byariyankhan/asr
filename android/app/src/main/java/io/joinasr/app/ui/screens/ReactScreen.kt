@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -26,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -103,7 +107,10 @@ fun ReactScreen(
         Spacer(Modifier.height(28.dp))
         Text("REACT", style = AsrType.Eyebrow, color = AsrColors.Accent)
         Spacer(Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
+        // One group of radio buttons to a screen reader, each saying its
+        // label and whether it is the one selected: with the button saying
+        // only "Send", the tiles are where the choice is confirmed.
+        Row(modifier = Modifier.fillMaxWidth().selectableGroup()) {
             for ((index, option) in options.withIndex()) {
                 if (index > 0) Spacer(Modifier.width(10.dp))
                 Tile(
@@ -114,12 +121,14 @@ fun ReactScreen(
             }
         }
 
-        // The one action. The tile already shows what is being sent.
+        // The one action. The selected tile shows what is being sent; a
+        // screen reader is told on the button as well.
         Spacer(Modifier.height(24.dp))
         AsrPrimaryButton(
             text = if (busy) "Sending…" else "Send",
             onClick = { onSend(picked.value) },
             enabled = !busy,
+            modifier = Modifier.semantics { contentDescription = if (busy) "Sending ${picked.label}" else "Send ${picked.label}" },
         )
 
         Spacer(Modifier.height(12.dp))
@@ -189,7 +198,8 @@ private fun Tile(
                 if (selected) AsrColors.Accent else AsrColors.FieldBorder,
                 RoundedCornerShape(18.dp),
             )
-            .clickable(role = Role.RadioButton, onClick = onClick)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = option.label }
             .padding(vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
