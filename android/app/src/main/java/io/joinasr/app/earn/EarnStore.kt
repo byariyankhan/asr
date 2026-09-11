@@ -144,8 +144,25 @@ class EarnStore internal constructor(
 
     private fun decodeActive(stored: String?): EarnActivity? {
         if (stored.isNullOrBlank()) return null
-        return runCatching { json.decodeFromString<EarnActivity>(stored) }.getOrNull()
+        return runCatching { json.decodeFromString<EarnActivity>(stored) }.getOrNull()?.let(::upgraded)
     }
+
+    /**
+     * An activity written by an earlier release, brought up to this one.
+     *
+     * The meditation used to be ten minutes with the phone lying still;
+     * it is seven on the camera now, and a sitting begun on the old rule
+     * cannot be finished on the new one: the camera screen would ask for
+     * 600 seconds of sitting against a card that says seven minutes. The
+     * target becomes today's and the progress goes, as it does for any
+     * interrupted sitting. Everything else is stored as it was.
+     */
+    private fun upgraded(activity: EarnActivity): EarnActivity =
+        if (activity.type == EarnRules.MEDITATION && activity.target != EarnRules.MEDITATION_SECONDS) {
+            activity.copy(target = EarnRules.MEDITATION_SECONDS, progress = 0)
+        } else {
+            activity
+        }
 
     private fun decodeEarned(stored: String?): EarnedToday? {
         if (stored.isNullOrBlank()) return null

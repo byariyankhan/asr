@@ -40,6 +40,9 @@ export const pactColumns = [
  * the price the phone did put on its walk (or its focus session), and
  * never changes a rule the phone sent.
  */
+const OLD_MEDITATION_MIN = 10;
+const MEDITATION_MIN = 7;
+
 type CountedLater = "plank" | "wall_sit" | "run_steps" | "stairs" | "cycling";
 type TimedLater = "meditation";
 const LATER_COUNTED: Array<[CountedLater, number]> = [
@@ -50,8 +53,25 @@ const LATER_COUNTED: Array<[CountedLater, number]> = [
   ["cycling", 3000], // metres
 ];
 const LATER_TIMED: Array<[TimedLater, number]> = [
-  ["meditation", 7], // minutes
+  ["meditation", MEDITATION_MIN], // minutes
 ];
+
+/**
+ * The meditation's old price. Every rule that says ten minutes was
+ * written before the meditation moved to the camera (by a phone that
+ * timed it on the accelerometer, by migration 0015, or by this file's
+ * fill-in as it was), and means seven now: what the phone measures. Read
+ * this way at the one place a rule becomes an activity's target, so a
+ * pact the previous release created in the seconds between the migrate
+ * step and the container swap (or after a deploy that failed in between)
+ * is priced like every other. Migration 0016 rewrites the snapshots
+ * themselves for the record; this is for the ones it could not see.
+ */
+export function currentRule<R extends object>(type: string, rule: R): R {
+  const minutes = (rule as { target_min?: number }).target_min;
+  if (type === "meditation" && minutes === OLD_MEDITATION_MIN) return { ...rule, target_min: MEDITATION_MIN };
+  return rule;
+}
 
 export function withLaterActivities(snapshot: Snapshot): Snapshot {
   const priced = snapshot.activities.walk_steps ?? snapshot.activities.focus_session;

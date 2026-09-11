@@ -110,6 +110,12 @@ second, as it does for every camera activity, and the receipt shows
   and nothing from the camera leaves the phone but that the meditation
   was completed. Same as `PUSH_UPS.md`.
 - No record of when the sittings broke off leaves the phone either.
+- A meditation begun on the still-phone release and still active after
+  the update comes back as a fresh camera sitting (`EarnStore.upgraded`):
+  target 420, progress 0. On the server, a rule still at ten minutes
+  (written by the previous release between the migrate step and the
+  container swap) is read as seven when it becomes an activity's target
+  (`currentRule` in `pacts.ts`).
 
 ## Device acceptance checks
 
