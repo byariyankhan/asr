@@ -199,16 +199,21 @@ class RideService : Service() {
             stopSelf()
             return
         }
-        getSystemService<SensorManager>()?.let { sensors ->
-            val steps = sensors.getDefaultSensor(Sensor.TYPE_STEP_COUNTER, true)
-                ?: sensors.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-            if (steps != null) {
-                sensors.registerListener(sensorListener, steps, SensorManager.SENSOR_DELAY_NORMAL, SENSOR_LATENCY_MICROS)
-            }
-            // The shake of a bicycle, or the stillness of a car seat.
-            sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
-                sensors.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_NORMAL, SENSOR_LATENCY_MICROS)
-            }
+        // The step counter tells a run from a ride and the accelerometer a
+        // bicycle from a car seat: a ride without either cannot be judged,
+        // and is not started. The chooser dims the tile on such a phone.
+        val sensors = getSystemService<SensorManager>()
+        val steps = sensors?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER, true)
+            ?: sensors?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        val motion = sensors?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val sensed = sensors != null && steps != null && motion != null &&
+            sensors.registerListener(sensorListener, steps, SensorManager.SENSOR_DELAY_NORMAL, SENSOR_LATENCY_MICROS) &&
+            sensors.registerListener(sensorListener, motion, SensorManager.SENSOR_DELAY_NORMAL, SENSOR_LATENCY_MICROS)
+        if (!sensed) {
+            runCatching { locationManager.removeUpdates(locations) }
+            runCatching { sensors?.unregisterListener(sensorListener) }
+            stopSelf()
+            return
         }
         listening = true
     }

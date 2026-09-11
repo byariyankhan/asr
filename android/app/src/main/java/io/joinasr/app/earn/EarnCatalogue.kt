@@ -211,8 +211,11 @@ fun earnOptions(
         privacy = "Location is read on the phone to measure the ride and never sent. No route or " +
             "place is saved; the server learns that the ride was completed, nothing about where.",
         recommended = false,
-        unavailableReason = if (gpsAvailable) null else {
-            "This phone has no GPS, so a ride cannot be measured."
+        unavailableReason = when {
+            !gpsAvailable -> "This phone has no GPS, so a ride cannot be measured."
+            !stepsAvailable -> "This phone has no step counter, which a ride needs to tell it from a run."
+            !accelerometerAvailable -> "This phone has no motion sensor, which a ride needs to tell it from a car."
+            else -> null
         },
         done = "Your ride is done.",
     ),

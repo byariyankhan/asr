@@ -56,10 +56,61 @@ class RideCounterTest {
 
     @Test fun `a real ride at twenty kilometres an hour is credited, window by window`() {
         val counter = RideCounter()
-        // 20 km/h for 9 minutes is 3 km; the last part-window is not yet judged.
+        // 20 km/h for 9 minutes is 3 km; the last window and the grace
+        // after it are not yet judged.
         val credited = counter.journey(0, 20.0, 540)
-        assertTrue("$credited", credited in 2_950..3_010)
+        assertTrue("$credited", credited in 2_780..2_850)
         assertNull(counter.lastRefusal)
+    }
+
+    @Test fun `steps and shakes delivered late still land in the window they were taken in`() {
+        val counter = RideCounter()
+        // A runner: fixes arrive every second, but the steps and the
+        // motion come five seconds late in a batch, as the sensor hub
+        // sends them. Stamped with their own times, they belong to the
+        // windows they happened in, and the run is refused as a run.
+        val mps = 12.0 / 3.6
+        var steps = 0
+        var stepDue = 0.0
+        val pendingSteps = ArrayList<Pair<Int, Long>>()
+        val pendingMotion = ArrayList<Long>()
+        var credited = 0
+        for (i in 0..120) {
+            val at = i * 1_000L
+            stepDue += 160f / 60f
+            while (stepDue >= 1f) {
+                steps++
+                stepDue -= 1f
+            }
+            pendingSteps.add(steps to at)
+            for (k in 0 until 5) pendingMotion.add(at + k * 200L)
+            if (i % 5 == 4) {
+                for ((total, t) in pendingSteps) counter.observeSteps(total, t)
+                for ((n, t) in pendingMotion.withIndex()) counter.observeMotion(0.1f, 0.2f, 9.81f + if (n % 2 == 0) 0.8f else -0.8f, t)
+                pendingSteps.clear()
+                pendingMotion.clear()
+            }
+            credited += counter.observeFix(23.8 + north(mps * i), 90.4, 6f, mps.toFloat(), false, at)
+        }
+        assertEquals(0, credited)
+        assertEquals("running, not riding", counter.lastRefusal)
+    }
+
+    @Test fun `without the chip's speed, stop-and-go is still a vehicle`() {
+        val counter = RideCounter()
+        // Positions that lurch: 25 km/h with five-metre jumps every ten
+        // seconds, as a car braking and pulling away reads from positions.
+        val mps = 25.0 / 3.6
+        var lat = 23.8
+        var credited = 0
+        for (i in 0..90) {
+            val at = i * 1_000L
+            for (k in 0 until 5) observeMotionJostle(counter, at + k * 200L, 0.8f, i * 5 + k)
+            lat += north(if (i % 10 == 0) mps + 5.0 else if (i % 10 == 1) mps - 5.0 else mps)
+            credited += counter.observeFix(lat, 90.4, 6f, null, false, at)
+        }
+        assertEquals(0, credited)
+        assertEquals("speed changes a vehicle makes and legs do not", counter.lastRefusal)
     }
 
     @Test fun `walking the bike and a fast car both credit nothing`() {
@@ -110,11 +161,12 @@ class RideCounterTest {
         // Five kilometres away one second later, then on at a cycling pace from there.
         val far = 23.8 + north(5_000.0)
         assertEquals(0, counter.observeFix(far, 90.4, 6f, 5.6f, false, 21_000))
-        // The window with the jump in it closes at 30 s and is refused whole.
-        assertEquals(0, counter.journey(22_000, 20.0, 8, startLat = far))
+        // The window with the jump in it is judged once its grace has
+        // passed, at 36 s, and refused whole.
+        assertEquals(0, counter.journey(22_000, 20.0, 15, startLat = far))
         assertEquals("a stretch faster than a bicycle", counter.lastRefusal)
         // The next window is riding, from wherever the phone now is.
-        val after = counter.journey(31_000, 20.0, 30, startLat = far + north(20.0 / 3.6 * 9))
+        val after = counter.journey(38_000, 20.0, 30, startLat = far + north(20.0 / 3.6 * 16))
         assertTrue("$after", after > 140)
         assertNull(counter.lastRefusal)
     }
@@ -129,9 +181,9 @@ class RideCounterTest {
 
     @Test fun `without the chip's speed the positions decide, and an honest ride still counts`() {
         val counter = RideCounter()
-        // Four windows of thirty seconds at 5.56 m/s.
+        // Three windows of thirty seconds at 5.56 m/s; the fourth waits for its grace.
         val credited = counter.journey(0, 20.0, 120, doppler = false)
-        assertTrue("$credited", credited in 650..680)
+        assertTrue("$credited", credited in 480..510)
     }
 
     @Test fun `a red light in the window is not a car`() {
@@ -151,7 +203,7 @@ class RideCounterTest {
             for (k in 0 until 5) observeMotionJostle(counter, at + k * 200L, if (stopped) 0.4f else 0.8f, i * 5 + k)
             credited += counter.observeFix(lat, 90.4, 6f, speed.toFloat(), false, at)
         }
-        // One window closed, at 30 s: twenty seconds of riding and ten at
+        // One window judged, at 36 s: twenty seconds of riding and ten at
         // the light, which is still a bicycle's mean pace.
         assertTrue("$credited", credited > 100)
         assertNull(counter.lastRefusal)

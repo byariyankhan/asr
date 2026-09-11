@@ -37,6 +37,13 @@ GPS, the step counter and the accelerometer are read together:
   2.5 m/s, which is what catches a spoofed path with the phone at rest.
   A gap of more than 15 s between fixes adds no distance, and a jump
   faster than a bicycle spoils its window; riding on afterwards counts.
+  Without the chip's speed, consecutive positional speeds stand in for
+  the smoothness check at 4.5 m/s, wider because positions are noisier.
+- **Its own window.** Every reading goes into the window its own
+  timestamp falls in, and a window is judged only once a fix arrives
+  six seconds past its end: the step counter and the accelerometer are
+  delivered in batches a few seconds late, and a step taken just before
+  a boundary belongs to the window before it, whenever it arrives.
 
 Reviewed against the founder's list: a car or motorbike in traffic
 (braking, pulling away, and a phone lying on the seat), GPS spoofing
@@ -104,7 +111,9 @@ it.
 Play data safety: location is collected, used for app functionality,
 processed ephemerally on the device, not shared. Cycling is declared
 optional (`android.hardware.location.gps` not required), and a phone
-without GPS shows the tile dimmed with the reason.
+without GPS, a step counter or an accelerometer shows the tile dimmed
+with the reason; the service refuses to start without all three, since
+a ride without them cannot be judged.
 
 ## Device acceptance checks
 
