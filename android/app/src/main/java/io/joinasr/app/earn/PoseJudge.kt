@@ -163,12 +163,19 @@ internal object PoseGeometry {
         return Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
     }
 
-    /** How far [point] lies off the line through [a] and [b], as a fraction of that line's length. */
-    fun offLine(point: Landmark, a: Landmark, b: Landmark): Float {
+    /**
+     * How far [point] lies below the line through [a] and [b] in the
+     * picture (positive: further down the picture than the line at that
+     * x; negative: above it), as a fraction of that line's length. On a
+     * vertical line there is no below, and the distance comes back with
+     * whatever sign it has.
+     */
+    fun belowLine(point: Landmark, a: Landmark, b: Landmark): Float {
         val length = hypot(b.x - a.x, b.y - a.y)
         if (length == 0f) return 0f
-        val cross = abs((b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x))
-        return cross / length / length
+        val cross = (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)
+        val towardsB = if (b.x >= a.x) 1f else -1f
+        return cross / length / length * towardsB
     }
 
     fun distance(a: Landmark, b: Landmark): Float = hypot(b.x - a.x, b.y - a.y)
@@ -197,112 +204,78 @@ internal class BodySide(val shoulder: Landmark, val hip: Landmark, val knee: Lan
 object HoldPositions {
     private const val MIN_VISIBILITY = 0.5f
 
-    /** Any body at all: a shoulder and a hip the model is sure of on one side, or a face with both shoulders. */
-    fun hasBody(pose: BodyPose): Boolean =
-        listOf(pose.leftShoulder to pose.leftHip, pose.rightShoulder to pose.rightHip)
-            .any { (s, h) -> s.visibility >= MIN_VISIBILITY && h.visibility >= MIN_VISIBILITY } ||
-            facing(pose)
-
-    /** A face and both shoulders the model is sure of: a body looking this way. */
-    private fun facing(pose: BodyPose): Boolean =
-        pose.leftEye.visibility >= MIN_VISIBILITY && pose.rightEye.visibility >= MIN_VISIBILITY &&
-            pose.leftShoulder.visibility >= MIN_VISIBILITY && pose.rightShoulder.visibility >= MIN_VISIBILITY
+    /**
+     * What the plank needs before it can say anything: one whole side of
+     * the body, shoulder, hip, knee and ankle, that the model is sure of
+     * ([BodySide]). A phone stood close in front of the face sees a head,
+     * shoulders and arms and nothing below, and the model, trained on
+     * whole bodies, fills the rest in from habit: hips a torso under the
+     * shoulders as if the body were upright, and sure of them; knees and
+     * ankles it marks unseen. A judge fed that guessed body timed the
+     * founder sitting on his bed leaning over the phone as a plank and
+     * refused his real one, and no rule on a head and shoulders can tell
+     * those two apart, because the picture is the same. So that view is
+     * not judged at all: "Looking for your whole body" until the phone is
+     * far enough off to see it.
+     */
+    fun plankBody(pose: BodyPose): Boolean = BodySide.of(pose) != null
 
     /**
-     * A plank, from whichever way the phone is looking: head-on from the
-     * floor ahead of the hands ([plankFront]), which is where a phone
-     * stood upright goes, or from the side across the room ([plankSide]).
-     */
-    fun plank(pose: BodyPose): Boolean = plankFront(pose) || plankSide(pose)
-
-    /**
-     * A plank seen from in front: the phone upright on the floor, half a
-     * step to a step ahead of the hands, looking along the body. From
-     * there the picture holds the face, big, the shoulders, and perhaps
-     * the elbows; the wrists, the hips and the legs are often below the
-     * frame or behind the torso, and nothing here needs them.
+     * A plank: the body one straight line from shoulder to ankle, held up
+     * off the floor, seen by a phone stood upright on the floor a couple
+     * of steps away, from the side or from ahead and off to one side,
+     * with the whole body in the picture.
      *
-     * Three things are asked of every frame. A face and both shoulders.
-     * The shoulders level, within 30°: facing the phone, not lying on
-     * one side. And the hips, when the model has them, behind the
-     * shoulders rather than under them: within [MAX_HIP_ACROSS] of a
-     * shoulder width of centre and no more than [MAX_HIP_DROP] widths
-     * below the shoulder line. From a phone on the floor a body on its
-     * feet, on a chair, cross-legged or up on its knees has its hips a
-     * width and more below its shoulders; a plank's, level with the
-     * shoulders and a torso further off, come out under that from a
-     * hand's width away or a stride.
+     * A straight line is a straight line from wherever the camera looks,
+     * so the rule that carries the weight is that the hip lies on the
+     * line from the shoulder to the ankle: no more than [MAX_HIP_SAG] of
+     * the line's length below it (a sagging plank; or a sphinx or cobra,
+     * chest propped up and hips on the floor) and no more than
+     * [MAX_HIP_PIKE] above it (hips lifted a little is a beginner's plank;
+     * on all fours, in child's pose or a downward dog they are far above).
+     * In photographs of planks from the side and from ahead at an angle
+     * the model puts the hip within 0.07 of the line, most within 0.04; in
+     * photographs of a sphinx or cobra never nearer than 0.06 below it.
+     * The knee stays near the line too, no more than [MAX_KNEE_DROP]
+     * below it: on all fours the knees are under the hips, a quarter of
+     * the line's length down.
      *
-     * Then the body has to be up off the floor, and the view has two
-     * witnesses to that. The arms: an elbow the model sees at least
-     * [MIN_ELBOW_DROP] widths below its shoulder, or a wrist at least
-     * [MIN_WRIST_DROP]. On the hands the elbows are halfway to the floor
-     * and the wrists on it; on the forearms the elbows are on the floor,
-     * a width and more down. Two arm shapes are the floor's and end it:
-     * an elbow within [MAX_TUCKED_ELBOW] of the shoulder line is an arm
-     * beside a body lying flat with its head raised, and a forearm seen
-     * flat (its wrist within [FLAT_FOREARM] of its elbow) under a
-     * shoulder less than [MIN_FOREARM_SHOULDER] above it is a sphinx,
-     * chest propped on the elbows, not a forearm plank with the body a
-     * full width and more up. And the face: in a plank the head is a
-     * foot nearer the phone than the shoulders and is drawn larger for
-     * it, the more so the closer the phone, so the gap between the eyes
-     * comes out at least [MIN_HEAD_AHEAD] of a shoulder width, against
-     * about 0.17 for a head on top of its shoulders at the same distance
-     * (standing, sitting, kneeling), looking down at the phone or
-     * straight at it. With no arm held up in the picture the face
-     * decides, which is the close view: elbows and wrists below the
-     * frame. With an arm held up, and no hips in the picture to rule out
-     * a body on its feet, the face has still to be no smaller than a
-     * head on top of its shoulders ([MIN_HEAD_LEVEL]): the arms of a
-     * standing body with its hips cropped hang as low as a plank's.
-     * Everything is in shoulder widths, so the phone can be a hand's
-     * width away or a stride.
+     * Then, with the phone on the floor, the shoulders are above the feet
+     * in the picture and the line slopes down to them by [MIN_SLOPE] at
+     * least: a body lying flat has its shoulders a hand off the floor and
+     * comes out under that from the side and only a little over from an
+     * angle. And by [MAX_SLOPE] at most: standing, kneeling up and sitting
+     * with the legs folded are near vertical. A view from ahead and to one
+     * side steepens a plank's line, which is why the limit is 50 and not
+     * 45. Last, the arms hold it up: an elbow the model can see hangs at
+     * least [MIN_ELBOW_DROP] of the torso's length in the picture below
+     * its shoulder; on the hands the elbows are halfway to the floor, on
+     * the forearms on it, and lying flat they are level with the
+     * shoulders. With no elbow seen the slope decides on its own.
      */
-    fun plankFront(pose: BodyPose): Boolean {
-        if (!facing(pose)) return false
-        val width = PoseGeometry.distance(pose.leftShoulder, pose.rightShoulder)
-        if (width <= 0f) return false
-        if (PoseGeometry.tiltFromHorizontal(pose.leftShoulder, pose.rightShoulder) > 30f) return false
-        val shoulderX = (pose.leftShoulder.x + pose.rightShoulder.x) / 2f
-        val shoulderY = (pose.leftShoulder.y + pose.rightShoulder.y) / 2f
-        val hipsSeen = pose.leftHip.visibility >= MIN_VISIBILITY && pose.rightHip.visibility >= MIN_VISIBILITY
-        if (hipsSeen) {
-            val hipX = (pose.leftHip.x + pose.rightHip.x) / 2f
-            val hipY = (pose.leftHip.y + pose.rightHip.y) / 2f
-            if (abs(hipX - shoulderX) > MAX_HIP_ACROSS * width) return false
-            // Picture y grows downwards: hips below the shoulder line are larger.
-            if (hipY > shoulderY + MAX_HIP_DROP * width) return false
-        }
-        var heldUp = false
-        val arms = listOf(
-            Triple(pose.leftShoulder, pose.leftElbow, pose.leftWrist),
-            Triple(pose.rightShoulder, pose.rightElbow, pose.rightWrist),
-        )
-        for ((shoulder, elbow, wrist) in arms) {
-            // How far below the shoulder each point the model has is, in widths.
-            val elbowDrop = elbow.takeIf { it.visibility >= MIN_VISIBILITY }?.let { (it.y - shoulder.y) / width }
-            val wristDrop = wrist.takeIf { it.visibility >= MIN_VISIBILITY }?.let { (it.y - shoulder.y) / width }
-            if (elbowDrop != null) {
-                if (elbowDrop < MAX_TUCKED_ELBOW) return false
-                if (wristDrop != null && wristDrop - elbowDrop < FLAT_FOREARM && elbowDrop < MIN_FOREARM_SHOULDER) return false
-                if (elbowDrop >= MIN_ELBOW_DROP) heldUp = true
-            }
-            if (wristDrop != null && wristDrop >= MIN_WRIST_DROP) heldUp = true
-        }
-        val headSize = PoseGeometry.distance(pose.leftEye, pose.rightEye) / width
-        return if (heldUp) hipsSeen || headSize >= MIN_HEAD_LEVEL else headSize >= MIN_HEAD_AHEAD
+    fun plank(pose: BodyPose): Boolean {
+        val side = BodySide.of(pose) ?: return false
+        // Picture y grows downwards: the shoulders above the feet are the smaller y.
+        if (side.shoulder.y >= side.ankle.y) return false
+        val slope = PoseGeometry.tiltFromHorizontal(side.shoulder, side.ankle)
+        if (slope < MIN_SLOPE || slope > MAX_SLOPE) return false
+        val sag = PoseGeometry.belowLine(side.hip, side.shoulder, side.ankle)
+        if (sag > MAX_HIP_SAG || sag < -MAX_HIP_PIKE) return false
+        if (PoseGeometry.belowLine(side.knee, side.shoulder, side.ankle) > MAX_KNEE_DROP) return false
+        val torso = PoseGeometry.distance(side.shoulder, side.hip)
+        if (torso <= 0f) return false
+        val elbowDrop = listOf(pose.leftShoulder to pose.leftElbow, pose.rightShoulder to pose.rightElbow)
+            .filter { (_, elbow) -> elbow.visibility >= MIN_VISIBILITY }
+            .maxOfOrNull { (shoulder, elbow) -> (elbow.y - shoulder.y) / torso }
+        return elbowDrop == null || elbowDrop >= MIN_ELBOW_DROP
     }
 
-    private const val MAX_HIP_ACROSS = 0.6f
-    private const val MAX_HIP_DROP = 0.8f
-    private const val MIN_ELBOW_DROP = 0.38f
-    private const val MIN_WRIST_DROP = 0.8f
-    private const val MAX_TUCKED_ELBOW = 0.32f
-    private const val FLAT_FOREARM = 0.3f
-    private const val MIN_FOREARM_SHOULDER = 0.9f
-    private const val MIN_HEAD_AHEAD = 0.22f
-    private const val MIN_HEAD_LEVEL = 0.19f
+    private const val MAX_HIP_SAG = 0.05f
+    private const val MAX_HIP_PIKE = 0.15f
+    private const val MAX_KNEE_DROP = 0.12f
+    private const val MIN_SLOPE = 8f
+    private const val MAX_SLOPE = 50f
+    private const val MIN_ELBOW_DROP = 0.25f
 
     /**
      * What the wall sit needs before it can say anything about the
@@ -328,22 +301,6 @@ object HoldPositions {
         val mid = Landmark((pose.leftShoulder.x + pose.rightShoulder.x) / 2f, (pose.leftShoulder.y + pose.rightShoulder.y) / 2f, 1f)
         val torso = PoseGeometry.distance(mid, hip)
         return torso > 0f && PoseGeometry.distance(pose.leftShoulder, pose.rightShoulder) / torso >= 0.35f
-    }
-
-    /**
-     * A plank, from the side: the body a straight line from shoulder to
-     * ankle, sloping down to the feet by more than lying flat and less
-     * than sitting up. Sagging or piked hips are off the line; a person
-     * sitting with their legs out has hips far below it; a person
-     * standing has a line near vertical. Forearms or hands, either.
-     */
-    fun plankSide(pose: BodyPose): Boolean {
-        val side = BodySide.of(pose) ?: return false
-        val slope = PoseGeometry.tiltFromHorizontal(side.shoulder, side.ankle)
-        if (slope < 6f || slope > 45f) return false
-        // Shoulders above the feet, not the other way round.
-        if (side.shoulder.y >= side.ankle.y) return false
-        return PoseGeometry.offLine(side.hip, side.shoulder, side.ankle) <= 0.14f
     }
 
     /**
