@@ -49,7 +49,7 @@ class MeditationJudge(
     var reason: Reason = Reason.NO_BODY
         private set
 
-    enum class Reason { NO_BODY, HIPS_UNSEEN, NOT_FACING, NOT_UPRIGHT, LEFT_SEAT, MOVING, NONE }
+    enum class Reason { NO_BODY, HIPS_UNSEEN, NOT_FACING, NOT_UPRIGHT, KNEES_UNSEEN, NOT_SEATED, LEFT_SEAT, MOVING, NONE }
 
     private var moving = false
     private var leftSeat = false
@@ -62,10 +62,8 @@ class MeditationJudge(
      * the torso length then: the seat. A body more than [maxSeatDrift]
      * torso lengths from it has got up, however still it is standing,
      * and is out of position until the sitting starts over, when the
-     * seat is wherever it sits next. The camera cannot tell a chair from
-     * standing from every angle (a chair seen from above projects like a
-     * standing leg), so it does not try; it can tell that the hips went
-     * somewhere else.
+     * seat is wherever it sits next. The legs say whether a body is seated
+     * ([SeatedPose.legsFolded]); the seat says whether it stayed so.
      */
     private var seat: Seat? = null
 
@@ -80,6 +78,8 @@ class MeditationJudge(
             !SeatedPose.hipsSeen(pose) -> Reason.HIPS_UNSEEN
             !SeatedPose.facing(pose) -> Reason.NOT_FACING
             !SeatedPose.upright(pose) -> Reason.NOT_UPRIGHT
+            !SeatedPose.kneesSeen(pose) -> Reason.KNEES_UNSEEN
+            !SeatedPose.legsFolded(pose) -> Reason.NOT_SEATED
             leftSeat -> Reason.LEFT_SEAT
             moving -> Reason.MOVING
             else -> Reason.NONE
@@ -133,11 +133,13 @@ class MeditationJudge(
         if (!started) return "Starting the camera" to ""
         return when (phase) {
             PoseJudge.Phase.NO_BODY ->
-                "Looking for you" to "Prop the phone up in front of you, a few steps away, with your head, shoulders and hips in the picture."
+                "Looking for you" to "Stand the phone upright in front of you, a couple of steps away, with you in the picture from head to knees."
             PoseJudge.Phase.NOT_IN_POSITION -> when (reason) {
-                Reason.HIPS_UNSEEN -> "Move back a little" to "The camera needs to see you down to the hips."
+                Reason.HIPS_UNSEEN -> "Move back a little" to "The camera needs to see you down to the knees."
                 Reason.NOT_FACING -> "Face the phone" to "Turn to look straight at the camera."
                 Reason.NOT_UPRIGHT -> "Sit up" to "Back straight, shoulders over your hips."
+                Reason.KNEES_UNSEEN -> "Show your knees" to "Move back, or tilt the phone, until your knees are in the picture."
+                Reason.NOT_SEATED -> "Sit down" to "Cross-legged on the floor, or on a chair, facing the phone. Standing does not count."
                 Reason.LEFT_SEAT -> "Sit back down" to "Where you were. A few seconds away starts the sitting over."
                 Reason.MOVING -> "Settle" to "Keep still. The clock starts when you have."
                 else -> "Sit still, facing the phone" to "Back straight, and keep still."
@@ -249,16 +251,57 @@ object SeatedPose {
         return PoseGeometry.tiltFromHorizontal(Landmark(sx, sy, 1f), Landmark(hx, hy, 1f)) >= 60f
     }
 
+    /** Both knees seen: the picture reaches far enough down to say whether the body is sitting. */
+    fun kneesSeen(pose: BodyPose): Boolean =
+        pose.leftKnee.visibility >= MIN_VISIBILITY && pose.rightKnee.visibility >= MIN_VISIBILITY
+
     /**
-     * The whole position: somebody facing the phone, sitting up. The legs
-     * are not asked about: from the front, in two dimensions, a chair
-     * with the phone a little above it projects exactly like a standing
-     * leg, and a rule that called that standing would refuse a real
-     * sitter the whole seven minutes. Getting up is caught instead by
-     * the hips leaving the seat ([MeditationJudge]); somebody who stands
-     * still in front of the phone for seven minutes has done the harder
-     * thing, and is taken at their word.
+     * The legs of a body that is sitting, seen from in front with the
+     * phone at about the height of the body or lower: each thigh either
+     * goes sideways (cross-legged on the floor: the knee out to the side,
+     * the hip-to-knee line within [MAX_FOLDED_THIGH_TILT] of horizontal)
+     * or comes towards the camera and looks short (on a chair: the knee
+     * under the hip but the line no longer than [MAX_FORESHORTENED_THIGH]
+     * of a torso). A body on its feet has a thigh that hangs straight down
+     * and as long as the torso, and fails both; so does one kneeling up
+     * or sitting back on its heels, whose thighs are long and near
+     * vertical from the front, and which is asked to sit another way. An
+     * ankle the model can see below a straight, long leg is the last
+     * word: that leg is standing on the floor.
+     *
+     * The founder's ask is that the clock never runs for a body on its
+     * feet, so the picture has to include the knees, and a phone high
+     * enough above a chair to foreshorten nothing is the one placement
+     * this refuses a real sitter; the copy says where the phone goes.
+     */
+    fun legsFolded(pose: BodyPose): Boolean {
+        val torso = torsoLength(pose)
+        if (torso <= 0f || !kneesSeen(pose)) return false
+        val legs = listOf(
+            Triple(pose.leftHip, pose.leftKnee, pose.leftAnkle),
+            Triple(pose.rightHip, pose.rightKnee, pose.rightAnkle),
+        )
+        return legs.all { (hip, knee, ankle) ->
+            val thighTilt = PoseGeometry.tiltFromHorizontal(hip, knee)
+            val thighLength = PoseGeometry.distance(hip, knee) / torso
+            val folded = thighTilt <= MAX_FOLDED_THIGH_TILT || thighLength <= MAX_FORESHORTENED_THIGH
+            val standingOn = ankle.visibility >= MIN_VISIBILITY && ankle.y > knee.y &&
+                PoseGeometry.distance(hip, ankle) / torso >= MIN_STANDING_LEG &&
+                PoseGeometry.tiltFromHorizontal(hip, ankle) >= 60f
+            folded && !standingOn
+        }
+    }
+
+    private const val MAX_FOLDED_THIGH_TILT = 40f
+    private const val MAX_FORESHORTENED_THIGH = 0.55f
+    private const val MIN_STANDING_LEG = 1.45f
+
+    /**
+     * The whole position: somebody facing the phone, sitting up, with
+     * the legs of somebody sitting. A body standing in front of the phone,
+     * however still, is not it; neither is one whose knees the camera
+     * cannot see, which could be either.
      */
     fun seated(pose: BodyPose): Boolean =
-        hasBody(pose) && hipsSeen(pose) && facing(pose) && upright(pose)
+        hasBody(pose) && hipsSeen(pose) && facing(pose) && upright(pose) && legsFolded(pose)
 }

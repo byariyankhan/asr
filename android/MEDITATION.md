@@ -36,11 +36,21 @@ things of the pose:
   back a little"); the shoulders level within 25° and at least 0.35 of a
   torso apart (a body side-on or lying on its side is neither); the
   shoulders above the hips with the line between them at least 60° from
-  horizontal (slumped or lying back is not). The legs are not asked
-  about: from the front, in two dimensions, a chair with the phone a
-  little above it projects exactly like a standing leg, and a rule that
-  called that standing would refuse a real sitter the whole seven
-  minutes.
+  horizontal (slumped or lying back is not).
+- **Sitting, by the legs** (`SeatedPose.legsFolded`): both knees seen,
+  and each thigh either goes sideways (cross-legged on the floor: the
+  hip-to-knee line within 40° of horizontal) or comes towards the camera
+  and looks short (on a chair: no longer than 0.55 of a torso). A body
+  on its feet has a thigh that hangs straight down and as long as the
+  torso, and fails both; an ankle the model sees below a straight leg
+  1.45 torsos long is the last word. The founder's rule is that a body
+  standing in front of the phone never earns a second, so knees out of
+  the picture is not the position either ("Show your knees"), and
+  kneeling up or sitting back on the heels, whose thighs look long and
+  vertical from the front, is asked to sit another way ("Sit down").
+  The one placement this refuses a real sitter is a phone high above a
+  chair looking down, which stretches the thighs in the picture; the
+  copy says no higher than the chest.
 - **Still** (`BodyMotion`): over the last second the nose may drift by
   0.2 of a torso and the point between the shoulders by 0.12, measured
   in torso lengths (shoulders to hips) so the rule is the same near the
@@ -88,14 +98,14 @@ second, as it does for every camera activity, and the receipt shows
 ## Anti-cheat, and its limits
 
 - A phone on a table with nobody in front of it: nothing. The judge
-  needs a face, shoulders and hips.
+  needs a face, shoulders, hips and knees.
 - Sitting for four minutes, going to make tea, sitting for three more:
   nothing. Two sittings are not a meditation; the count started over.
-- Standing up mid-sitting and standing still: the hips left the seat,
-  and three seconds later the count starts over. Standing still in front
-  of the phone from the start, for seven minutes: passes. The camera
-  cannot tell a chair from standing from every angle, and somebody who
-  stood still that long has done the harder thing.
+- Standing in front of the phone, from the start or after getting up,
+  however still: nothing. The legs are not a sitter's, and if the knees
+  are out of the picture the clock does not run at all. Getting up
+  mid-sitting starts the count over three seconds later, and sitting
+  back down starts a fresh one.
 - The phone knocked mid-sitting so the picture shifts by more than 0.6
   of a torso: the hips appear to have left the seat, and the sitting
   starts over. A nudge does less than that; a phone knocked over ends
@@ -135,18 +145,21 @@ second, as it does for every camera activity, and the receipt shows
 
 1. Choose Meditate: the camera permission screen (if not yet granted)
    reads "7 MINUTES", then the camera screen with the placement card.
-2. Prop the phone up a few steps away, sit facing it with hips in the
-   picture: the frame goes green, "Sit still", and the clock counts up
-   as m:ss. A tick and a pulse at 1:00.
+2. Stand the phone upright a couple of steps away, no higher than your
+   chest, and sit cross-legged or on a chair facing it with your knees in
+   the picture: the frame goes green, "Sit still", and the clock counts
+   up as m:ss. A tick and a pulse at 1:00. Stand in front of it instead:
+   "Sit down", and nothing counts, however still you are.
 3. Scratch your nose, cough: the clock stops for a moment and goes on
    from where it was. Turn to look at something for a second: "Settle";
    look back and be still: the clock goes on.
-4. Stand up and stay standing: "Sit back down", and after three seconds
-   the clock is at 0:00. Stand up and sit straight back down: the clock
-   goes on from where it was. "Give up this sitting" and "Finish later:
+4. Stand up and stay standing: "Sit down", after three seconds the
+   clock is at 0:00, and it stays there while you stand. Stand up and
+   sit straight back down: the clock goes on from where it was. "Give up this sitting" and "Finish later:
    leaving starts the sitting over" read as such.
 5. Leave with the back chevron mid-sitting and reopen: 0:00.
 6. Sit for seven minutes: "7:00 ✓ DONE", the finish chime, the receipt,
    +10 on the app.
 7. Prop the phone so only the head and shoulders are in the picture:
-   "Move back a little", and no seconds until the hips are in.
+   "Move back a little", and no seconds until the hips are in; with the
+   hips in but the knees out, "Show your knees", and still none.

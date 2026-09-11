@@ -197,10 +197,60 @@ internal class BodySide(val shoulder: Landmark, val hip: Landmark, val knee: Lan
 object HoldPositions {
     private const val MIN_VISIBILITY = 0.5f
 
-    /** Any body at all: a shoulder and a hip the model is sure of, on one side. */
+    /** Any body at all: a shoulder and a hip the model is sure of on one side, or a face with both shoulders. */
     fun hasBody(pose: BodyPose): Boolean =
         listOf(pose.leftShoulder to pose.leftHip, pose.rightShoulder to pose.rightHip)
-            .any { (s, h) -> s.visibility >= MIN_VISIBILITY && h.visibility >= MIN_VISIBILITY }
+            .any { (s, h) -> s.visibility >= MIN_VISIBILITY && h.visibility >= MIN_VISIBILITY } ||
+            facing(pose)
+
+    /** A face and both shoulders the model is sure of: a body looking this way. */
+    private fun facing(pose: BodyPose): Boolean =
+        pose.leftEye.visibility >= MIN_VISIBILITY && pose.rightEye.visibility >= MIN_VISIBILITY &&
+            pose.leftShoulder.visibility >= MIN_VISIBILITY && pose.rightShoulder.visibility >= MIN_VISIBILITY
+
+    /**
+     * A plank, from whichever way the phone is looking: head-on from the
+     * floor ahead of the hands ([plankFront]), which is where a phone
+     * stood upright goes, or from the side across the room ([plankSide]).
+     */
+    fun plank(pose: BodyPose): Boolean = plankFront(pose) || plankSide(pose)
+
+    /**
+     * A plank seen from in front: the phone upright on the floor a step
+     * ahead of the hands, looking along the body. What that view can see
+     * is the face, the shoulders, and the hips behind them, small; the
+     * legs are behind the torso and are not asked about.
+     *
+     * The face is level with the shoulders or below them (in a plank the
+     * head hangs in line with the spine; standing, kneeling up or sitting
+     * puts the eyes well above the shoulder line), the shoulders are
+     * level (facing the phone, not lying on one side), and the hips, when
+     * the model has them, sit behind the shoulders: between them across
+     * the picture and no lower than a little under the shoulder line. A
+     * body on its feet or on a chair has its hips a torso below the
+     * shoulders, which is the one thing this view sees plainly. All
+     * distances are in shoulder widths, so the phone can be a hand's
+     * width away or a stride.
+     */
+    fun plankFront(pose: BodyPose): Boolean {
+        if (!facing(pose)) return false
+        val width = PoseGeometry.distance(pose.leftShoulder, pose.rightShoulder)
+        if (width <= 0f) return false
+        if (PoseGeometry.tiltFromHorizontal(pose.leftShoulder, pose.rightShoulder) > 30f) return false
+        val shoulderX = (pose.leftShoulder.x + pose.rightShoulder.x) / 2f
+        val shoulderY = (pose.leftShoulder.y + pose.rightShoulder.y) / 2f
+        val eyesY = (pose.leftEye.y + pose.rightEye.y) / 2f
+        // Picture y grows downwards: eyes above the shoulder line are smaller.
+        if (eyesY < shoulderY - 0.3f * width) return false
+        val hipsSeen = pose.leftHip.visibility >= MIN_VISIBILITY && pose.rightHip.visibility >= MIN_VISIBILITY
+        if (hipsSeen) {
+            val hipX = (pose.leftHip.x + pose.rightHip.x) / 2f
+            val hipY = (pose.leftHip.y + pose.rightHip.y) / 2f
+            if (abs(hipX - shoulderX) > 0.6f * width) return false
+            if (hipY > shoulderY + 0.35f * width) return false
+        }
+        return true
+    }
 
     /**
      * A plank, from the side: the body a straight line from shoulder to
@@ -209,7 +259,7 @@ object HoldPositions {
      * sitting with their legs out has hips far below it; a person
      * standing has a line near vertical. Forearms or hands, either.
      */
-    fun plank(pose: BodyPose): Boolean {
+    fun plankSide(pose: BodyPose): Boolean {
         val side = BodySide.of(pose) ?: return false
         val slope = PoseGeometry.tiltFromHorizontal(side.shoulder, side.ankle)
         if (slope < 6f || slope > 45f) return false

@@ -33,8 +33,22 @@ class MeditationJudgeTest {
 
     private val sitting = seated()
 
-    /** The same body stood up on the spot: everything a torso and a bit higher in the picture, and then still. */
+    /** The same body moved up a torso and more, still folded: a higher seat, or the phone tilted. */
     private val stood = seated(dy = -0.3f)
+
+    /** On its feet, facing the phone: thighs hanging straight down, a torso long, ankles below. */
+    private val standing = seated(dy = -0.3f).copy(
+        leftKnee = Landmark(0.56f, 0.60f, 0.95f),
+        rightKnee = Landmark(0.44f, 0.60f, 0.95f),
+        leftAnkle = Landmark(0.56f, 0.82f, 0.95f),
+        rightAnkle = Landmark(0.44f, 0.82f, 0.95f),
+    )
+
+    /** Kneeling up, or sitting back on the heels: long thighs near vertical, no ankle seen. */
+    private val kneeling = sitting.copy(
+        leftKnee = Landmark(0.58f, 0.84f, 0.95f),
+        rightKnee = Landmark(0.42f, 0.84f, 0.95f),
+    )
 
     /** On a chair, facing the phone: the thighs come towards the camera and look short. */
     private val onAChair = sitting.copy(
@@ -83,9 +97,42 @@ class MeditationJudgeTest {
         assertFalse(SeatedPose.seated(cropped))
     }
 
-    @Test fun `legs out of the picture are not held against a sitter`() {
+    @Test fun `knees out of the picture is a body, but could be standing, and is not the position`() {
         val topHalf = sitting.copy(leftKnee = BodyPose.UNSEEN, rightKnee = BodyPose.UNSEEN)
-        assertTrue(SeatedPose.seated(topHalf))
+        assertTrue(SeatedPose.hasBody(topHalf))
+        assertTrue(SeatedPose.upright(topHalf))
+        assertFalse(SeatedPose.kneesSeen(topHalf))
+        assertFalse(SeatedPose.seated(topHalf))
+    }
+
+    @Test fun `standing facing the phone is not the position, with or without the ankles seen`() {
+        assertFalse(SeatedPose.legsFolded(standing))
+        assertFalse(SeatedPose.seated(standing))
+        val anklesCropped = standing.copy(leftAnkle = BodyPose.UNSEEN, rightAnkle = BodyPose.UNSEEN)
+        assertFalse(SeatedPose.seated(anklesCropped))
+        // One leg folded and one straight is not sitting either.
+        assertFalse(SeatedPose.seated(sitting.copy(leftKnee = standing.leftKnee.copy(y = 0.90f))))
+    }
+
+    @Test fun `kneeling up is not the position, and is asked to sit another way`() {
+        assertFalse(SeatedPose.seated(kneeling))
+    }
+
+    @Test fun `a foreshortened thigh with a straight long leg under it is standing, not a chair`() {
+        // The knee guessed close under the hip, but the ankle a torso and a half straight below the hip.
+        val trick = sitting.copy(
+            leftKnee = Landmark(0.56f, 0.75f, 0.95f), rightKnee = Landmark(0.44f, 0.75f, 0.95f),
+            leftAnkle = Landmark(0.56f, 1.05f, 0.95f), rightAnkle = Landmark(0.44f, 1.05f, 0.95f),
+        )
+        assertFalse(SeatedPose.legsFolded(trick))
+    }
+
+    @Test fun `a body standing in front of the phone from the start never starts the clock`() {
+        val judge = MeditationJudge()
+        assertEquals(0, judge.frames(standing, 0, 10_000))
+        assertEquals(PoseJudge.Phase.NOT_IN_POSITION, judge.phase)
+        assertEquals(MeditationJudge.Reason.NOT_SEATED, judge.reason)
+        assertEquals("Sit down", judge.coaching(true).first)
     }
 
     /** Frames every 100 ms from [from] for [millis], all of [pose]; the seconds they earned. */
@@ -132,10 +179,32 @@ class MeditationJudgeTest {
         assertFalse(judge.brokeOff)
     }
 
-    @Test fun `getting up for longer than a moment starts the count over, however still the standing is`() {
+    @Test fun `getting up for longer than a moment starts the count over, and standing still earns nothing after`() {
         val judge = MeditationJudge()
         assertEquals(20, judge.frames(sitting, 0, 20_400))
-        // Up: a second of movement, then a still body whose hips are a torso and more from the seat.
+        // Up: a second of movement, then a still body on its feet.
+        for (t in 20_500L..23_800L step 100) {
+            judge.observe(standing, t)
+            assertFalse(judge.brokeOff)
+        }
+        assertEquals(PoseJudge.Phase.NOT_IN_POSITION, judge.phase)
+        assertEquals(MeditationJudge.Reason.NOT_SEATED, judge.reason)
+        // Three seconds out of position: over.
+        judge.observe(standing, 23_900)
+        assertTrue(judge.brokeOff)
+        // Standing there, however still: nothing.
+        assertEquals(0, judge.frames(standing, 24_000, 10_000))
+        assertEquals(PoseJudge.Phase.NOT_IN_POSITION, judge.phase)
+        assertFalse(judge.brokeOff)
+        // Sitting back down: a fresh sitting from nothing.
+        judge.frames(sitting, 34_100, 1_400)
+        assertEquals(PoseJudge.Phase.WORKING, judge.phase)
+        assertEquals(5, judge.frames(sitting, 35_600, 5_400))
+    }
+
+    @Test fun `moving to a different seat, still sitting, starts the count over after a moment`() {
+        val judge = MeditationJudge()
+        assertEquals(20, judge.frames(sitting, 0, 20_400))
         for (t in 20_500L..23_800L step 100) {
             judge.observe(stood, t)
             assertFalse(judge.brokeOff)
@@ -143,16 +212,13 @@ class MeditationJudgeTest {
         assertEquals(PoseJudge.Phase.NOT_IN_POSITION, judge.phase)
         assertEquals(MeditationJudge.Reason.LEFT_SEAT, judge.reason)
         assertEquals("Sit back down", judge.coaching(true).first)
-        // Three seconds out of position: over.
         judge.observe(stood, 23_900)
         assertTrue(judge.brokeOff)
-        // Still standing there, still: a fresh sitting, wherever the hips now are. The camera
-        // cannot tell a chair from standing from every angle, so standing still is taken at its word.
+        // Sitting still in the new place: a fresh sitting, wherever the seat now is.
         judge.frames(stood, 24_000, 400)
         assertFalse(judge.brokeOff)
         assertEquals(PoseJudge.Phase.WORKING, judge.phase)
         assertEquals(5, judge.frames(stood, 24_500, 5_400))
-        assertFalse(judge.brokeOff)
     }
 
     @Test fun `the seat is not taken from the half-found body after a gap`() {
@@ -235,8 +301,12 @@ class MeditationJudgeTest {
         assertEquals("Face the phone", judge.coaching(true).first)
         judge.frames(slumped, 1_800, 500)
         assertEquals("Sit up", judge.coaching(true).first)
+        judge.frames(sitting.copy(leftKnee = BodyPose.UNSEEN, rightKnee = BodyPose.UNSEEN), 2_400, 500)
+        assertEquals("Show your knees", judge.coaching(true).first)
+        judge.frames(kneeling, 3_000, 500)
+        assertEquals("Sit down", judge.coaching(true).first)
         // The head came back from the slump within the last second: moving, until that is out of the window.
-        judge.frames(sitting, 2_400, 1_400)
+        judge.frames(sitting, 3_600, 1_400)
         assertEquals("Sit still", judge.coaching(true).first)
     }
 
