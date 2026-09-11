@@ -13,13 +13,42 @@ why and what is done with it.
 
 ## What is proved, and what is not
 
-Speed and distance. Metres between one fix and the next count when the
-speed between them is a bicycle's, 8 to 45 km/h: slower is walking the
-bike or a red light, faster is a car. A runner can hold a bicycle's
-speed, so the step counter is read as well and a stretch at 100 steps a
-minute or more counts for nothing. A slow drive in city traffic would
-pass. The phone cannot tell a bicycle from a car at 20 km/h, and the
-mechanism is honesty; the sheet says as much.
+A window of thirty seconds is credited only when everything about it
+looks like riding and nothing looks like a vehicle, a runner, or a
+fake. Speed alone cannot tell a bicycle from a car at 20 km/h, so the
+GPS, the step counter and the accelerometer are read together:
+
+- **Pace.** The window's mean speed is 8 to 40 km/h (slower is walking
+  the bike or a light; faster, sustained, is a motor) and no stretch
+  between fixes exceeds 45 km/h (a downhill).
+- **Jostle.** A bicycle shakes the phone, in a pocket, a bag, or on the
+  bars; a phone resting on a car seat, or on a desk under a spoofed
+  route, does not. The accelerometer's magnitude has to vary by at
+  least 0.3 m/s² over the window.
+- **Smoothness.** Legs cannot change speed by 3 m/s in two seconds; a
+  car braking for a light or pulling away can. Two such changes in a
+  window is a vehicle.
+- **Feet.** Steps at 100 a minute or more over the window is a runner,
+  whose speed can be a bicycle's.
+- **Honest fixes.** A fix from a mock provider spoils its window. A fix
+  worse than 20 m is not a place and is ignored. Where the GPS chip
+  reports its own speed (Doppler, which no position edit can fake), the
+  window's mean of it has to agree with the distance covered to within
+  2.5 m/s, which is what catches a spoofed path with the phone at rest.
+  A gap of more than 15 s between fixes adds no distance, and a jump
+  faster than a bicycle spoils its window; riding on afterwards counts.
+
+Reviewed against the founder's list: a car or motorbike in traffic
+(braking, pulling away, and a phone lying on the seat), GPS spoofing
+(mock provider, teleport, a smooth fake path with a still phone), poor
+accuracy, and a phone kept still in a vehicle. Each is refused by at
+least one of the above; the tests in `RideCounterTest` play each one.
+None of this is proof: a car crawling in stop-free traffic with the
+phone in a pocket on a rough road could pass. The aim is that cheating
+takes more effort than cycling, not that it is impossible, and the
+mechanism is honesty; the sheet says as much. A refused window is
+logged on the phone with its reason, and nothing about it goes to the
+server.
 
 ## How it works
 
@@ -35,23 +64,18 @@ a phone forgotten with GPS on. Its notification says a ride is being
 measured and how far it has got, for the whole of it.
 
 Fixes come from `LocationManager`'s GPS provider once a second, with the
-platform's own clock (`elapsedRealtimeNanos`), and go to
-`earn/RideCounter.kt`, pure Kotlin, tested in `RideCounterTest`:
+platform's own clock (`elapsedRealtimeNanos`), the chip's own speed and
+its mock flag; the step counter and the accelerometer come through the
+same service at a five-second batch latency. All of it goes to
+`earn/RideCounter.kt`, pure Kotlin, tested in `RideCounterTest`, which
+judges each thirty-second window by the rules above and credits its
+metres, whole, to the activity when it closes. Progress therefore runs
+half a minute behind the wheels.
 
-- A fix worse than 30 m is not a place, and is ignored; the last good
-  fix stays the reference.
-- A gap longer than 15 s between accepted fixes (a tunnel, the process
-  killed) is a stretch nobody measured, and credits nothing; the ride
-  goes on from the next fix.
-- The great-circle distance between fixes over the time between them is
-  the speed; within 8 to 45 km/h the distance is credited, in whole
-  metres, to the activity as it accumulates.
-- Steps over the last 20 s at 100 a minute or more make the stretch a
-  run, not a ride.
-
-The counter remembers one fix, the last, and only until the next. No
-route is written and nothing about where the phone was is sent; the
-server learns that the ride was completed, as it does for a walk.
+The counter remembers one fix, the last, and only until the next, and
+the window's sums. No route is written and nothing about where the
+phone was is sent; the server learns that the ride was completed, as it
+does for a walk.
 
 ## Permissions
 

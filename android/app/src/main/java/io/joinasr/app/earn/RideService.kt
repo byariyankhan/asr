@@ -39,7 +39,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.ArrayDeque
 import java.util.Locale
 
 /**
@@ -56,36 +55,48 @@ import java.util.Locale
  * given up, runs out of time, or has credited nothing for half an hour,
  * which is a phone forgotten with GPS on.
  *
- * Every fix goes to [RideCounter] and is then forgotten: no route is
- * kept, nothing about where the phone was is written or sent. Progress
- * is metres on the activity; the reward is applied here, locally and
- * first, and reported after, like every other activity's.
+ * Every fix goes to [RideCounter], with the step counter and the
+ * accelerometer beside it (a run is told by the feet, a car seat by the
+ * lack of shake), and is then forgotten: no route is kept, nothing about
+ * where the phone was is written or sent. Progress is metres on the
+ * activity; the reward is applied here, locally and first, and reported
+ * after, like every other activity's.
  */
 class RideService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val store by lazy { EarnStore(this) }
     private val events = Channel<Event>(Channel.UNLIMITED)
     private val counter = RideCounter()
-    private val steps = ArrayDeque<Long>()
-    private var lastStepTotal: Int? = null
     private var running: EarnActivity? = null
     private var lastCreditAt: Long = 0L
     private var listening = false
 
     private sealed interface Event {
         data class Activity(val value: EarnActivity?) : Event
-        data class Fix(val latitude: Double, val longitude: Double, val accuracy: Float, val atMillis: Long) : Event
+        data class Fix(
+            val latitude: Double,
+            val longitude: Double,
+            val accuracy: Float,
+            val speed: Float?,
+            val mock: Boolean,
+            val atMillis: Long,
+        ) : Event
         data class Steps(val total: Int, val atMillis: Long) : Event
+        data class Motion(val x: Float, val y: Float, val z: Float, val atMillis: Long) : Event
         /** The watchdog: is there still a ride worth listening for? */
         data object Tick : Event
     }
 
     private val locations = object : LocationListener {
         override fun onLocationChanged(location: Location) {
+            @Suppress("DEPRECATION")
+            val mock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) location.isMock else location.isFromMockProvider
             events.trySend(
                 Event.Fix(
                     location.latitude, location.longitude,
                     if (location.hasAccuracy()) location.accuracy else Float.MAX_VALUE,
+                    if (location.hasSpeed()) location.speed else null,
+                    mock,
                     location.elapsedRealtimeNanos / 1_000_000L,
                 ),
             )
@@ -97,10 +108,14 @@ class RideService : Service() {
         override fun onProviderDisabled(provider: String) = Unit
     }
 
-    private val stepListener = object : SensorEventListener {
+    private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
-            val total = event.values.firstOrNull()?.toInt() ?: return
-            events.trySend(Event.Steps(total, event.timestamp / 1_000_000L))
+            val at = event.timestamp / 1_000_000L
+            when (event.sensor.type) {
+                Sensor.TYPE_STEP_COUNTER -> event.values.firstOrNull()?.let { events.trySend(Event.Steps(it.toInt(), at)) }
+                Sensor.TYPE_ACCELEROMETER ->
+                    events.trySend(Event.Motion(event.values[0], event.values[1], event.values[2], at))
+            }
         }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
@@ -140,7 +155,8 @@ class RideService : Service() {
                     when (event) {
                         is Event.Activity -> activityChanged(event.value)
                         is Event.Fix -> onFix(event)
-                        is Event.Steps -> onSteps(event)
+                        is Event.Steps -> counter.observeSteps(event.total, event.atMillis)
+                        is Event.Motion -> counter.observeMotion(event.x, event.y, event.z, event.atMillis)
                         Event.Tick -> if (overdueOrIdle()) stopSelf()
                     }
                 } catch (error: Exception) {
@@ -184,10 +200,14 @@ class RideService : Service() {
             return
         }
         getSystemService<SensorManager>()?.let { sensors ->
-            val sensor = sensors.getDefaultSensor(Sensor.TYPE_STEP_COUNTER, true)
+            val steps = sensors.getDefaultSensor(Sensor.TYPE_STEP_COUNTER, true)
                 ?: sensors.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-            if (sensor != null) {
-                sensors.registerListener(stepListener, sensor, SensorManager.SENSOR_DELAY_NORMAL, STEP_LATENCY_MICROS)
+            if (steps != null) {
+                sensors.registerListener(sensorListener, steps, SensorManager.SENSOR_DELAY_NORMAL, SENSOR_LATENCY_MICROS)
+            }
+            // The shake of a bicycle, or the stillness of a car seat.
+            sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
+                sensors.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_NORMAL, SENSOR_LATENCY_MICROS)
             }
         }
         listening = true
@@ -196,21 +216,8 @@ class RideService : Service() {
     private fun stopListening() {
         if (!listening) return
         runCatching { getSystemService<LocationManager>()?.removeUpdates(locations) }
-        runCatching { getSystemService<SensorManager>()?.unregisterListener(stepListener) }
+        runCatching { getSystemService<SensorManager>()?.unregisterListener(sensorListener) }
         listening = false
-    }
-
-    private fun onSteps(event: Event.Steps) {
-        val last = lastStepTotal
-        lastStepTotal = event.total
-        if (last == null || event.total <= last) return
-        repeat((event.total - last).coerceAtMost(50)) { steps.addLast(event.atMillis) }
-    }
-
-    /** Steps a minute over the last [CADENCE_WINDOW_MILLIS], as of [atMillis]. */
-    private fun cadence(atMillis: Long): Float {
-        while (steps.isNotEmpty() && atMillis - steps.first > CADENCE_WINDOW_MILLIS) steps.removeFirst()
-        return steps.size * 60_000f / CADENCE_WINDOW_MILLIS
     }
 
     /**
@@ -235,7 +242,7 @@ class RideService : Service() {
             stopSelf()
             return
         }
-        val earned = counter.observe(fix.latitude, fix.longitude, fix.accuracy, fix.atMillis, cadence(fix.atMillis))
+        val earned = counter.observeFix(fix.latitude, fix.longitude, fix.accuracy, fix.speed, fix.mock, fix.atMillis)
         if (earned <= 0) return
         lastCreditAt = System.currentTimeMillis()
         val updated = activity.copy(progress = (activity.progress + earned).coerceAtMost(activity.target))
@@ -306,8 +313,7 @@ class RideService : Service() {
         const val CHANNEL_ID = "ride"
         private const val NOTIFICATION_ID = 22
         private const val FIX_INTERVAL_MILLIS = 1_000L
-        private const val STEP_LATENCY_MICROS = 5_000_000
-        private const val CADENCE_WINDOW_MILLIS = 20_000L
+        private const val SENSOR_LATENCY_MICROS = 5_000_000
 
         /** Half an hour of no ride is a phone forgotten with GPS on. */
         private const val IDLE_STOP_MILLIS = 30L * 60 * 1000

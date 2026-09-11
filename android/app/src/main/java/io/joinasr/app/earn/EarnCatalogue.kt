@@ -205,8 +205,9 @@ fun earnOptions(
         icon = EarnIcon.RIDE,
         explanation = "Go for a ride with the phone on you. Only distance at a cycling speed counts, " +
             "between 8 and 45 km/h, so walking the bike and a car do not. You can lock the phone.",
-        verification = "GPS, while the ride is on: each fix is compared with the last for speed and " +
-            "distance and then dropped. Running at a bicycle's speed is told apart by the step counter.",
+        verification = "GPS, while the ride is on, judged half a minute at a time: a bicycle's pace, " +
+            "the shake of a bicycle on the motion sensor (a phone resting in a car earns nothing), no " +
+            "car-like braking, no running on the step counter, no mock location. Each fix is then dropped.",
         privacy = "Location is read on the phone to measure the ride and never sent. No route or " +
             "place is saved; the server learns that the ride was completed, nothing about where.",
         recommended = false,
