@@ -38,6 +38,13 @@ interface PoseJudge {
      */
     fun observe(pose: BodyPose?, nowMillis: Long): Int
 
+    /**
+     * True for the one frame on which a run that had counted was given up
+     * on, for an activity that has to be done in one go: the count starts
+     * over. False for every judge whose breaks merely pause the clock.
+     */
+    val brokeOff: Boolean get() = false
+
     /** The next thing to do, as a title and a line under it, given what the judge sees. */
     fun coaching(started: Boolean): Pair<String, String>
 }

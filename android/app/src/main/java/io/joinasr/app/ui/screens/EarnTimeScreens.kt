@@ -43,11 +43,13 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -660,13 +662,13 @@ fun CameraAccessScreen(
         ) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    "${EarnRules.targetFor(spec.type)}",
+                    spec.targetShown.first,
                     style = AsrType.display(38),
                     color = AsrColors.Accent,
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    spec.unitLabel,
+                    spec.targetShown.second,
                     style = AsrType.Eyebrow.copy(fontSize = 11.sp),
                     color = AsrColors.Accent,
                     modifier = Modifier.padding(bottom = 8.dp),
@@ -1102,12 +1104,25 @@ fun CameraActivityScreen(
     onBack: () -> Unit,
     onEnd: () -> Unit,
     onCounted: (Int) -> Unit,
+    /** A run that has to be done in one go was broken off, or this screen was opened on one: the count goes to zero. */
+    onStartedOver: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Bumped to start the camera and the judge over: after a failure the
     // person asked to retry, or after the pause for absence.
     var attempt by remember(activity.id) { mutableIntStateOf(0) }
     val judge = remember(activity.id, attempt) { spec.newJudge() }
+    // A run that must be continuous ends with the screen: leaving it, or
+    // the camera stopping and being started again, interrupted the
+    // sitting, and the count goes to zero on the way out as well as on
+    // the way back in, so the dashboard never offers to continue one.
+    LaunchedEffect(judge) {
+        if (spec.continuous && activity.progress > 0) onStartedOver()
+    }
+    val latestStartedOver by rememberUpdatedState(onStartedOver)
+    DisposableEffect(activity.id, spec.continuous) {
+        onDispose { if (spec.continuous) latestStartedOver() }
+    }
     var phase by remember(activity.id, attempt) { mutableStateOf(PoseJudge.Phase.NO_BODY) }
     /** True once the first frame has been judged: before that nothing is looking. */
     var started by remember(activity.id, attempt) { mutableStateOf(false) }
@@ -1188,6 +1203,10 @@ fun CameraActivityScreen(
                                 val now = judge.phase
                                 if (before == PoseJudge.Phase.NO_BODY && now != PoseJudge.Phase.NO_BODY) {
                                     feedback.found()
+                                }
+                                if (spec.continuous && judge.brokeOff) {
+                                    feedback.found()
+                                    onStartedOver()
                                 }
                                 if (counted > 0) {
                                     // Every rep; every few seconds of a hold.
@@ -1272,7 +1291,7 @@ fun CameraActivityScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            "${activity.progress}",
+                            spec.format(activity.progress),
                             style = AsrType.display(112),
                             color = AsrColors.TextPrimary,
                             modifier = Modifier.graphicsLayer {
@@ -1281,7 +1300,7 @@ fun CameraActivityScreen(
                             },
                         )
                         Text(
-                            "OF ${activity.target}",
+                            "OF ${spec.format(activity.target)}",
                             style = AsrType.Eyebrow,
                             color = AsrColors.TextPrimary.copy(alpha = 0.85f),
                         )
@@ -1343,13 +1362,13 @@ fun CameraActivityScreen(
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "${activity.progress}",
+                        spec.format(activity.progress),
                         style = AsrType.display(48),
                         color = AsrColors.TextPrimary,
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "of ${activity.target} ${spec.noun}",
+                        spec.ofTarget,
                         style = AsrType.Label.copy(fontSize = 14.sp),
                         color = AsrColors.TextSecondary,
                     )
@@ -1377,7 +1396,7 @@ fun CameraActivityScreen(
 
         Spacer(Modifier.height(16.dp))
         RewardNote(
-            title = if (spec.timed) "${activity.remaining} seconds to go" else "${activity.remaining} to go",
+            title = spec.toGo(activity.remaining),
             body = "Finish and ${activity.appLabel} gets +${activity.rewardMinutes} minutes today.",
         )
 
@@ -1402,7 +1421,7 @@ fun CameraActivityScreen(
             if (activity.progress > 0) {
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    "Your ${activity.progress} ${spec.noun} are saved.",
+                    if (spec.continuous) "Leaving starts the ${spec.session} over." else "Your ${activity.progress} ${spec.noun} are saved.",
                     style = AsrType.Legal.copy(fontSize = 12.sp),
                     color = AsrColors.TextSecondary,
                 )
@@ -1419,7 +1438,7 @@ fun CameraActivityScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    "Give up this set? Your ${activity.progress} ${spec.noun} will not count.",
+                    "Give up this ${spec.session}? Your ${spec.format(activity.progress)} ${if (spec.continuous) "" else spec.noun + " "}will not count.",
                     style = AsrType.Label.copy(fontSize = 13.sp),
                     color = AsrColors.TextPrimary,
                     textAlign = TextAlign.Center,
@@ -1449,7 +1468,7 @@ fun CameraActivityScreen(
             }
         } else {
             Text(
-                "Give up this set",
+                "Give up this ${spec.session}",
                 style = AsrType.Label.copy(fontSize = 14.sp),
                 color = AsrColors.TextTertiary,
                 textAlign = TextAlign.Center,
@@ -1611,11 +1630,8 @@ fun EarnedScreen(
     var moment by remember(activity.id) { mutableStateOf(activity.isCamera) }
     val feedback = rememberRepFeedback()
     LaunchedEffect(activity.id) {
-        // The meditation ends on its own screen too, eyes closed: the
-        // chime says so, without the number.
-        if (!activity.isCamera && !activity.isMeditation) return@LaunchedEffect
-        feedback.finished()
         if (!activity.isCamera) return@LaunchedEffect
+        feedback.finished()
         delay(1_400)
         moment = false
     }
@@ -1627,7 +1643,11 @@ fun EarnedScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text("${activity.target}", style = AsrType.display(140), color = AsrColors.Accent)
+            Text(
+                cameraSpec(activity.type)?.format(activity.target) ?: "${activity.target}",
+                style = AsrType.display(140),
+                color = AsrColors.Accent,
+            )
             Text("✓  DONE", style = AsrType.Eyebrow.copy(fontSize = 16.sp), color = AsrColors.Accent)
         }
         return

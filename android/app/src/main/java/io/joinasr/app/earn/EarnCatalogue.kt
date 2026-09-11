@@ -222,21 +222,22 @@ fun earnOptions(
     EarnOption(
         type = EarnRules.MEDITATION,
         name = "Meditate",
-        title = "Breathe for ${EarnRules.MEDITATION_SECONDS / 60} minutes",
-        target = "${EarnRules.MEDITATION_SECONDS / 60} minutes with the phone lying still",
+        title = "Meditate for ${EarnRules.MEDITATION_SECONDS / 60} minutes",
+        target = "${EarnRules.MEDITATION_SECONDS / 60} minutes sitting still, in one go, on camera",
         icon = EarnIcon.MEDITATION,
-        explanation = "Put the phone down where you can see it, sit, and follow the breathing " +
-            "guide: in for four, out for six. A small tap marks each turn, so your eyes can " +
-            "close. Pick the phone up and the clock pauses; put it back and it goes on.",
-        verification = "The motion sensor: the clock runs while the phone lies still with the " +
-            "guide on the screen. It cannot know whether you meditated; it knows the phone " +
-            "was put down and left.",
-        privacy = "Only whether the phone moved, on the phone. Nothing is recorded and nothing " +
-            "about the session leaves the phone but that it was completed.",
+        explanation = "Prop the phone up in front of you, sit, and be still: eyes closed or open, as " +
+            "you like. The clock runs while the camera sees you sitting upright and still, and it has " +
+            "to be ${EarnRules.MEDITATION_SECONDS / 60} minutes in one sitting. A scratch or a cough " +
+            "is fine; getting up, or moving about, starts it over.",
+        verification = "The front camera and an on-device pose model: the clock runs while your head, " +
+            "shoulders and hips are in the picture, your back is upright, you face the phone and you " +
+            "keep still. It cannot know whether you meditated; it knows you sat there.",
+        privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
+            "judged, and nothing from the camera leaves the phone.",
         recommended = false,
-        unavailableReason = if (accelerometerAvailable) null else {
-            "This phone has no motion sensor, so it cannot tell when it is lying still."
+        unavailableReason = if (cameraAvailable) null else {
+            "This phone has no camera, so a meditation cannot be timed."
         },
-        done = "Your ten minutes are done.",
+        done = "Your meditation is done.",
     ),
 )

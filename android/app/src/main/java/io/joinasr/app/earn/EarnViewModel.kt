@@ -126,8 +126,8 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Units a screen's judge awarded this frame: a push-up, a second held
-     * in a plank, a second of the phone lying still.
+     * Units the camera screen's judge awarded this frame: a push-up, a
+     * second held in a plank, a second sat still in a meditation.
      *
      * Counted here rather than trusted from the judge's own total, so
      * that leaving the screen and coming back resumes at the same number:
@@ -138,10 +138,24 @@ class EarnViewModel(application: Application) : AndroidViewModel(application) {
         if (units <= 0) return
         viewModelScope.launch {
             val running = store.currentActive() ?: return@launch
-            if (!(running.isCamera || running.isMeditation) || running.isComplete) return@launch
+            if (!running.isCamera || running.isComplete) return@launch
             if (expireIfOverdue(running)) return@launch
             val updated = running.copy(progress = (running.progress + units).coerceAtMost(running.target))
             if (updated.isComplete) finish(updated) else store.update(updated)
+        }
+    }
+
+    /**
+     * The judge gave up on a run that has to be done in one go (a
+     * meditation whose sitter got up), or the screen was left and opened
+     * again: the count goes back to nothing and the activity stays, so
+     * the next sitting starts from zero rather than from a fresh chooser.
+     */
+    fun onStartedOver() {
+        viewModelScope.launch {
+            val running = store.currentActive() ?: return@launch
+            if (!running.isCamera || running.isComplete || running.progress == 0) return@launch
+            store.update(running.copy(progress = 0))
         }
     }
 

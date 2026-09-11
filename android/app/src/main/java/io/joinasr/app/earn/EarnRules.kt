@@ -45,11 +45,11 @@ object EarnRules {
     const val STAIR_FLOORS = 10
 
     /**
-     * A meditation: ten minutes with the breathing guide on the screen and
-     * the phone lying still. Kept in seconds on the phone, like the holds,
-     * so the count on the screen moves; the server's rule is in minutes.
+     * A meditation: seven minutes sitting still in front of the camera, in
+     * one go. Kept in seconds on the phone, like the holds, so the count on
+     * the screen moves; the server's rule is in minutes.
      */
-    const val MEDITATION_SECONDS = 10 * 60
+    const val MEDITATION_SECONDS = 7 * 60
 
     /** A ride: metres at a cycling speed, from GPS. Three kilometres is ten minutes or so on a bicycle. */
     const val RIDE_METRES = 3_000
@@ -88,7 +88,7 @@ object EarnRules {
     const val RIDE = "cycling"
 
     /** The activities the camera counts or times, on the camera screen. */
-    val CAMERA_TYPES: Set<String> = setOf(PUSHUPS, PLANK, WALL_SIT)
+    val CAMERA_TYPES: Set<String> = setOf(PUSHUPS, PLANK, WALL_SIT, MEDITATION)
 
     /** The activities the foreground service measures from the motion sensors, screen on or off. */
     val MOTION_TYPES: Set<String> = setOf(RUN, STAIRS)
