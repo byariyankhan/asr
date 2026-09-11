@@ -58,5 +58,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # ENV and LABEL are metadata, not layers.
 ARG ASR_COMMIT=""
 ENV ASR_COMMIT=$ASR_COMMIT
-LABEL io.joinasr.commit=$ASR_COMMIT
+LABEL com.joinasr.commit=$ASR_COMMIT
 CMD ["node", "server.js"]

@@ -55,9 +55,12 @@ touch "$ASR_ROOT/backups/pre-deploy-20260101-000000.dump"
 sha() { printf "$1%.0s" $(seq 40); }   # sha a -> 40 a's
 A=$(sha a); B=$(sha b); C=$(sha c); D=$(sha d); X=$(sha e)
 
-# build <sha> <tag> [legacy|broken]
-#   legacy: no ENV/label, like images from before the commit was baked in
-#   broken: exits at once, like a release that cannot start
+# build <sha> <tag> [legacy|oldlabel|broken]
+#   legacy:   no ENV/label, like images from before the commit was baked in
+#   oldlabel: ENV plus the label under its pre-rename name, like every image
+#             kept from before the package became com.joinasr.app. What
+#             proves rollback.sh still reads a commit off those.
+#   broken:   exits at once, like a release that cannot start
 build() {
   local sha=$1 tag=$2 kind=${3:-}
   local ctx; ctx=$(mktemp -d)
@@ -67,7 +70,11 @@ build() {
     echo "COPY health /www/v1/health"
     if [ "$kind" != legacy ]; then
       echo "ENV ASR_COMMIT=$sha"
-      echo "LABEL io.joinasr.commit=$sha"
+      if [ "$kind" = oldlabel ]; then
+        echo "LABEL io.joinasr.commit=$sha"
+      else
+        echo "LABEL com.joinasr.commit=$sha"
+      fi
     fi
     echo "HEALTHCHECK --interval=1s --timeout=2s --retries=5 CMD wget -qO- http://127.0.0.1:$PORT/v1/health >/dev/null 2>&1 || exit 1"
     if [ "$kind" = broken ]; then
@@ -120,7 +127,10 @@ expect_output() {
 
 echo "building releases"
 build "$A" deploy-aaaaaaa legacy
-build "$B" deploy-bbbbbbb
+# Built as a pre-rename image would have been: the commit is in its
+# environment and its label is the old name. Every assertion below that
+# reads $B's commit is therefore a test of that fallback.
+build "$B" deploy-bbbbbbb oldlabel
 build "$C" deploy-ccccccc
 start_from deploy-ccccccc
 expect_serving "$C"
@@ -141,7 +151,7 @@ expect_status 1 "needs --yes"
 expect_output "pass --yes"
 expect_serving "$C"
 
-echo "rollback to the previous release"
+echo "rollback to the previous release, built before the label was renamed"
 run --yes
 expect_status 0 "rollback"
 expect_output "now serving $B (deploy-bbbbbbb)"
