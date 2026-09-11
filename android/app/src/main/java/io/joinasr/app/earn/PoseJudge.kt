@@ -216,30 +216,48 @@ object HoldPositions {
     fun plank(pose: BodyPose): Boolean = plankFront(pose) || plankSide(pose)
 
     /**
-     * A plank seen from in front: the phone upright on the floor a step
-     * ahead of the hands, looking along the body. What that view can see
-     * is the face, the shoulders, and the hips behind them, small; the
-     * legs are behind the torso and are not asked about.
+     * A plank seen from in front: the phone upright on the floor, half a
+     * step to a step ahead of the hands, looking along the body. From
+     * there the picture holds the face, big, the shoulders, and perhaps
+     * the elbows; the wrists, the hips and the legs are often below the
+     * frame or behind the torso, and nothing here needs them.
      *
-     * The face is level with the shoulders or below them (in a plank the
-     * head hangs in line with the spine; standing, kneeling up or sitting
-     * puts the eyes well above the shoulder line), the shoulders are
-     * level (facing the phone, not lying on one side), and the hips, when
-     * the model has them, sit behind the shoulders: between them across
-     * the picture and no lower than a little under the shoulder line. A
-     * body on its feet or on a chair has its hips a torso below the
-     * shoulders, which is the one thing this view sees plainly. And the
-     * arms hold the body up: an elbow the model can see hangs at least
-     * [MIN_ELBOW_DROP] of a shoulder width below its shoulder, or a wrist
-     * at least [MIN_WRIST_DROP]. On the forearms the elbows are on the
-     * floor, a width and more below; on the hands they are halfway down,
-     * which from a phone within half a metre comes out under the elbow
-     * line, so the wrists decide there: on the floor under the shoulders,
-     * an arm's length down, well over a width. A body lying face down
-     * with its head raised to look at the phone has shoulders a hand
-     * above the floor and, wherever the arms are, elbows barely below
-     * them and wrists under a width. All distances are in shoulder
-     * widths, so the phone can be a hand's width away or a stride.
+     * Three things are asked of every frame. A face and both shoulders.
+     * The shoulders level, within 30°: facing the phone, not lying on
+     * one side. And the hips, when the model has them, behind the
+     * shoulders rather than under them: within [MAX_HIP_ACROSS] of a
+     * shoulder width of centre and no more than [MAX_HIP_DROP] widths
+     * below the shoulder line. From a phone on the floor a body on its
+     * feet, on a chair, cross-legged or up on its knees has its hips a
+     * width and more below its shoulders; a plank's, level with the
+     * shoulders and a torso further off, come out under that from a
+     * hand's width away or a stride.
+     *
+     * Then the body has to be up off the floor, and the view has two
+     * witnesses to that. The arms: an elbow the model sees at least
+     * [MIN_ELBOW_DROP] widths below its shoulder, or a wrist at least
+     * [MIN_WRIST_DROP]. On the hands the elbows are halfway to the floor
+     * and the wrists on it; on the forearms the elbows are on the floor,
+     * a width and more down. Two arm shapes are the floor's and end it:
+     * an elbow within [MAX_TUCKED_ELBOW] of the shoulder line is an arm
+     * beside a body lying flat with its head raised, and a forearm seen
+     * flat (its wrist within [FLAT_FOREARM] of its elbow) under a
+     * shoulder less than [MIN_FOREARM_SHOULDER] above it is a sphinx,
+     * chest propped on the elbows, not a forearm plank with the body a
+     * full width and more up. And the face: in a plank the head is a
+     * foot nearer the phone than the shoulders and is drawn larger for
+     * it, the more so the closer the phone, so the gap between the eyes
+     * comes out at least [MIN_HEAD_AHEAD] of a shoulder width, against
+     * about 0.17 for a head on top of its shoulders at the same distance
+     * (standing, sitting, kneeling), looking down at the phone or
+     * straight at it. With no arm held up in the picture the face
+     * decides, which is the close view: elbows and wrists below the
+     * frame. With an arm held up, and no hips in the picture to rule out
+     * a body on its feet, the face has still to be no smaller than a
+     * head on top of its shoulders ([MIN_HEAD_LEVEL]): the arms of a
+     * standing body with its hips cropped hang as low as a plank's.
+     * Everything is in shoulder widths, so the phone can be a hand's
+     * width away or a stride.
      */
     fun plankFront(pose: BodyPose): Boolean {
         if (!facing(pose)) return false
@@ -248,28 +266,43 @@ object HoldPositions {
         if (PoseGeometry.tiltFromHorizontal(pose.leftShoulder, pose.rightShoulder) > 30f) return false
         val shoulderX = (pose.leftShoulder.x + pose.rightShoulder.x) / 2f
         val shoulderY = (pose.leftShoulder.y + pose.rightShoulder.y) / 2f
-        val eyesY = (pose.leftEye.y + pose.rightEye.y) / 2f
-        // Picture y grows downwards: eyes above the shoulder line are smaller.
-        if (eyesY < shoulderY - 0.3f * width) return false
-        val elbows = listOf(pose.leftShoulder to pose.leftElbow, pose.rightShoulder to pose.rightElbow)
-            .filter { (_, elbow) -> elbow.visibility >= MIN_VISIBILITY }
-        val wrists = listOf(pose.leftShoulder to pose.leftWrist, pose.rightShoulder to pose.rightWrist)
-            .filter { (_, wrist) -> wrist.visibility >= MIN_VISIBILITY }
-        val heldUp = elbows.any { (shoulder, elbow) -> elbow.y - shoulder.y >= MIN_ELBOW_DROP * width } ||
-            wrists.any { (shoulder, wrist) -> wrist.y - shoulder.y >= MIN_WRIST_DROP * width }
-        if (!heldUp) return false
         val hipsSeen = pose.leftHip.visibility >= MIN_VISIBILITY && pose.rightHip.visibility >= MIN_VISIBILITY
         if (hipsSeen) {
             val hipX = (pose.leftHip.x + pose.rightHip.x) / 2f
             val hipY = (pose.leftHip.y + pose.rightHip.y) / 2f
-            if (abs(hipX - shoulderX) > 0.6f * width) return false
-            if (hipY > shoulderY + 0.35f * width) return false
+            if (abs(hipX - shoulderX) > MAX_HIP_ACROSS * width) return false
+            // Picture y grows downwards: hips below the shoulder line are larger.
+            if (hipY > shoulderY + MAX_HIP_DROP * width) return false
         }
-        return true
+        var heldUp = false
+        val arms = listOf(
+            Triple(pose.leftShoulder, pose.leftElbow, pose.leftWrist),
+            Triple(pose.rightShoulder, pose.rightElbow, pose.rightWrist),
+        )
+        for ((shoulder, elbow, wrist) in arms) {
+            // How far below the shoulder each point the model has is, in widths.
+            val elbowDrop = elbow.takeIf { it.visibility >= MIN_VISIBILITY }?.let { (it.y - shoulder.y) / width }
+            val wristDrop = wrist.takeIf { it.visibility >= MIN_VISIBILITY }?.let { (it.y - shoulder.y) / width }
+            if (elbowDrop != null) {
+                if (elbowDrop < MAX_TUCKED_ELBOW) return false
+                if (wristDrop != null && wristDrop - elbowDrop < FLAT_FOREARM && elbowDrop < MIN_FOREARM_SHOULDER) return false
+                if (elbowDrop >= MIN_ELBOW_DROP) heldUp = true
+            }
+            if (wristDrop != null && wristDrop >= MIN_WRIST_DROP) heldUp = true
+        }
+        val headSize = PoseGeometry.distance(pose.leftEye, pose.rightEye) / width
+        return if (heldUp) hipsSeen || headSize >= MIN_HEAD_LEVEL else headSize >= MIN_HEAD_AHEAD
     }
 
-    private const val MIN_ELBOW_DROP = 0.45f
-    private const val MIN_WRIST_DROP = 1.0f
+    private const val MAX_HIP_ACROSS = 0.6f
+    private const val MAX_HIP_DROP = 0.8f
+    private const val MIN_ELBOW_DROP = 0.38f
+    private const val MIN_WRIST_DROP = 0.8f
+    private const val MAX_TUCKED_ELBOW = 0.32f
+    private const val FLAT_FOREARM = 0.3f
+    private const val MIN_FOREARM_SHOULDER = 0.9f
+    private const val MIN_HEAD_AHEAD = 0.22f
+    private const val MIN_HEAD_LEVEL = 0.19f
 
     /**
      * What the wall sit needs before it can say anything about the

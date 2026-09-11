@@ -123,12 +123,12 @@ fun earnOptions(
         title = "Hold a plank for ${EarnRules.PLANK_SECONDS} seconds",
         target = "${EarnRules.PLANK_SECONDS} seconds, timed on camera",
         icon = EarnIcon.PLANK,
-        explanation = "Stand your phone upright on the floor about a step ahead of your hands, " +
+        explanation = "Stand your phone upright on the floor just ahead of your hands, " +
             "facing you, and get into a plank, on your forearms or your hands. The clock runs " +
             "while you hold it. Rest if you need to: the seconds you have done are kept.",
-        verification = "The front camera and an on-device pose model: the clock runs while your " +
-            "head is down in line with your shoulders and your hips are up behind them, not " +
-            "standing, kneeling up or sitting.",
+        verification = "The front camera and an on-device pose model: the clock runs while you " +
+            "are up on your hands or forearms facing the phone with your hips behind you, not " +
+            "lying down, standing, kneeling up or sitting.",
         privacy = "No photo or video is ever saved. Every frame is dropped after it is " +
             "judged, and nothing from the camera leaves the phone.",
         unavailableReason = if (cameraAvailable) null else {

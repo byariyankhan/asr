@@ -96,15 +96,15 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
         noun = "seconds",
         permissionTitle = "Time your plank.",
         unitLabel = "SECONDS",
-        placementLine = "Phone upright on the floor, a step ahead of your hands",
-        verification = "Your phone finds your face, shoulders and hips in each frame and runs the " +
-            "clock while your head is down in line with your shoulders and your hips are up behind " +
-            "them. The frame is then dropped.",
+        placementLine = "Phone upright on the floor, just ahead of your hands",
+        verification = "Your phone finds your face, shoulders and arms in each frame and runs the " +
+            "clock while you are up on your hands or forearms facing it, hips behind you. The frame " +
+            "is then dropped.",
         timed = true,
         tickEvery = 5,
         placement = listOf(
-            "Stand the phone upright on the floor about a step ahead of where your hands go, screen facing you. Lean it on a wall, a book, a water bottle.",
-            "Get into a plank facing it, forearms or hands, head down in line with your back. The clock runs while you hold it and stops when you drop.",
+            "Stand the phone upright on the floor, half a step to a step ahead of where your hands go, screen facing you. Lean it on a wall, a book, a water bottle.",
+            "Get into a plank facing it, forearms or hands. Look at the screen or at the floor, either is fine. The clock runs while you hold it and stops when you drop.",
         ),
         placementNote = "Rest if you need to. The seconds you have done are kept; the clock picks up when you are back in position. " +
             "A phone propped on its side across the room, seeing your whole body, works too.",
@@ -115,9 +115,9 @@ fun cameraSpec(type: String): CameraSpec? = when (type) {
                 coach = { phase, _ ->
                     when (phase) {
                         PoseJudge.Phase.NO_BODY ->
-                            "Looking for you" to "Stand the phone upright on the floor a step ahead of your hands, facing you."
+                            "Looking for you" to "Stand the phone upright on the floor just ahead of your hands, facing you."
                         PoseJudge.Phase.NOT_IN_POSITION ->
-                            "Get into a plank" to "Up on your forearms or hands, head down in line with your back, hips up behind you, arms in the picture."
+                            "Get into a plank" to "Up on your forearms or hands, facing the phone, hips up behind you."
                         else ->
                             "Hold it" to "Hips level, body straight. The clock is running."
                     }
