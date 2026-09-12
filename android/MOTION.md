@@ -83,7 +83,10 @@ way.
    screen asks for it as it does for a walk, and a grant starts the run.
 2. Run for six minutes with the phone in a pocket, screen locked: the
    count reaches 1,000, the notification arrives, the app shows +10 on
-   return. Walk the same six minutes: nothing is credited.
+   return. Walk the same six minutes: nothing is credited. Run with the
+   phone in hand and the screen open: it never times out (the run, the
+   climb, the walk and the ride all hold the display while their screen
+   is up; only the phone-down session lets it go dark, `CYCLING.md`).
 3. Climb ten flights with the phone on you: the floors count as you go
    (the display can lag a pocketed phone by ten seconds). Take the lift
    up ten floors: nothing. Take the stairs down: nothing.

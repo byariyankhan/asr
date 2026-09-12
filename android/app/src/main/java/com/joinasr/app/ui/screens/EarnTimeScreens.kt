@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -866,6 +867,20 @@ fun ActivityProgressScreen(
     val run = activity.type == EarnRules.RUN
     val stairs = activity.type == EarnRules.STAIRS
     val ride = activity.isRide
+    // A phone on a handlebar, or in a hand on a walk, cannot be tapped every
+    // half minute to keep its screen alive, and a dark screen is progress
+    // that cannot be followed. The flag lives on this screen's view, so it
+    // holds while the screen is up and not a moment after; the person can
+    // still lock the phone to pocket it, and the counting, done by the
+    // service and the sensors, carries on either way. The phone-down
+    // session is the one exception: its whole point is a phone that goes
+    // dark and stays locked, and a screen held awake would be the app
+    // arguing with itself.
+    val view = LocalView.current
+    DisposableEffect(view, focus) {
+        if (!focus) view.keepScreenOn = true
+        onDispose { if (!focus) view.keepScreenOn = false }
+    }
     // Display only. No UI clock can complete an activity or award minutes.
     val focusRemaining by produceState(
         initialValue = activity.target * 60,
@@ -1848,19 +1863,22 @@ private fun TrackingStatus(type: String) {
                     // True, and worth saying plainly: the step counter is a
                     // running total the sensor hub keeps whether or not this
                     // app is running, so nothing is lost by leaving.
-                    EarnRules.WALK -> "You can lock your phone or leave this screen. Steps keep counting."
-                    // These two are measured by the background service as
+                    EarnRules.WALK ->
+                        "The screen stays on while you are here. Lock your phone to pocket it, or leave " +
+                            "this screen: steps keep counting either way."
+                    // These three are measured by a background service as
                     // the readings arrive, in batches: the count can lag a
                     // pocketed phone by a few seconds, never lose anything.
                     EarnRules.RUN ->
-                        "Keep the phone on you and lock it. Steps at a running pace keep counting; " +
-                            "we’ll notify you when your run is done."
+                        "The screen stays on while you are here; lock the phone to pocket it. Steps at a " +
+                            "running pace keep counting; we’ll notify you when your run is done."
                     EarnRules.STAIRS ->
-                        "Keep the phone on you and lock it. Floors climbed on foot keep counting, " +
-                            "all day if need be; we’ll notify you when you have them."
+                        "The screen stays on while you are here; lock the phone to pocket it. Floors " +
+                            "climbed on foot keep counting, all day if need be; we’ll notify you when you have them."
                     EarnRules.RIDE ->
-                        "Keep the phone on you and lock it. GPS measures the ride and shows a " +
-                            "notification while it does; we’ll notify you when it is done."
+                        "The screen stays on while you are here, for a phone on the handlebar; lock it to " +
+                            "pocket it. GPS measures the ride and shows a notification while it does; we’ll " +
+                            "notify you when it is done."
                     else ->
                         "Incoming calls and notifications won’t affect your session. " +
                             "We’ll notify you when your ${EarnRules.FOCUS_MINUTES} minutes are complete."

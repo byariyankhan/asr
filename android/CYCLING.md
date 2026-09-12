@@ -70,6 +70,15 @@ up, runs out of time, or has credited nothing for half an hour, which is
 a phone forgotten with GPS on. Its notification says a ride is being
 measured and how far it has got, for the whole of it.
 
+The ride's screen, while it is open, keeps the display on
+(`keepScreenOn` on its view, in `ActivityProgressScreen`, as the camera
+screens do on theirs), because a phone on a handlebar cannot be tapped
+awake every half minute and a dark screen is a ride that cannot be
+followed. The same goes for the walk, the run and the climb; the
+phone-down session is the one screen that does not, since its point is
+a phone that goes dark and stays locked. Locking the phone to pocket it
+still works, and the service measures on either way.
+
 Fixes come from `LocationManager`'s GPS provider once a second, with the
 platform's own clock (`elapsedRealtimeNanos`), the chip's own speed and
 its mock flag; the step counter and the accelerometer come through the
@@ -123,6 +132,8 @@ a ride without them cannot be judged.
    tap's button opens Settings.
 2. Ride 3 km with the phone in a pocket, screen locked: the count rises
    at a cycling pace, the ride completes, the notification and the +10.
+   Ride with the phone on the handlebar and the ride screen open: the
+   screen never times out, and the distance moves every half minute.
 3. Walk the bike for a block: nothing. Drive at motorway speed: nothing.
    Stop at a light: nothing, and the ride resumes when you move.
 4. Run with the ride active: nothing credited while the cadence is a
