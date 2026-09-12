@@ -49,7 +49,7 @@ android {
         // build on a laptop stays at 1, which Play would refuse, which is
         // the point: releases come from CI.
         versionCode = System.getenv("ASR_VERSION_CODE")?.toIntOrNull() ?: 1
-        versionName = System.getenv("ASR_VERSION_NAME") ?: "0.1.0"
+        versionName = System.getenv("ASR_VERSION_NAME") ?: "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
