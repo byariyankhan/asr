@@ -18,6 +18,8 @@ const KOTLIN = path.resolve(
   "../../../android/app/src/main/java/com/joinasr/app/legal/LegalTexts.kt",
 );
 
+const MANIFEST = path.resolve(__dirname, "../../../android/app/src/main/AndroidManifest.xml");
+
 type Parsed = { eyebrow: string; title: string; sections: LegalSection[] };
 
 function unescape(literal: string): string {
@@ -77,5 +79,52 @@ describe("the legal texts the app and the site show", () => {
     expect(sharing).toContain("never the apps you limit, your minutes, your name, your email address or your witnesses");
     expect(sharing).toContain("The advertising identifier is switched off.");
     expect(sharing).not.toContain("no analytics");
+  });
+
+  /**
+   * The policy has to name every sensitive permission the app asks for.
+   *
+   * It did not. Earning time grew from walking and a focus session to nine
+   * activities, three of which open the camera and one of which reads GPS,
+   * and the policy still described only step counts -- while saying, of the
+   * one activity it did describe, that it needed no location. A reviewer
+   * comparing the manifest with the policy would have read that as a denial.
+   *
+   * So the manifest is the input: add a permission from this list and the
+   * words that have to appear alongside it are not optional any more.
+   */
+  const SENSITIVE: Array<[permission: string, mustSay: RegExp]> = [
+    ["android.permission.CAMERA", /camera/i],
+    ["android.permission.ACCESS_FINE_LOCATION", /precise location|GPS/i],
+    ["android.permission.ACTIVITY_RECOGNITION", /step counter|physical activity/i],
+    ["android.permission.PACKAGE_USAGE_STATS", /Usage Access/i],
+    ["android.permission.SYSTEM_ALERT_WINDOW", /display over other apps/i],
+  ];
+
+  it("names every sensitive permission the manifest asks for", () => {
+    const manifest = readFileSync(MANIFEST, "utf8");
+    const policy = privacy.sections.map((s) => s.body).join("\n");
+    // Without this the test passes by matching nothing at all -- a renamed
+    // manifest path or a typo in a permission string would read as a clean
+    // bill of health.
+    const asked = SENSITIVE.filter(([permission]) => manifest.includes(permission));
+    expect(asked.length).toBe(SENSITIVE.length);
+    for (const [permission, mustSay] of asked) {
+      expect(mustSay.test(policy), `${permission} is asked for but the policy never says so`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("says what the camera and the location are not used for", () => {
+    const rewards = privacy.sections.find((s) => s.heading === "3. Activity rewards")?.body ?? "";
+    // The three promises that make the permissions acceptable to grant. Each
+    // is a fact about the code (PoseCamera.kt, RideService.kt); if one ever
+    // stops being true, the sentence has to go before the code ships.
+    expect(rewards).toContain("no photo or video is recorded, saved or uploaded");
+    expect(rewards).toContain("no route is recorded and no location is uploaded");
+    expect(rewards).toContain("never in the background");
+    // And no leftover of the sentence that read as a blanket denial.
+    expect(rewards).not.toContain("do not require GPS or location access");
   });
 });

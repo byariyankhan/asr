@@ -44,7 +44,7 @@ Every Android run builds three things and keeps them as artifacts:
 
 `versionCode` is the workflow's run number, so it only ever goes up and no
 two uploads can collide. `versionName` is set by hand in
-`android/app/build.gradle.kts` (`0.1.0` today); bump it when a release is
+`android/app/build.gradle.kts` (`1.0.0`, the first public release); bump it when a release is
 worth a new number. **Upload the bundle from the run on `master`**, after the
 pull request merged, so what is in the store is what is in the default
 branch.
@@ -124,10 +124,13 @@ a way that is easy to miss.
   > they hear that too.
   >
   > When a limit is reached, Asr blocks the app until tomorrow. You can earn
-  > extra minutes by walking or by a focus session, and the price is fixed
-  > when the pact starts, so it cannot be renegotiated with yourself later.
-  > Your usage is measured on your phone and never uploaded; your witness
-  > sees minutes per app for the apps you chose, and nothing else.
+  > extra minutes back: a walk, a run, stairs, push-ups, a plank, a wall sit,
+  > a bike ride, a focus session, meditation, or simply waiting. The price is
+  > fixed when the pact starts, so it cannot be renegotiated with yourself
+  > later. Every activity is measured on your phone -- the camera counts
+  > push-ups without recording anything, a ride's distance is added up and
+  > the positions thrown away -- and your usage never leaves the device. Your
+  > witness sees minutes per app for the apps you chose, and nothing else.
   >
   > No ads. No feed. One promise, and somebody who knows you made it.
 
@@ -155,9 +158,12 @@ a way that is easy to miss.
 - **Target audience**: 13 and over. Not designed for families.
 - **Data safety**: section 6.
 - **Government app**: no. **Financial features**: no. **News**: no.
-- **Health**: if the questionnaire lists physical activity or step counting,
-  declare it: the walking reward reads the step counter on the phone during
-  a walk; the count never leaves the phone.
+- **Health**: declare physical activity. Ten activities earn time back;
+  walking, running and stairs read the phone's step counter, push-ups,
+  plank and wall-sit use the camera, and cycling uses GPS. All of it is
+  measured on the phone. What reaches the server is which kind of activity
+  it was, when it started, whether it was finished and the minutes it
+  earned -- never counts, frames, positions or distances.
 - **Advertising ID**: no. (The permission is removed in the manifest.)
 - **Permissions declaration — Usage access** (`PACKAGE_USAGE_STATS`), core
   functionality: *Asr lets a person set daily time limits on apps they
@@ -178,6 +184,21 @@ a way that is easy to miss.
 - **Display over other apps** (`SYSTEM_ALERT_WINDOW`): no form, but
   reviewers look for the in-app explanation. It is the app-blocking
   disclosure screen, shown before Settings opens.
+- **Location permissions** (`ACCESS_FINE_LOCATION`, foreground only -- there
+  is a form): *One of the ten ways to earn app time back is a bike ride.
+  Precise location measures how far the ride went; approximate location
+  cannot measure a distance. It is read only while a ride is running, by a
+  foreground service with a visible notification, and each position is
+  compared with the previous one to add up distance and then discarded. No
+  route is stored and no location leaves the phone. There is no background
+  location access and none is requested. Cycling is optional: refusing the
+  permission removes that one activity and nothing else.* The prominent
+  disclosure is `LocationAccessScreen`, shown before the system dialog.
+- **Camera** (`CAMERA`): no separate form, but the same standard applies.
+  Push-ups, plank and wall-sit are counted by a pose model that runs on the
+  phone; each frame is read and dropped, nothing is recorded, saved or
+  uploaded. The prominent disclosure is `CameraAccessScreen`, shown before
+  the system dialog.
 
 ## 6. Data safety, the answers
 
@@ -197,7 +218,17 @@ not sharing in Play's sense.
 | Crash logs | yes | no | analytics, app functionality | yes |
 | Diagnostics (app version, whether protection is on) | yes | no | app functionality | yes |
 | Device or other IDs (Firebase installation id, push token) | yes | no | app functionality, analytics | yes |
-| Location, contacts, messages, files, financial info, health and fitness | not collected | | step counts stay on the phone | |
+| Health and fitness → Fitness info (which activity was completed, when, minutes earned) | yes | no | app functionality (shown to witnesses) | optional |
+| Location, contacts, messages, files, financial info, health info | not collected | | see below | |
+
+**Why location is "not collected" while the app asks for it.** In Play's
+sense "collected" means leaves the device. A ride's positions are compared
+with the previous one to add up distance and then discarded; no route is
+kept and nothing about where the phone was is sent. Same for the camera
+(nothing recorded) and the step counter (counts stay on the phone). But the
+*fact* that a push-up set or a ride was completed does leave the device and
+is shown to witnesses, which is the Fitness info row above -- declaring
+that row is what keeps "location: not collected" from looking like a dodge.
 
 Security practices: data is encrypted in transit (yes); users can request
 that data be deleted (yes, `https://joinasr.com/delete-account`, and in the
@@ -215,8 +246,10 @@ Oppo or Vivo, a Pixel) for a week, then **Production**. Upload the
 
 - [ ] Off-site database backup running and restored once (`infra/backup.sh`).
 - [ ] The uptime monitor alerts a phone somebody looks at.
-- [ ] A password-reset email arrives from `noreply@joinasr.com` (Resend domain verified).
+- [x] A password-reset email arrives from `noreply@joinasr.com` (Resend domain verified, checked 12 September 2026).
 - [ ] `ANDROID_CERT_SHA256` holds all three fingerprints and `assetlinks.json` shows them.
 - [ ] A release build (from `asr-release-apk`) ran on a real phone: sign up, start a pact, block, earn time, invite, accept on a second phone.
 - [ ] Crashlytics shows that release build's test crash with readable line numbers (the plugin uploads the R8 mapping during the CI build).
 - [ ] Play title, short description and the Data safety answers match this document and the privacy policy.
+- [ ] Graphics made: 512x512 icon, 1024x500 feature graphic, at least two phone screenshots.
+- [ ] A review account exists and its password is in the App access form (sign-in is required to see anything).

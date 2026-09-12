@@ -22,7 +22,7 @@ export type LegalDocument = {
   sections: LegalSection[];
 };
 
-export const EFFECTIVE = "Effective September 5, 2026";
+export const EFFECTIVE = "Effective September 12, 2026";
 
 export const privacy: LegalDocument = {
   eyebrow: "PRIVACY",
@@ -36,7 +36,8 @@ export const privacy: LegalDocument = {
       body:
         "Account information: email, full name, profile photo, date of birth, country and gender.\n\n" +
         "Challenge information: selected apps, daily limits, challenge duration, challenge status, breach events and earned-time activity records.\n\n" +
-        "Device and protection information: Usage Access status, display-over-other-apps status, notification permission status, selected-app usage duration and foreground usage events needed to enforce limits.",
+        "Device and protection information: Usage Access status, display-over-other-apps status, notification permission status, selected-app usage duration and foreground usage events needed to enforce limits.\n\n" +
+        "Activity sensors, on the phone only: the camera, the step counter and precise location, each used by one kind of earn-time activity while it is running and at no other time. What they produce is counted on the phone and discarded; none of it is uploaded. Section 3 says which activity uses what.",
     },
     {
       heading: "2. App usage and blocking",
@@ -48,7 +49,7 @@ export const privacy: LegalDocument = {
     {
       heading: "3. Activity rewards",
       body:
-        "If you choose a walking reward, we may process step-count or motion data during the activity to verify completion. Step-based walking rewards do not require GPS or location access.",
+        "Earning extra app time means finishing an activity you chose. Each kind is measured on the phone, only while it is running, and only after you have granted what it needs.\n\nWalking, running and stairs use the phone's step counter (physical activity). No location is used for these.\n\nPush-ups, plank and wall-sit use the camera. Each frame is read by a pose model running on your phone and dropped immediately: no photo or video is recorded, saved or uploaded, and nothing from the camera leaves the device.\n\nCycling uses precise location (GPS) to measure the distance ridden. Each position is compared with the one before it to add up distance and is then dropped: no route is recorded and no location is uploaded. Location is read only while a ride is running, by a foreground service with a notification you can see, and never in the background.\n\nA focus session, meditation and the waiting period use no sensor at all.\n\nWhichever you choose, the server receives the same four things: which kind of activity it was, when it started, whether it was finished, and the minutes it earned. It never receives your step counts, camera frames, positions, distances or repetitions.",
     },
     {
       heading: "4. Accountability features",
