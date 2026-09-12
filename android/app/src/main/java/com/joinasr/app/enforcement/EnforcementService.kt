@@ -37,6 +37,7 @@ import com.joinasr.app.usage.UsageReader
 import com.joinasr.app.usage.UsageSnapshot
 import com.joinasr.app.usage.usageReader
 import com.joinasr.app.witness.WitnessStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -267,23 +268,43 @@ class EnforcementService : Service() {
     }
 
     private suspend fun loop() {
+        // How many passes in a row have thrown. Reset by the first one that
+        // does not; see [LoopRecovery] for what it is used for.
+        var failures = 0
         while (scope.isActive) {
             // Nothing in here may throw. This loop is the entire product: if
             // it dies, every limit silently stops being enforced and the app
             // looks fine while doing nothing, which is what happened the
             // first time this shipped.
-            if (!screenOn) {
-                runCatching { rest() }.onFailure { Crash.report(this, it, "rest") }
+            val where = if (screenOn) "tick" else "rest"
+            val wait: Long = try {
+                // rest() comes back when the screen does or when the dark
+                // timeout expires -- it has already done the waiting, so it
+                // asks for none.
+                if (screenOn) tick() else { rest(); 0L }
+            } catch (cancelled: CancellationException) {
+                // The service is being destroyed. Not a failure and not
+                // something to report: runCatching used to swallow this, so
+                // every ordinary stop filed a crash, and the noise was on top
+                // of whatever real failure somebody was looking for.
+                throw cancelled
+            } catch (error: Throwable) {
+                // Caught and reported, never rethrown. A failure here used to
+                // vanish; now it is the one thing a phone in the field can say
+                // about why a limit was not enforced -- but said once, and then
+                // ever more rarely, rather than on every pass.
+                failures++
+                if (LoopRecovery.shouldReport(failures)) Crash.report(this, error, where)
+                delay(LoopRecovery.backoffMillis(failures))
                 continue
             }
-            // Caught and reported, never rethrown. A failure here used to
-            // vanish; now it is the one thing a phone in the field can say
-            // about why a limit was not enforced.
-            val delayMillis = runCatching { tick() }.getOrElse {
-                Crash.report(this, it, "tick")
-                Enforcement.IDLE_MILLIS
-            }
-            delay(delayMillis)
+            failures = 0
+            // Never a pass without a pause. Everything above either waits
+            // inside itself or says how long to wait, and today nothing
+            // returns zero twice in a row -- but this loop runs for days on
+            // somebody's battery, and the floor is what makes "it spins" a
+            // thing that cannot happen rather than a thing that has not.
+            delay(wait.coerceAtLeast(MIN_PAUSE_MILLIS))
         }
     }
 
@@ -809,6 +830,9 @@ class EnforcementService : Service() {
         /** How long to sleep between errands while the screen is off. The
          *  screen coming back interrupts this; nothing else needs to. */
         private const val DARK_MILLIS = 15L * 60 * 1000
+
+        /** The shortest gap between two passes, whatever either asked for. */
+        private const val MIN_PAUSE_MILLIS = 250L
 
         /** How often the loop tries to empty the outbox. */
         private const val FLUSH_EVERY_MILLIS = 30L * 60 * 1000
