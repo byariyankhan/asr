@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { meUpdate, pactAppAdd, pactCreate } from "@/lib/schemas";
+import { RESET_CODE_LENGTH } from "@/lib/password";
+import { isCredential, offered } from "@/server/auth-surface";
 
 /**
  * The Android app's request bodies, exactly as it puts them on the wire,
@@ -45,6 +47,25 @@ describe("what the Android app sends", () => {
       label: "TikTok",
       daily_limit_min: 20,
     });
+  });
+
+  it("asks for a code of the length this server generates", () => {
+    // The same 7 is written in
+    // `android/app/src/test/java/com/joinasr/app/data/ResetCodeTest.kt`,
+    // where it is the number of boxes drawn and the length Continue waits
+    // for. Nothing connects the two but both being asserted.
+    expect(RESET_CODE_LENGTH).toBe(7);
+  });
+
+  it("the two endpoints it posts the reset to are open, and tightly limited", () => {
+    // Verbatim in `AccountApi.kt`. The app calls exactly these; an endpoint
+    // it calls that this server has closed is a 404 the person reads as
+    // "that is not there" under their own email address, which is how the
+    // reset came to be broken in production for weeks.
+    for (const endpoint of ["/email-otp/request-password-reset", "/email-otp/reset-password"]) {
+      expect(offered(endpoint), endpoint).toBe(true);
+      expect(isCredential(endpoint), endpoint).toBe(true);
+    }
   });
 
   it("an optional it has nothing for is absent, not null", () => {

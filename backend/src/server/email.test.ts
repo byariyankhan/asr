@@ -3,7 +3,7 @@ import {
   emailFailureLine,
   inviteEmail,
   maskAddresses,
-  resetPasswordEmail,
+  resetCodeEmail,
   sendEmail,
 } from "./email";
 
@@ -38,7 +38,7 @@ describe("inviteEmail", () => {
   });
 });
 
-const TOKEN = "cbd8d4a2f1e14f0e9a3b7c6d5e4f3a2b";
+const CODE = "4830192";
 
 /**
  * A refused send used to leave nothing at all. Resend rejecting the From
@@ -73,13 +73,12 @@ describe("the line a failed send leaves", () => {
     expect(line.error).toBe("Invalid `to` field: ***@example.com");
   });
 
-  it("never carries the reset token, the body, or the subject", () => {
-    const mail = resetPasswordEmail(TOKEN);
-    expect(mail.text).toContain(TOKEN); // the token really is in the message
+  it("never carries the reset code, the body, or the subject", () => {
+    const mail = resetCodeEmail(CODE);
+    expect(mail.text).toContain(CODE); // the code really is in the message
     const line = emailFailureLine(mail.kind, "ariyan@gmail.com", "connect ETIMEDOUT");
-    expect(line).not.toContain(TOKEN);
+    expect(line).not.toContain(CODE);
     expect(line).not.toContain(mail.subject);
-    expect(line).not.toContain("/reset/");
   });
 });
 
@@ -94,9 +93,9 @@ describe("sending with no key configured", () => {
     vi.stubEnv("NODE_ENV", "development");
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const result = await sendEmail("ariyan@gmail.com", resetPasswordEmail(TOKEN));
+    const result = await sendEmail("ariyan@gmail.com", resetCodeEmail(CODE));
     expect(result).toEqual({ ok: false, error: "email_not_configured" });
-    expect(String(info.mock.calls[0]?.[0])).toContain(TOKEN);
+    expect(String(info.mock.calls[0]?.[0])).toContain(CODE);
     expect(error).not.toHaveBeenCalled();
   });
 
@@ -105,7 +104,7 @@ describe("sending with no key configured", () => {
     vi.stubEnv("NODE_ENV", "production");
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const result = await sendEmail("ariyan@gmail.com", resetPasswordEmail(TOKEN));
+    const result = await sendEmail("ariyan@gmail.com", resetCodeEmail(CODE));
     expect(result).toEqual({ ok: false, error: "email_not_configured" });
     expect(info).not.toHaveBeenCalled();
     const written = String(error.mock.calls[0]?.[0]);
@@ -115,6 +114,27 @@ describe("sending with no key configured", () => {
       to: "***@gmail.com",
       error: "email_not_configured",
     });
-    expect(written).not.toContain(TOKEN);
+    expect(written).not.toContain(CODE);
+  });
+});
+
+/**
+ * The code is what the reset is. It has to be findable by somebody reading
+ * the message on a phone, and it must not be surrounded by other numbers
+ * that could be mistaken for it.
+ */
+describe("the reset code email", () => {
+  it("puts the code alone on its own line, with no link anywhere", () => {
+    const mail = resetCodeEmail(CODE);
+    const lines = mail.text.split("\n");
+    expect(lines[0]).toBe(CODE);
+    expect(lines.filter((line) => line.includes(CODE))).toHaveLength(1);
+    expect(mail.text).not.toContain("http");
+  });
+
+  it("says how long it lasts and how many tries there are", () => {
+    const mail = resetCodeEmail(CODE);
+    expect(mail.text).toContain("ten minutes");
+    expect(mail.text).toContain("three tries");
   });
 });

@@ -104,7 +104,7 @@ a way that is easy to miss.
   anybody, because the way to tell them was the domain.
 
   Everything *outside* the APK moves freely: the store listing's URLs, the
-  invite and reset links (`PUBLIC_SITE_URL`) and the mail sender
+  invite and verification links (`PUBLIC_SITE_URL`) and the mail sender
   (`EMAIL_FROM`) are all configuration. So moving to another domain is
   really *adding* one -- new builds point at it, both hosts stay in the
   manifest, the old domain proxies to the new server, and the old domain is

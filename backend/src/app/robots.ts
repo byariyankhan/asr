@@ -8,7 +8,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: ["/api/", "/v1/"],
     },
-    // Invite/reset/verification pages keep their own noindex metadata.
+    // Invite and verification pages keep their own noindex metadata.
     // Crawlers must be able to fetch them to see that directive.
     sitemap: new URL("/sitemap.xml", siteUrl).toString(),
   };

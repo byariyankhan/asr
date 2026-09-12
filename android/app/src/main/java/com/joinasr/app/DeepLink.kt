@@ -5,14 +5,12 @@ import android.content.Intent
 /**
  * A link that opened the app.
  *
- * Two of them exist, and both are App Links on joinasr.com rather than a
+ * One of them exists, and it is an App Link on joinasr.com rather than a
  * custom scheme, so a link that arrives on a phone without the app still
- * lands on a real web page instead of an error.
+ * lands on a real web page instead of an error. A password reset used to be
+ * the other; it is a code typed into the app now, and needs no link at all.
  */
 sealed interface DeepLink {
-    /** joinasr.com/reset/<token> — Figma 35. */
-    data class Reset(val token: String) : DeepLink
-
     /** joinasr.com/w/<code> — Figma 18. */
     data class Invite(val code: String) : DeepLink
 
@@ -30,10 +28,9 @@ sealed interface DeepLink {
         /**
          * Reads one out of an intent, or null.
          *
-         * Anything that is not exactly one of the two shapes yields null —
-         * the launcher icon, a share, a link to some other path — so a stray
-         * intent can never put somebody on a reset screen with an empty
-         * token or an invite screen with no code.
+         * Anything that is not exactly the one shape yields null — the
+         * launcher icon, a share, a link to some other path — so a stray
+         * intent can never put somebody on an invite screen with no code.
          */
         /** The extra the block screen sends. */
         const val EXTRA_EARN_FOR = "com.joinasr.app.earn_for"
@@ -46,11 +43,7 @@ sealed interface DeepLink {
             val segments = intent.data?.pathSegments ?: return null
             if (segments.size != 2) return null
             val value = segments[1].takeIf { it.isNotBlank() } ?: return null
-            return when (segments[0]) {
-                "reset" -> Reset(value)
-                "w" -> Invite(value)
-                else -> null
-            }
+            return if (segments[0] == "w") Invite(value) else null
         }
     }
 }

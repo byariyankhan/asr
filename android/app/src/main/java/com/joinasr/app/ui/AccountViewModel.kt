@@ -46,10 +46,10 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val _reset = MutableStateFlow(false)
     val reset: StateFlow<Boolean> = _reset.asStateFlow()
 
-    /**
-     * The address a reset link was accepted for. Cleared by
-     * [consumeResetEmailSent]. The screen that follows says "reset link
-     * sent" as a fact, so it is reached only when the server took the
+     /**
+     * The address a reset code was accepted for. Cleared by
+     * [consumeResetEmailSent]. The screen that follows says the code was
+     * sent as a fact, so it is reached only when the server took the
      * request — not the moment the button was pressed.
      */
     private val _resetEmailSentTo = MutableStateFlow<String?>(null)
@@ -109,16 +109,16 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Asks for the reset email. Success here means the server accepted the
+     * Asks for the reset code. Success here means the server accepted the
      * request, not that an account exists: it answers the same way for an
      * address it has never seen, and a client that distinguished the two
      * would turn this screen into a way to test whether somebody has an
      * account. So the wording never claims more than that.
      */
-    fun sendResetEmail(email: String) = submit {
-        Api.account.sendResetEmail(email).onOk {
+    fun sendResetCode(email: String) = submit {
+        Api.account.sendResetCode(email).onOk {
             _resetEmailSentTo.value = email.trim()
-            _notice.value = "Sent. If that address has an account, the link is on its way."
+            _notice.value = "Sent. If that address has an account, the code is on its way."
         }
     }
 
@@ -126,8 +126,14 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         _resetEmailSentTo.value = null
     }
 
-    fun resetPassword(token: String, password: String) = submit {
-        Api.account.resetPassword(token, password).onOk { _reset.value = true }
+    /**
+     * Spends the code and sets the password. The code is checked here for
+     * the first time, so this is where a wrong one is reported — as the
+     * error under the new-password form, which is the screen the person is
+     * on when they find out.
+     */
+    fun resetPassword(email: String, code: String, password: String) = submit {
+        Api.account.resetPassword(email, code, password).onOk { _reset.value = true }
     }
 
     fun consumeReset() {

@@ -253,7 +253,7 @@ and the sweep is what makes that reliable rather than what makes it happen.
 | **Better Auth with the bearer plugin** | Same library as Bookween, but the app authenticates with a bearer session token stored in Android EncryptedSharedPreferences. No cookies, no separate JWT scheme. |
 | **ioredis** | Rate limiting, the watchdog's lock and last-run marker, notification dedupe. Own container. |
 | **Firebase Admin SDK** | FCM push to devices. The `UNREGISTERED` error doubles as uninstall detection. |
-| **Resend** | Email verification, password reset, and witness notifications for witnesses who turn off push. |
+| **Resend** | Email verification, the password-reset code, and witness notifications for witnesses who turn off push. |
 | **Zod** | Every request body validated at the edge. |
 | **UUIDv7** | Time-ordered primary keys, generated in the app (`uuidv7` package) so the device can pre-assign ids for idempotency. |
 | **Google Play Billing** | Mandatory for in-app subscriptions on Android. The server verifies purchase tokens with the Play Developer API. Not Paddle. |
