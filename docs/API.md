@@ -128,12 +128,18 @@ The email-confirmation link. Opening it is the confirmation: the page hands
 the token to Better Auth and says whether the address is now confirmed, the
 link has expired (they work for an hour), or it was already used.
 
-### `GET /reset/<token>`
+There is no reset page. A password reset is a seven-digit code, mailed and
+typed into the app: `POST /api/auth/email-otp/request-password-reset`
+(`{email}`) sends it, and `POST /api/auth/email-otp/reset-password`
+(`{email, otp, password}`) checks it and sets the password in one request.
+The code lasts ten minutes and takes three tries; every session of that
+account is signed out when it is spent. Both answer the same for an address
+with an account and one without.
 
-The password-reset link, for a browser. On a phone with the app installed
-the same URL is an App Link and opens the app instead. The page is a form
-for the new password, posted to a server action that calls
-`/api/auth/reset-password`; every other session is signed out on success.
+Most of Better Auth's own surface is not offered and answers 404 --
+including the old `/api/auth/reset-password`, the email-OTP plugin's
+passwordless sign-in, and everything of it that mails an address. The list
+is `backend/src/server/auth-surface.ts`, asserted by name in its test.
 
 ## App Links
 

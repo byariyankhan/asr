@@ -2,6 +2,7 @@ package com.joinasr.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,15 +17,22 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -165,4 +173,85 @@ fun AsrSearchField(
             },
         )
     }
+}
+
+/**
+ * The reset code: one box per digit, filling left to right.
+ *
+ * One text field behind all of them rather than one field per box. A row of
+ * separate fields has to hand focus along as digits arrive and back again as
+ * they are deleted, gets the backspace at an empty box wrong, and takes a
+ * code pasted out of the email entirely into the first box. With a single
+ * field the keyboard, the paste and the backspace are the platform's own and
+ * the boxes are only what it looks like.
+ *
+ * Nothing but digits survives [onValueChange], and nothing past [length]:
+ * paste the whole line of the email and what is left is the code.
+ */
+@Composable
+fun AsrCodeField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    length: Int,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val focus = remember { FocusRequester() }
+    // The screen exists to take this and nothing else, so the keyboard is up
+    // before anybody taps: one less tap between the email and being back in.
+    LaunchedEffect(Unit) { focus.requestFocus() }
+
+    BasicTextField(
+        value = value,
+        onValueChange = { typed -> onValueChange(typed.filter { it.isDigit() }.take(length)) },
+        enabled = enabled,
+        singleLine = true,
+        // The real text is never seen; the boxes below draw it. A visible
+        // caret would sit in the wrong place, since the layout here is not
+        // the field's own.
+        textStyle = AsrType.Field.copy(color = Color.Transparent),
+        cursorBrush = SolidColor(Color.Transparent),
+        keyboardOptions = KeyboardOptions(
+            // Number rather than NumberPassword: some keyboards drop paste
+            // from a password field, and pasting the code is how most of
+            // these arrive.
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done,
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRequester(focus),
+        decorationBox = { _ ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                repeat(length) { index ->
+                    val digit = value.getOrNull(index)
+                    // Lit when it holds a digit, and on the one waiting for
+                    // the next: with no caret, that outline is the only thing
+                    // saying where typing lands.
+                    val lit = digit != null || (index == value.length && enabled)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp)
+                            .background(AsrColors.Field, RoundedCornerShape(14.dp))
+                            .border(
+                                1.dp,
+                                if (lit) AsrColors.Accent else AsrColors.FieldBorder,
+                                RoundedCornerShape(14.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            digit?.toString().orEmpty(),
+                            style = AsrType.display(24),
+                            color = AsrColors.TextPrimary,
+                        )
+                    }
+                }
+            }
+        },
+    )
 }

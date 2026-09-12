@@ -19,10 +19,10 @@ private data class ChangePassword(
 )
 
 @Serializable
-private data class RequestPasswordReset(val email: String)
+internal data class RequestPasswordReset(val email: String)
 
 @Serializable
-private data class ResetPassword(val newPassword: String, val token: String)
+internal data class ResetWithCode(val email: String, val otp: String, val password: String)
 
 @Serializable
 private data class DeleteAccount(val password: String)
@@ -60,28 +60,34 @@ class AccountApi(
     }
 
     /**
-     * Asks for a reset email. Always reports success to the caller when the
+     * Asks for the reset code. Always reports success to the caller when the
      * server accepts it, because the server deliberately answers the same
      * way for an address it has never seen: telling somebody which emails
      * have accounts is how account lists get harvested.
-     *
-     * No redirectTo is sent. The server builds the link in the email itself,
-     * and Better Auth refuses a redirectTo it does not already trust.
      */
-    suspend fun sendResetEmail(email: String): ApiResult<Unit> = withContext(Dispatchers.IO) {
+    suspend fun sendResetCode(email: String): ApiResult<Unit> = withContext(Dispatchers.IO) {
         post(
-            path = "/api/auth/request-password-reset",
+            path = "/api/auth/email-otp/request-password-reset",
             token = null,
             body = ApiJson.encodeToString(RequestPasswordReset(email.trim())),
         )
     }
 
-    suspend fun resetPassword(token: String, newPassword: String): ApiResult<Unit> =
+    /**
+     * Spends the code and sets the password, in one request.
+     *
+     * The code is only checked here, so a wrong one is found at the end
+     * rather than on the screen that took it -- which is also why that
+     * screen cannot say "wrong code" and this one can. Three wrong codes
+     * and the server stops accepting that code at all; asking again sends
+     * a new one.
+     */
+    suspend fun resetPassword(email: String, code: String, newPassword: String): ApiResult<Unit> =
         withContext(Dispatchers.IO) {
             post(
-                path = "/api/auth/reset-password",
+                path = "/api/auth/email-otp/reset-password",
                 token = null,
-                body = ApiJson.encodeToString(ResetPassword(newPassword, token)),
+                body = ApiJson.encodeToString(ResetWithCode(email.trim(), code.trim(), newPassword)),
             )
         }
 

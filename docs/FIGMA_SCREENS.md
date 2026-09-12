@@ -12,8 +12,8 @@ Grouped by the order they got built, which is not their numbering: the
 loop a person lives in daily (13, 20-24) matters more than the account
 screens, and nothing could be tried at all until 01-02 existed.
 
-All 37 are built. Three of them do not match what the API or the platform
-allows, and the code says so where it deviates:
+All 37 are built. Four places do not match what the API, the platform or
+the product allows, and the code says so where it deviates:
 
 - **17** draws Respect, Strong, Push and Roast. The API takes `laugh`,
   `haha`, `shoe`, `tomato` and `clap`; the drawn four do not exist and would
@@ -26,6 +26,13 @@ allows, and the code says so where it deviates:
 - **27** names Accessibility. This build blocks with a full-screen activity,
   which Android permits only with "display over other apps", so that is what
   the button opens.
+- **33, 34, 35** draw a reset *link*: 33 promises one, 34 announces it was
+  sent and has nothing else to do, 35 is opened by it. The reset is a
+  seven-digit code instead, decided after the link flow was built. 33 says
+  code, 34 grew the boxes and a Continue under the same announcement, and 35
+  is reached from 34 carrying the address and the code rather than from an
+  email. Everything drawn on those screens is still there; 34 has more on it
+  than was drawn, because with a code that screen has something to do.
 
 And one frame is missing: there is no completed-challenge screen. 26's
 structure is drawn with the result reversed until one exists.

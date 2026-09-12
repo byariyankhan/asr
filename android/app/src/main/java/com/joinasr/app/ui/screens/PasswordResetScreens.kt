@@ -33,6 +33,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joinasr.app.ui.components.AsrBackChevron
+import com.joinasr.app.ui.components.AsrCodeField
 import com.joinasr.app.ui.components.AsrPrimaryButton
 import com.joinasr.app.ui.components.AsrTextField
 import com.joinasr.app.ui.theme.AsrColors
@@ -43,13 +44,26 @@ import com.joinasr.app.ui.theme.AsrType
 private const val MIN_PASSWORD = 8
 
 /**
+ * How many digits are in a reset code.
+ *
+ * The server decides this (`backend/src/lib/password.ts`) and generates the
+ * code from it; this is the same number written again because Kotlin cannot
+ * read TypeScript. `ResetCodeTest` fails if the two ever disagree.
+ */
+const val RESET_CODE_LENGTH = 7
+
+/**
  * Figma 33 — Auth / Forgot Password (node 160:2).
  *
- * Moves on to the "check your email" screen whether or not the address has
- * an account, because the server answers the same way for both. Telling
- * somebody which addresses are registered is how account lists get
- * harvested, and a screen that helpfully said "no account with that email"
- * would undo the server's care.
+ * Moves on to the code screen whether or not the address has an account,
+ * because the server answers the same way for both. Telling somebody which
+ * addresses are registered is how account lists get harvested, and a screen
+ * that helpfully said "no account with that email" would undo the server's
+ * care.
+ *
+ * The drawn screen says a link is coming. It is a code: the reset is
+ * finished inside the app that asked for it rather than in a browser, and
+ * the deviation is listed in `docs/FIGMA_SCREENS.md`.
  */
 @Composable
 fun ForgotPasswordScreen(
@@ -83,7 +97,7 @@ fun ForgotPasswordScreen(
         )
         Spacer(Modifier.height(18.dp))
         Text(
-            "Enter the email linked to your account. We'll send you a secure reset link.",
+            "Enter the email linked to your account. We'll send you a $RESET_CODE_LENGTH-digit code.",
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
         )
@@ -107,7 +121,7 @@ fun ForgotPasswordScreen(
 
         Spacer(Modifier.height(24.dp))
         AsrPrimaryButton(
-            text = if (busy) "Sending…" else "Send reset link",
+            text = if (busy) "Sending…" else "Send code",
             onClick = { onSend(email) },
             enabled = email.contains("@") && email.length > 3 && !busy,
         )
@@ -119,16 +133,25 @@ fun ForgotPasswordScreen(
 }
 
 /**
- * Figma 34 — Auth / Check Email (node 160:13).
+ * Figma 34 — Auth / Check Email (node 160:13), which drew a link.
  *
- * The reset link opens on the web, which is where the token is answered.
- * Coming back to the app afterwards and signing in with the new password is
- * the whole of this screen's job.
+ * It takes the code instead. The drawn screen only announced that a link
+ * had gone out and then had nothing to do, because the reset happened in a
+ * browser; with a code this is where the reset actually continues, so the
+ * boxes and a Continue sit under the same announcement. Everything else on
+ * the screen is the drawing: the ring, the eyebrow, the "Didn't get it?"
+ * card, the resend, the way back to log in.
+ *
+ * Continue only hands the code on. Nothing has checked it yet -- the server
+ * sees it for the first time with the new password, on the screen after
+ * this one -- so this screen never says a code is wrong, because it does
+ * not know.
  */
 @Composable
 fun CheckEmailScreen(
     email: String,
     onBack: () -> Unit,
+    onContinue: (code: String) -> Unit,
     onResend: () -> Unit,
     onBackToLogIn: () -> Unit,
     busy: Boolean,
@@ -136,6 +159,8 @@ fun CheckEmailScreen(
     errorMessage: String?,
     modifier: Modifier = Modifier,
 ) {
+    var code by rememberSaveable { mutableStateOf("") }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -163,20 +188,35 @@ fun CheckEmailScreen(
         Text("CHECK YOUR EMAIL", style = AsrType.Eyebrow, color = AsrColors.Accent)
         Spacer(Modifier.height(16.dp))
         Text(
-            "Reset link sent.",
+            "Code sent.",
             style = AsrType.display(34),
             color = AsrColors.TextPrimary,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            "We sent a password reset link to\n$email",
+            "We sent a $RESET_CODE_LENGTH-digit code to\n$email",
             style = AsrType.Field,
             color = AsrColors.TextSecondary,
             textAlign = TextAlign.Center,
         )
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(26.dp))
+        AsrCodeField(
+            value = code,
+            onValueChange = { code = it },
+            length = RESET_CODE_LENGTH,
+            enabled = !busy,
+        )
+
+        Spacer(Modifier.height(20.dp))
+        AsrPrimaryButton(
+            text = "Continue",
+            onClick = { onContinue(code) },
+            enabled = code.length == RESET_CODE_LENGTH && !busy,
+        )
+
+        Spacer(Modifier.height(28.dp))
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -191,7 +231,8 @@ fun CheckEmailScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Check spam, make sure the address is right, or resend after a moment.",
+                "Check spam, make sure the address is right, or ask for a new one. " +
+                    "A code works for ten minutes.",
                 style = AsrType.Label.copy(fontSize = 13.sp),
                 color = AsrColors.TextSecondary,
             )
@@ -209,7 +250,7 @@ fun CheckEmailScreen(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                if (busy) "Sending…" else "Resend email",
+                if (busy) "Sending…" else "Send a new code",
                 style = AsrType.Button,
                 color = AsrColors.TextPrimary,
             )
@@ -233,9 +274,11 @@ fun CheckEmailScreen(
 /**
  * Figma 35 — Auth / Reset Password (node 160:26).
  *
- * Opened from the link in the email, which carries the token. The screen is
- * useless without one, so it is only ever reached with a token in hand — see
- * the intent filter in the manifest.
+ * Reached from the code screen, which carries the address and the code
+ * here. Submitting sends all three together, so this is the first moment
+ * anything checks the code — a wrong or expired one surfaces as the error
+ * under this form, and going back one screen is where a new one is asked
+ * for.
  */
 @Composable
 fun ResetPasswordScreen(
@@ -378,6 +421,7 @@ private fun CheckEmailPreview() {
         CheckEmailScreen(
             email = "ariyan@example.com",
             onBack = {},
+            onContinue = {},
             onResend = {},
             onBackToLogIn = {},
             busy = false,

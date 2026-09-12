@@ -158,24 +158,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- The password reset link. The email carries
-                 https://joinasr.com/reset/<token> and this is what opens it:
-                 an App Link rather than a custom scheme, so a link that
-                 arrives on a phone without the app still lands on a real
-                 web page instead of an error. autoVerify makes Android
-                 check /.well-known/assetlinks.json and open the app without
+            <!-- The witness invitation, shared through whatever the person
+                 already uses to talk to their mother. The email carries
+                 https://joinasr.com/w/<code> and this is what opens it: an
+                 App Link rather than a custom scheme, so a link that arrives
+                 on a phone without the app still lands on a real web page
+                 instead of an error. autoVerify makes Android check
+                 /.well-known/assetlinks.json and open the app without
                  asking; until that file lists this app's signing
-                 certificate, the link shows a chooser, which still works. -->
+                 certificate, the link shows a chooser, which still works.
+
+                 A password reset used to have a filter here too. It is a
+                 code typed into the app now, so there is no link to open. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="joinasr.com"
-                    android:pathPrefix="/reset/" />
-                <!-- The witness invitation, shared through whatever the
-                     person already uses to talk to their mother. -->
                 <data
                     android:scheme="https"
                     android:host="joinasr.com"

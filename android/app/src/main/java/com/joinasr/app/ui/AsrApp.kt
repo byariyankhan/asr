@@ -113,6 +113,13 @@ private sealed interface Destination {
 
     /** Figma 34. Carries the address so the screen can name it. */
     data class CheckEmail(val email: String) : Destination
+
+    /**
+     * Figma 35. Carries both halves of what the reset needs: the code is
+     * sent back with the new password in one request, and the address says
+     * whose password it is.
+     */
+    data class NewPassword(val email: String, val code: String) : Destination
 }
 
 /**
@@ -131,6 +138,7 @@ private val DestinationSaver = listSaver<Destination, String>(
             Destination.LogIn -> listOf("log_in")
             Destination.ForgotPassword -> listOf("forgot")
             is Destination.CheckEmail -> listOf("check_email", where.email)
+            is Destination.NewPassword -> listOf("new_password", where.email, where.code)
         }
     },
     restore = { saved ->
@@ -139,6 +147,10 @@ private val DestinationSaver = listSaver<Destination, String>(
             "log_in" -> Destination.LogIn
             "forgot" -> Destination.ForgotPassword
             "check_email" -> Destination.CheckEmail(saved.getOrElse(1) { "" })
+            "new_password" -> Destination.NewPassword(
+                saved.getOrElse(1) { "" },
+                saved.getOrElse(2) { "" },
+            )
             else -> Destination.Welcome
         }
     },
@@ -508,21 +520,9 @@ fun AsrApp(
     // the damage shows.
     var fixingProtection by rememberSaveable { mutableStateOf(false) }
 
-    /**
-     * The token from a reset link, while Figma 35 is open over everything.
-     *
-     * Over everything, signed in or not, and nobody is signed out to show
-     * it. The link used to sign the phone out first -- before the token had
-     * been tried -- so an expired or wrong link cost a working session, and
-     * with it the challenge running on this phone: the pact was wiped, the
-     * loop stopped, and a day later the witnesses heard the phone had gone
-     * dark. Now the token is spent first, and what follows depends on
-     * whether it worked; see the effect on `passwordReset`.
-     */
-    var resetToken by rememberSaveable { mutableStateOf<String?>(null) }
     // The password just submitted, kept only until the answer comes back
-    // and never saved with the activity. It is what signs the person back
-    // in afterwards without asking them to type it again.
+    // and never saved with the activity. It is what signs the person in
+    // afterwards without asking them to type it again.
     var resetSubmitted by remember { mutableStateOf<String?>(null) }
 
     // The one place the loop is started from inside the app. Starting an
@@ -546,20 +546,13 @@ fun AsrApp(
         viewModel.clearError()
         accountViewModel.clear()
     }
-    LaunchedEffect(profileRoute, deletingAccount, resetToken) { accountViewModel.clear() }
+    LaunchedEffect(profileRoute, deletingAccount) { accountViewModel.clear() }
 
     // A link takes precedence over whatever screen was showing, because
     // opening one is the person saying where they want to be.
-    //
-    // A reset link opens the form and nothing else. Whether anybody ends up
-    // signed out is decided when the token has actually been spent, below.
     LaunchedEffect(link) {
         when (val opened = link) {
             null -> Unit
-            is DeepLink.Reset -> {
-                resetToken = opened.token
-                onLinkHandled()
-            }
             is DeepLink.Invite -> {
                 inviteCode = opened.code
                 // Accepting needs an account, and creating one means leaving
@@ -724,34 +717,28 @@ fun AsrApp(
         viewModel.signOut()
     }
 
-    // The token has been spent and the server has revoked every session of
-    // that account. Signed out, that is the log-in screen. Signed in, this
-    // phone's own session is among the revoked -- so it signs straight back
-    // in with the password just typed, and the challenge running here never
-    // notices. Only when that cannot be done (the password was lost to a
-    // rebuild of the activity mid-request) does the phone sign out the
-    // ordinary way.
+    // The code has been spent and the password is the new one. The whole
+    // flow starts at the log-in screen, so nobody is signed in here and
+    // there is no session to lose; what there is, is an address and a
+    // password that are known to work together, so the person is signed
+    // straight in rather than shown a form asking for what they just typed.
+    // If the sign-in somehow fails they are on log in, which is where the
+    // failure belongs.
     LaunchedEffect(passwordReset) {
         if (!passwordReset) return@LaunchedEffect
         accountViewModel.consumeReset()
         val password = resetSubmitted
         resetSubmitted = null
-        resetToken = null
-        val me = (session as? Session.SignedIn)?.me
-        when {
-            me == null -> destination = Destination.LogIn
-            password != null -> viewModel.reauthenticate(me.email, password)
-            else -> {
-                destination = Destination.LogIn
-                viewModel.signOut()
-            }
-        }
+        val email = (destination as? Destination.NewPassword)?.email
+        destination = Destination.LogIn
+        if (email != null && password != null) viewModel.signIn(email, password)
     }
 
-    // Figma 34 says "reset link sent" as a fact, so it is reached when the
+    // Figma 34 says the code was sent as a fact, so it is reached when the
     // server has taken the request and not when the button was pressed. A
-    // resend from that screen lands here too and leaves the destination as
-    // it is, which keeps the notice on screen.
+    // request for a new code from that screen lands here too and leaves the
+    // destination as it is, which keeps the notice on screen and whatever
+    // has been typed into the boxes.
     LaunchedEffect(resetEmailSentTo) {
         val sentTo = resetEmailSentTo ?: return@LaunchedEffect
         accountViewModel.consumeResetEmailSent()
@@ -829,10 +816,6 @@ fun AsrApp(
         earnViewModel.clearError()
     }
     val backAction: (() -> Unit)? = when {
-        resetToken != null -> ({
-            resetToken = null
-            if (!signedIn) destination = Destination.LogIn
-        })
         invitationOpen -> ({
             inviteCode = null
             inviteDeferred = false
@@ -908,42 +891,26 @@ fun AsrApp(
     // back to the invitation, not to Welcome with the invitation hidden
     // behind it until the next launch.
     BackHandler(
-        enabled = session is Session.SignedOut && resetToken == null && !invitationOpen &&
+        enabled = session is Session.SignedOut && !invitationOpen &&
             destination != Destination.Welcome,
     ) {
         if (inviteDeferred && code != null) {
             inviteDeferred = false
             destination = Destination.Welcome
         } else {
-            destination = when (destination) {
+            destination = when (val where = destination) {
                 Destination.ForgotPassword -> Destination.LogIn
                 is Destination.CheckEmail -> Destination.ForgotPassword
+                // Back to the code, not to the address: a wrong code is what
+                // sends somebody back here, and the address was right.
+                is Destination.NewPassword -> Destination.CheckEmail(where.email)
                 else -> Destination.Welcome
             }
         }
     }
 
 
-    val resetting = resetToken
-    if (resetting != null) {
-        // Figma 35, reached from the link in the email. Over everything,
-        // signed in or not: it needs no session, and it takes none away.
-        // Back goes to log in rather than to a previous screen when signed
-        // out, because there is no previous screen when the app was opened
-        // by an email.
-        ResetPasswordScreen(
-            onBack = {
-                resetToken = null
-                if (!signedIn) destination = Destination.LogIn
-            },
-            onSubmit = { password ->
-                resetSubmitted = password
-                accountViewModel.resetPassword(resetting, password)
-            },
-            busy = accountBusy,
-            errorMessage = accountError,
-        )
-    } else if (code != null && (signedIn || !inviteDeferred) && !needsProfile) {
+    if (code != null && (signedIn || !inviteDeferred) && !needsProfile) {
         // Figma 18, over everything. Opening the link is the person saying
         // where they want to be, and it works signed out because the person
         // being asked to vouch usually has no account yet.
@@ -1827,20 +1794,37 @@ fun AsrApp(
             // to test whether an address has one.
             Destination.ForgotPassword -> ForgotPasswordScreen(
                 onBack = { destination = Destination.LogIn },
-                onSend = accountViewModel::sendResetEmail,
+                onSend = accountViewModel::sendResetCode,
                 onBackToLogIn = { destination = Destination.LogIn },
                 busy = accountBusy,
                 errorMessage = accountError,
             )
 
-            // Figma 34.
+            // Figma 34, which takes the code. Continue carries it to the
+            // next screen and nothing checks it on the way: the server sees
+            // it once, with the new password.
             is Destination.CheckEmail -> CheckEmailScreen(
                 email = where.email,
                 onBack = { destination = Destination.ForgotPassword },
-                onResend = { accountViewModel.sendResetEmail(where.email) },
+                onContinue = { code -> destination = Destination.NewPassword(where.email, code) },
+                onResend = { accountViewModel.sendResetCode(where.email) },
                 onBackToLogIn = { destination = Destination.LogIn },
                 busy = accountBusy,
                 notice = accountNotice,
+                errorMessage = accountError,
+            )
+
+            // Figma 35. Sends the address, the code and the password
+            // together, so a code that has expired or was mistyped is
+            // reported here -- and back is the screen that can send a new
+            // one.
+            is Destination.NewPassword -> ResetPasswordScreen(
+                onBack = { destination = Destination.CheckEmail(where.email) },
+                onSubmit = { password ->
+                    resetSubmitted = password
+                    accountViewModel.resetPassword(where.email, where.code, password)
+                },
+                busy = accountBusy,
                 errorMessage = accountError,
             )
         }

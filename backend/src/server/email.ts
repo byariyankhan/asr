@@ -143,12 +143,26 @@ export function inviteEmail(
   };
 }
 
-export function resetPasswordEmail(token: string): Mail {
-  const url = `${SITE()}/reset/${token}`;
+/**
+ * The reset code.
+ *
+ * On its own line and nowhere else in the message, so that the phone's
+ * "copy code" offer has one thing to find and the person reading it has one
+ * thing to look for. No link: the code is typed into the app that asked for
+ * it, which is also what stops a reset from being finished by anybody who
+ * merely intercepted the mail in a browser somewhere.
+ */
+export function resetCodeEmail(code: string): Mail {
   return {
     kind: "reset",
-    subject: "Reset your Asr password",
-    text: [`Tap to choose a new password:`, ``, url, ``, `The link works for one hour. If you didn't ask for this, ignore it.`].join("\n"),
+    subject: "Your Asr password reset code",
+    text: [
+      `${code}`,
+      ``,
+      `Type this into Asr to choose a new password. It works for ten minutes and three tries.`,
+      ``,
+      `If you didn't ask for this, ignore it. Nothing has changed, and nobody can use the code without your inbox.`,
+    ].join("\n"),
   };
 }
 
