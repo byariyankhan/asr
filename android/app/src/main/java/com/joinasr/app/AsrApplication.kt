@@ -1,12 +1,16 @@
 package com.joinasr.app
 
 import android.app.Application
+import com.joinasr.app.data.Stores
 import com.joinasr.app.push.AsrMessagingService
 
 class AsrApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Before anything can read a preferences file: a file that will not
+        // parse is reported from a handler with no context of its own.
+        Stores.remember(this)
         // The channel witness updates land on, made before the first one can
         // arrive. A push that comes while the app is in the background is
         // posted by Firebase itself, on the channel the manifest names -- and

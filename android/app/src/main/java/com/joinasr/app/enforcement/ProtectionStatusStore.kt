@@ -6,12 +6,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.joinasr.app.data.asrPreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-private val Context.protectionStore: DataStore<Preferences> by
-    preferencesDataStore(name = "asr_protection")
+private val Context.protectionStore: DataStore<Preferences> by asrPreferences("asr_protection")
 
 /**
  * Whether the enforcement loop is actually running, and when it last looked.

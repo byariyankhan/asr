@@ -5,12 +5,12 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.joinasr.app.data.asrPreferences
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private val Context.floorStore: DataStore<Preferences> by preferencesDataStore(name = "asr_usage_floor")
+private val Context.floorStore: DataStore<Preferences> by asrPreferences("asr_usage_floor")
 
 /**
  * The minutes a day has already had, kept where Android cannot take them
