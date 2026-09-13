@@ -5,7 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.joinasr.app.data.asrPreferences
 import com.joinasr.app.usage.Day
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -18,7 +18,7 @@ import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.ZoneId
 
-private val Context.earnStore: DataStore<Preferences> by preferencesDataStore(name = "asr_earn")
+private val Context.earnStore: DataStore<Preferences> by asrPreferences("asr_earn")
 
 /**
  * The activity being attempted, and what today's attempts have won.

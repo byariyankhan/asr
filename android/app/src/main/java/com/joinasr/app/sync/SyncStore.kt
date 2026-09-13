@@ -6,7 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.joinasr.app.data.asrPreferences
 import com.joinasr.app.enforcement.Pact
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -14,7 +14,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private val Context.syncStore: DataStore<Preferences> by preferencesDataStore(name = "asr_sync")
+private val Context.syncStore: DataStore<Preferences> by asrPreferences("asr_sync")
 
 /**
  * Something that happened on the phone and the server has not been told

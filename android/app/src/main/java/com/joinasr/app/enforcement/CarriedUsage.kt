@@ -5,14 +5,14 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.joinasr.app.data.asrPreferences
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.ZoneId
 
-private val Context.carriedStore: DataStore<Preferences> by preferencesDataStore(name = "asr_carried")
+private val Context.carriedStore: DataStore<Preferences> by asrPreferences("asr_carried")
 
 /**
  * Minutes spent today on a phone that is not this one.

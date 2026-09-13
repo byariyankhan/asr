@@ -6,15 +6,14 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.joinasr.app.data.asrPreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private val Context.outcomeStore: DataStore<Preferences> by
-    preferencesDataStore(name = "asr_outcome")
+private val Context.outcomeStore: DataStore<Preferences> by asrPreferences("asr_outcome")
 
 /**
  * The last challenge that ended, and whether its ending has been shown.

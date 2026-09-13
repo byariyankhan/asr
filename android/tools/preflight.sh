@@ -93,6 +93,23 @@ else
   pass "no escaped interpolations"
 fi
 
+# A preferences file opened without a way back from a corrupt one.
+#
+# DataStore answers a file it cannot parse by throwing, on every read, for
+# as long as the bad bytes are on disk -- so one unfinished write is an app
+# that opens and closes again on every launch until its data is cleared.
+# That shipped: nine stores, no handler, and a Pixel that could not be
+# opened after eight hours. `asrPreferences` in data/Stores.kt is the one
+# way in, and this is what keeps it the only one.
+if grep -rn "preferencesDataStore(" "$here/app/src" --include="*.kt" \
+     | grep -v "/data/Stores.kt:" >/tmp/preflight.err 2>&1; then
+  while IFS= read -r line; do
+    fail "preferencesDataStore without a corruption handler; use asrPreferences(): $line"
+  done < /tmp/preflight.err
+else
+  pass "every preferences file survives corruption"
+fi
+
 # Every screen must be reachable. A Composable nobody calls compiles fine and
 # ships as nothing at all, which is exactly the sort of thing that gets
 # noticed a week later.
